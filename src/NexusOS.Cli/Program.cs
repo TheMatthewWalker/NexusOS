@@ -37,7 +37,7 @@ if (OperatingSystem.IsLinux() && Environment.GetEnvironmentVariable("NEXUS_API_M
     };
 }
 else handler = new SocketsHttpHandler();
-using var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5077"), Timeout = TimeSpan.FromMinutes(4) };
+using var http = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5077"), Timeout = TimeSpan.FromMinutes(4) };
 http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 if (args.Length == 0) { Usage(); return 2; }
 try

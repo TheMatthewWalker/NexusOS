@@ -1,0 +1,24 @@
+name: Guardian Validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test strict change schema
+        run: python3 -m unittest discover -s tests/guardian -v
+      - name: Validate generated Nix expression
+        run: |
+          echo '[{"option":"services.printing.enable","enabled":true}]' > /tmp/guardian-plan.json
+          python3 scripts/guardian/validate.py --changes /tmp/guardian-plan.json > /tmp/guardian-generated.nix
+          test -s /tmp/guardian-generated.nix
+      - name: Confirm no deployment operations
+        run: |
+          ! grep -E 'nixos-rebuild.*(switch|boot)|sudo|pkexec' scripts/guardian/validate.py

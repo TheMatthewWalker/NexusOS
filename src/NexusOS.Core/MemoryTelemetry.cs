@@ -34,7 +34,7 @@ public sealed class MemoryTelemetry
     {
         var ram = OperatingSystem.IsLinux() && File.Exists("/proc/meminfo")
             ? ParseMemInfo(await File.ReadAllTextAsync("/proc/meminfo", ct))
-            : (null, null);
+            : (Total: (long?)null, Available: (long?)null);
         var gpu = await ReadNvidiaAsync(ct);
         return new(ram.Item1, ram.Item2, gpu.Total, gpu.Free, gpu.Total is null ? "unavailable" : "nvidia-smi");
     }

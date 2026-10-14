@@ -87,3 +87,8 @@ For cloud API requests, Nexus Core reads the `openai-compatible` credential from
 ## Automatic idle model unloading (experimental M5)
 
 Set `NEXUS_MODEL_IDLE_SECONDS` to a value of at least 30 to enable a periodic, best-effort Ollama model-unload request after inactivity. The service is disabled by default, checks every ten seconds, and attempts one unload per interval of request activity. This is not GPU preemption and makes no guarantee of actual memory reclamation. Background tasks other than `/chat` aren't yet tracked, and failures do not interrupt the OS.
+
+
+## Local llama.cpp server (M5)
+
+Nexus Core can now route requests to a separate llama.cpp HTTP server using `nexus use llama-cpp`. Configure `NEXUS_LLAMA_ENDPOINT` (defaults to HTTP loopback port 8080) and `NEXUS_LLAMA_MODEL` (defaults to `default`). This requires an independently running llama.cpp server with an OpenAI-compatible `/v1/chat/completions` endpoint. The service does not yet launch the model, pick quantisation, allocate CPU/GPU layers, or automatically offload model weights. CI tests the protocol through a mock only.

@@ -5,7 +5,18 @@ using System.Text.Json;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://127.0.0.1:5077"); // MVP: loopback only, no remote access.
+if (OperatingSystem.IsLinux() && builder.Configuration["NEXUS_API_MODE"] == "unix")
+{
+    var state = new NexusStatePaths(builder.Configuration);
+    var socketPath = state.PathFor("nexus.sock");
+    if (File.Exists(socketPath))
+        throw new InvalidOperationException("Nexus socket already exists; remove a stale socket only after stopping Core.");
+    builder.WebHost.ConfigureKestrel(options => options.ListenUnixSocket(socketPath));
+}
+else
+{
+    builder.WebHost.UseUrls("http://127.0.0.1:5077");
+}
 builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSeconds(180))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false });
 builder.Services.AddSingleton<NexusStatePaths>();
@@ -29,6 +40,7 @@ builder.Services.AddRateLimiter(options =>
 });
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65536);
 var app = builder.Build();
+_ = app.Services.GetRequiredService<LocalApiToken>();
 app.Use(async (context, next) =>
 {
     var token = context.RequestServices.GetRequiredService<LocalApiToken>();

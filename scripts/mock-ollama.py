@@ -1,24 +1,48 @@
 #!/usr/bin/env python3
-"""Deterministic Ollama-compatible server for Nexus Core CI, no GPU/network API keys."""
+"""Deterministic Ollama-compatible mock; supports fixed-length and HTTP chunked bodies."""
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+MAX_REQUEST = 100000
+
 class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def read_body(self):
+        if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
+            chunks = []
+            size_total = 0
+            while True:
+                header = self.rfile.readline(128).strip()
+                chunk_size = int(header.split(b";", 1)[0], 16)
+                if chunk_size == 0:
+                    while self.rfile.readline(4096).strip():
+                        pass
+                    break
+                size_total += chunk_size
+                if size_total > MAX_REQUEST:
+                    raise ValueError("Request too large")
+                data = self.rfile.read(chunk_size)
+                if len(data) != chunk_size or self.rfile.read(2) != b"\r\n":
+                    raise ValueError("Malformed chunk")
+                chunks.append(data)
+            return b"".join(chunks)
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > MAX_REQUEST:
+            raise ValueError("Invalid content length")
+        return self.rfile.read(length)
+
     def do_POST(self):
         if self.path != "/api/generate":
             self.send_error(404)
             return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length > 100000:
-                self.send_error(413)
-                return
-            body = json.loads(self.rfile.read(length))
+            body = json.loads(self.read_body())
             if not isinstance(body.get("prompt"), str) or not body.get("model"):
-                self.send_error(400)
-                return
+                raise ValueError("Missing prompt or model")
             content = json.dumps({"response": "Nexus mock response: " + body["prompt"]}).encode()
-        except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError) as exc:
+            print(f"Rejected mock request: {exc}; headers: {dict(self.headers)}", flush=True)
             self.send_error(400)
             return
         self.send_response(200)

@@ -94,6 +94,8 @@ public sealed class ConversationStore
     private readonly int _maxEntries;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    public ConversationStore(NexusStatePaths paths) : this(paths, new ConfigurationBuilder().Build()) { }
+
     public ConversationStore(NexusStatePaths paths, IConfiguration config)
     {
         _file = paths.PathFor("history.jsonl");

@@ -62,3 +62,8 @@ Cloud API calls default to `https://api.openai.com/v1`. Additional trusted HTTPS
 ## Guardian preview prototype (M3)
 
 `POST /guardian/preview` accepts a description and an array of `{option, enabled}` entries for four explicitly allowlisted NixOS boolean options. It returns a deterministic plan ID, textual Nix preview and risk classification. **This endpoint never edits files, executes Nix commands, requests root privileges, or applies changes.** It is not a complete Guardian workflow: Nix evaluation, diff against the active system, user confirmation, tamper-resistant audit trails, VM tests and rollback are future work.
+
+
+## M5 inference lifecycle prototype
+
+Authenticated `GET /inference/status` checks whether Ollama responds, and `POST /inference/unload` sends an Ollama `keep_alive=0` request for the configured local model. This is a request to unload, not a guarantee of reclaimed VRAM. The budget planner supports tests for reserving GPU headroom. There is not yet GPU telemetry, a llama.cpp adapter, preemption, active KV-cache control, automatic idle eviction, nor measured performance on real hardware.

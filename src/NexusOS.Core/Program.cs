@@ -12,6 +12,7 @@ builder.Services.AddSingleton<NexusStatePaths>();
 builder.Services.AddSingleton<ProviderStore>();
 builder.Services.AddSingleton<ConversationStore>();
 builder.Services.AddSingleton<ModelRouter>();
+builder.Services.AddSingleton<InferenceLifecycle>();
 builder.Services.AddSingleton<LocalApiToken>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -76,6 +77,13 @@ app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
 {
     try { return Results.Ok(GuardianPlanner.Preview(request.Description, request.Changes)); }
     catch (ArgumentException) { return Results.BadRequest(new { error = "Unsupported or invalid change plan." }); }
+});
+app.MapGet("/inference/status", async (InferenceLifecycle life, CancellationToken ct) =>
+    Results.Ok(new { backend = "ollama", available = await life.IsBackendAvailableAsync(ct) }));
+app.MapPost("/inference/unload", async (InferenceLifecycle life, CancellationToken ct) =>
+{
+    try { await life.UnloadAsync(ct); return Results.Ok(new { unloadRequested = true }); }
+    catch (HttpRequestException) { return Results.Problem("Local inference backend unavailable", statusCode: 502); }
 });
 app.MapGet("/system", () => Results.Ok(new
 {

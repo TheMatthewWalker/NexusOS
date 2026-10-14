@@ -88,21 +88,51 @@ public sealed class ProviderStore
 
 public sealed record ConversationEntry(DateTimeOffset Timestamp, string Provider, string Prompt, string Answer);
 
-public sealed class ConversationStore(NexusStatePaths paths)
+public sealed class ConversationStore
 {
-    private readonly string _file = paths.PathFor("history.jsonl");
+    private readonly string _file;
+    private readonly int _maxEntries;
     private readonly SemaphoreSlim _gate = new(1, 1);
+
+    public ConversationStore(NexusStatePaths paths, IConfiguration config)
+    {
+        _file = paths.PathFor("history.jsonl");
+        _maxEntries = int.TryParse(config["NEXUS_HISTORY_LIMIT"], out var count)
+            ? Math.Clamp(count, 0, 1000) : 200;
+    }
 
     public async Task AppendAsync(ConversationEntry entry, CancellationToken ct)
     {
-        var line = JsonSerializer.Serialize(entry) + "\n";
+        if (_maxEntries == 0) return;
         await _gate.WaitAsync(ct);
         try
         {
-            await File.AppendAllTextAsync(_file, line, ct);
-            NexusStatePaths.RestrictPermissions(_file, false);
+            var lines = File.Exists(_file) ? await File.ReadAllLinesAsync(_file, ct) : [];
+            var kept = lines.Where(x => !string.IsNullOrWhiteSpace(x))
+                .TakeLast(_maxEntries - 1)
+                .Append(JsonSerializer.Serialize(entry)).ToArray();
+            await WriteAtomicAsync(kept, ct);
         }
         finally { _gate.Release(); }
+    }
+
+    public async Task ClearAsync(CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try { await WriteAtomicAsync([], ct); }
+        finally { _gate.Release(); }
+    }
+
+    private async Task WriteAtomicAsync(string[] lines, CancellationToken ct)
+    {
+        var temp = _file + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await File.WriteAllLinesAsync(temp, lines, ct);
+            NexusStatePaths.RestrictPermissions(temp, false);
+            File.Move(temp, _file, true);
+        }
+        finally { if (File.Exists(temp)) File.Delete(temp); }
     }
 
     public async Task<IReadOnlyList<ConversationEntry>> RecentAsync(int limit, CancellationToken ct)
@@ -122,7 +152,7 @@ public sealed class ConversationStore(NexusStatePaths paths)
                     entries.Enqueue(entry);
                     if (entries.Count > limit) entries.Dequeue();
                 }
-                catch (JsonException) { /* Ignore an incomplete tail record. */ }
+                catch (JsonException) { }
             }
             return entries.Reverse().ToArray();
         }

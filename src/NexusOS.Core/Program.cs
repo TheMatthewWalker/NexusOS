@@ -5,7 +5,19 @@ using System.Text.Json;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://127.0.0.1:5077"); // MVP: loopback only, no remote access.
+if (OperatingSystem.IsLinux() && builder.Configuration["NEXUS_API_MODE"] == "unix")
+{
+    // The socket lives within the mode-0700 per-user state directory.
+    var state = new NexusStatePaths(builder.Configuration);
+    var socketPath = state.PathFor("nexus.sock");
+    if (File.Exists(socketPath))
+        throw new InvalidOperationException("Nexus socket already exists; stop the old instance or remove a stale socket.");
+    builder.WebHost.ConfigureKestrel(options => options.ListenUnixSocket(socketPath));
+}
+else
+{
+    builder.WebHost.UseUrls("http://127.0.0.1:5077"); // Development-only TCP fallback.
+}
 builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSeconds(180))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false });
 builder.Services.AddSingleton<NexusStatePaths>();

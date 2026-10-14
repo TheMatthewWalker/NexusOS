@@ -11,3 +11,10 @@ python3 scripts/guardian/validate.py --changes changes.json
 ```
 
 Next stage: pinned NixOS flake, evaluated derivations using `nix eval` / `nix build`, VM boot and service checks, then a separately privileged and authorisation-controlled deployment service with known-good recovery. A successful syntax check **does not establish boot safety**.
+
+
+## Isolated NixOS boot test (experimental)
+
+The `nix/guardian/flake.nix` test boots a disposable NixOS 26.05 VM and verifies that a deliberately configured service starts. The `Guardian NixOS VM` workflow runs this in GitHub Actions, independently of Core CI. This verifies a *test configuration* only: it does not stage a user's actual machine configuration, prove that their display drivers work, confirm bootloader rollback, or test a failing candidate recovery.
+
+**Dependency pinning:** The NixOS 26.05 nixpkgs revision is now recorded in `nix/guardian/flake.lock`, so CI uses a pinned dependency graph. This still does not demonstrate staged deployment or bootloader rollback.

@@ -41,3 +41,8 @@ The pinned Guardian test VM imports `nix/guardian/generated-candidate.nix`. CI r
 `scripts/guardian/recovery_gate.py` independently reconstructs a candidate and checks that a separate evidence document names the same candidate ID and baseline, all three requested checks (`evaluate`, `build`, `vm-test`) are explicitly `true`, and the provided current baseline still matches. Missing, failed, unexpected or stale checks result in **ineligible for review**. CI deliberately supplies a failed-build fixture and confirms it is rejected.
 
 This is a **nonprivileged prototype**, not an approval or deployment authorisation mechanism. The evidence JSON and baseline argument are supplied by the caller and are **not cryptographically trusted**. It must never be used by itself to grant root access or perform NixOS activation; a separate privileged executor must obtain trusted CI/build attestations, query the active generation itself, enforce explicit user approval and provide tested rollback.
+
+
+## Read-only active generation inspection (M4)
+
+Run `python3 scripts/guardian/baseline_inspect.py` on a NixOS host to observe whether `/run/current-system` and `/nix/var/nix/profiles/system` are symlinks resolving to the same Nix store path. Missing links, non-store targets and divergence fail closed. A mismatch can be legitimate after staging or switching generations; investigate it before deployment. The checker never edits profiles, executes commands or grants approval. It is an **observation**, not a cryptographically trusted privileged attestation: a future independent broker must verify the real state and provenance at decision time.

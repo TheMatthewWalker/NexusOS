@@ -43,6 +43,8 @@ dotnet out/cli/NexusOS.Cli.dll providers | tee /dev/stderr | grep -q '"selected"
 dotnet out/cli/NexusOS.Cli.dll use local | tee /dev/stderr | grep -q '"selected": "local"'
 dotnet out/cli/NexusOS.Cli.dll ask "Hello Nexus" | tee /dev/stderr | grep -q 'Nexus mock response: Hello Nexus'
 dotnet out/cli/NexusOS.Cli.dll history | tee /dev/stderr | grep -q 'Hello Nexus'
+dotnet out/cli/NexusOS.Cli.dll clear-history
+test "$(dotnet out/cli/NexusOS.Cli.dll history | tr -d '[:space:]')" = "[]"
 
 # Invalid selections and malformed chat must be rejected.
 test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(cat "$NEXUS_STATE_DIR/api-token")" -H 'Content-Type: application/json' -d '{"name":"not-a-provider"}' http://127.0.0.1:5077/providers/select)" = 400

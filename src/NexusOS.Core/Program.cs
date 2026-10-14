@@ -11,6 +11,7 @@ builder.Services.AddSingleton<ProviderStore>();
 builder.Services.AddSingleton<ConversationStore>();
 builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<LocalApiToken>();
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65536);
 var app = builder.Build();
 app.Use(async (context, next) =>
 {
@@ -35,6 +36,7 @@ app.MapPost("/providers/select", (SelectRequest request, ProviderStore store) =>
     if (!store.Select(request.Name)) return Results.BadRequest(new { error = "Unknown provider" });
     return Results.Ok(new { selected = store.Selected });
 });
+app.MapDelete("/history", async (ConversationStore history, CancellationToken ct) => { await history.ClearAsync(ct); return Results.NoContent(); });
 app.MapGet("/history", async (ConversationStore history, CancellationToken ct) => Results.Ok(await history.RecentAsync(50, ct)));
 app.MapPost("/chat", async (ChatRequest request, ModelRouter router, ConversationStore history, CancellationToken ct) =>
 {

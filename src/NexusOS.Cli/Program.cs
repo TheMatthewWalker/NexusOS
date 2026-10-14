@@ -62,4 +62,4 @@ static async Task PrintResponse(HttpResponseMessage response)
     }
     catch (JsonException) { Console.WriteLine(raw); }
 }
-static void Usage() => Console.WriteLine("nexus [health|system|providers|history|clear-history|use <local|openai-compatible>|ask <prompt>]");
+static void Usage() => Console.WriteLine("nexus [health|system|providers|history|clear-history|use <local|llama-cpp|openai-compatible>|ask <prompt>]");

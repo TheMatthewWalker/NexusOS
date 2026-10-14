@@ -34,7 +34,7 @@ public sealed class ProviderStore
     private readonly string _path;
     private readonly object _gate = new();
     private string _selected = "local";
-    public string[] Names => ["local", "openai-compatible"];
+    public string[] Names => ["local", "llama-cpp", "openai-compatible"];
 
     public ProviderStore() : this(Path.Combine(Path.GetTempPath(), "nexusos-provider-no-persistence-" + Guid.NewGuid().ToString("N"))) { }
 
@@ -81,6 +81,7 @@ public sealed class ProviderStore
 
     private static bool IsValid(string? name) =>
         name is not null && (name.Equals("local", StringComparison.OrdinalIgnoreCase) ||
+                            name.Equals("llama-cpp", StringComparison.OrdinalIgnoreCase) ||
                             name.Equals("openai-compatible", StringComparison.OrdinalIgnoreCase));
 
     private sealed record ProviderSelection(string Selected);

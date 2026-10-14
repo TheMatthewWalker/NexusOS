@@ -8,10 +8,10 @@
 |---|---|---|---|
 | M0 | Repository/bootstrap | Build on Ubuntu in GitHub CI; test project runs; README reproduces local setup | DONE — CI verified |
 | M1 | Nexus Core v0.1 | Health, provider listing/selection, read-only system inventory, local Ollama chat, cloud OpenAI-compatible chat; CLI returns meaningful errors | PARTIAL — mock CI passed; physical Ollama/cloud test open |
-| M2 | Hardened Core v0.2 | Authenticated IPC, per-user storage, OS-keyring credentials, retention, request limits and provider isolation | IN PROGRESS — bearer auth, history limits, rate limits, endpoint restrictions; credential/keyring work open |
-| M3 | Guardian preview | Typed plans, policy, Nix diff, approval, privileged immutable audit, no shell | IN PROGRESS — safe preview and review-only hash chain; execution boundary and Nix diff open |
-| M4 | Guardian rollback | Reproducible Nix builds, VM smoke checks, staged boot, known-good recovery demonstrated on test hardware | TODO |
-| M5 | Inference manager | llama.cpp adapter, KV budget, VRAM/RAM monitoring, eviction/idle sleep and application priority | IN PROGRESS — Ollama status/unload and budget maths; runtime policy and measurements open |
+| M2 | Hardened Core v0.2 | Authenticated IPC, per-user storage, OS-keyring credentials, retention, request limits and provider isolation | IN PROGRESS — keyring reader, bearer auth, retention, response bounds and rate limits CI verified; Unix IPC PR #19 in review |
+| M3 | Guardian preview | Typed plans, policy, Nix diff, approval, privileged immutable audit, no shell | IN PROGRESS — allowlisted typed previews and review acknowledgement with local hash-linked audit; privileged audit, Nix diff and executor open |
+| M4 | Guardian rollback | Reproducible Nix builds, VM smoke checks, staged boot, known-good recovery demonstrated on test hardware | IN PROGRESS — pinned NixOS 26.05 disposable VM boot and service check CI verified; staging and rollback unimplemented |
+| M5 | Inference manager | llama.cpp adapter, KV budget, VRAM/RAM monitoring, eviction/idle sleep and application priority | IN PROGRESS — llama.cpp API route, Ollama unload, optional idle eviction, Linux/NVIDIA telemetry and benchmark harness CI verified; actual offloading, KV budget and hardware tests open |
 | M6 | Desktop alpha | Hyprland/Quickshell command palette, provider switch, memory widget, visual change proposal and offline fallback | TODO |
 | M7 | OS alpha image | Reproducible bootable NixOS ISO, onboarding, supported hardware matrix, rollback and recovery documentation | TODO |
 | M8 | Context/search | Permission-aware semantic indexing, opt-in workspace context, retention/delete/export controls | TODO |
@@ -74,3 +74,16 @@ Documented API/CLI; automated unit and integration checks; security review; log/
 - **M5:** Backend availability and explicit Ollama unload request plus budget arithmetic exist. Remaining: llama.cpp lifecycle, VRAM/RAM telemetry, KV budgeting, idle eviction, foreground preemption and benchmarks on real GPUs.
 
 No milestone M2–M5 is DONE until its own definition-of-done criteria are satisfied. No desktop/UI work begins before these are addressed.
+
+
+## Evidence update — 2026-10-14
+
+Merged into `main` during development: Guardian preview and audit (#6, #8), Linux Secret Service credentials (#9), RAM/VRAM telemetry (#10), strict Guardian change validation (#11), opt-in idle unloading (#12), pinned NixOS VM boot/smoke test (#14), local llama.cpp provider (#15), response-size limits (#16), and benchmark harness (#18). GitHub Actions has verified their associated builds/tests, but mock-backend tests do not establish real model performance. Unix-only IPC is tracked in #19 until its CI and merge gates are satisfied.
+
+Remaining implementation needed before M2–M5 can be marked DONE:
+- M2: secure IPC rollout and peer credentials, real keyring integration testing, multi-user isolation, endpoint DNS/egress hardening, request concurrency and sensitive-data logging checks.
+- M3: policy-enforcing privileged broker, protected audit storage, real Nix module evaluation/diff and confirmation tied to a one-time authorisation.
+- M4: staged NixOS generation deployment, automated boot health assessment, known-good rollback including failed boot tests, and a separate user-data backup path.
+- M5: llama.cpp process lifecycle and GPU/CPU offload allocation, KV-cache/context budgeting, application foreground preemption, GPU vendor coverage and real 8/24GB benchmark data.
+
+The policy remains: do not claim these milestones complete merely because CI is green; hardware acceptance is a separately tracked gate. M6 Desktop/UI remains out of scope.

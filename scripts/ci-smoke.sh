@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -x
+trap 'status=$?; if [[ $status -ne 0 ]]; then echo "Smoke failure at line $LINENO (exit $status)"; cat out/core.log out/mock.log 2>/dev/null || true; fi' ERR
 
 cleanup() {
   kill "${CORE_PID:-}" "${MOCK_PID:-}" 2>/dev/null || true
@@ -19,11 +21,23 @@ for i in $(seq 1 60); do
 done
 if [[ "$ready" != 1 ]]; then echo "Core did not become healthy"; cat out/core.log; exit 1; fi
 
+python3 - <<'PY'
+import socket
+import time
+for _ in range(50):
+    try:
+        with socket.create_connection(("127.0.0.1", 11435), 0.2):
+            break
+    except OSError:
+        time.sleep(0.1)
+else:
+    raise SystemExit("Mock Ollama did not become ready")
+PY
 bash scripts/smoke.sh
-dotnet out/cli/NexusOS.Cli.dll health | grep -q '"status": "ok"'
-dotnet out/cli/NexusOS.Cli.dll providers | grep -q '"selected": "local"'
-dotnet out/cli/NexusOS.Cli.dll use local | grep -q '"selected": "local"'
-dotnet out/cli/NexusOS.Cli.dll ask "Hello Nexus" | grep -q 'Nexus mock response: Hello Nexus'
+dotnet out/cli/NexusOS.Cli.dll health | tee /dev/stderr | grep -q '"status": "ok"'
+dotnet out/cli/NexusOS.Cli.dll providers | tee /dev/stderr | grep -q '"selected": "local"'
+dotnet out/cli/NexusOS.Cli.dll use local | tee /dev/stderr | grep -q '"selected": "local"'
+dotnet out/cli/NexusOS.Cli.dll ask "Hello Nexus" | tee /dev/stderr | grep -q 'Nexus mock response: Hello Nexus'
 
 # Invalid selections and malformed chat must be rejected.
 test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"name":"not-a-provider"}' http://127.0.0.1:5077/providers/select)" = 400

@@ -13,6 +13,7 @@ builder.Services.AddSingleton<ProviderStore>();
 builder.Services.AddSingleton<ConversationStore>();
 builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceLifecycle>();
+builder.Services.AddSingleton<GuardianAuditStore>();
 builder.Services.AddSingleton<LocalApiToken>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -78,6 +79,21 @@ app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
     try { return Results.Ok(GuardianPlanner.Preview(request.Description, request.Changes)); }
     catch (ArgumentException) { return Results.BadRequest(new { error = "Unsupported or invalid change plan." }); }
 });
+app.MapPost("/guardian/acknowledge", async (GuardianApprovalRequest request, GuardianAuditStore audit, CancellationToken ct) =>
+{
+    if (request.Acknowledgement != "I APPROVE")
+        return Results.BadRequest(new { error = "Explicit acknowledgement required." });
+    try
+    {
+        var plan = GuardianPlanner.Preview(request.Description, request.Changes);
+        if (plan.Id != request.ExpectedPlanId)
+            return Results.BadRequest(new { error = "Plan ID does not match the reviewed preview." });
+        var entry = await audit.RecordApprovalAsync(plan, ct);
+        return Results.Ok(new { accepted = true, executed = false, auditHash = entry.Hash });
+    }
+    catch (ArgumentException) { return Results.BadRequest(new { error = "Invalid plan." }); }
+    catch (InvalidDataException) { return Results.Problem("Audit verification failed; no action recorded.", statusCode: 409); }
+});
 app.MapGet("/inference/status", async (InferenceLifecycle life, CancellationToken ct) =>
     Results.Ok(new { backend = "ollama", available = await life.IsBackendAvailableAsync(ct) }));
 app.MapPost("/inference/unload", async (InferenceLifecycle life, CancellationToken ct) =>
@@ -98,6 +114,7 @@ app.Run();
 public sealed record ChatRequest(string Prompt);
 public sealed record SelectRequest(string Name);
 public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
+public sealed record GuardianApprovalRequest(string Description, GuardianChange[] Changes, string ExpectedPlanId, string Acknowledgement);
 
 public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore providers, IConfiguration config)
 {

@@ -6,7 +6,8 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://127.0.0.1:5077"); // MVP: loopback only, no remote access.
-builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSeconds(180));
+builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSeconds(180))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false });
 builder.Services.AddSingleton<NexusStatePaths>();
 builder.Services.AddSingleton<ProviderStore>();
 builder.Services.AddSingleton<ConversationStore>();

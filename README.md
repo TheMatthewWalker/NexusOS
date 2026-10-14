@@ -77,3 +77,8 @@ Authenticated `GET /inference/status` checks whether Ollama responds, and `POST 
 ## Linux Secret Service integration (M2)
 
 For cloud API requests, Nexus Core reads the `openai-compatible` credential from the logged-in user's Secret Service through `secret-tool`. It does not accept `NEXUS_OPENAI_API_KEY` as an alternate plaintext environment source. A headless daemon without an unlocked keyring will fail cloud requests cleanly; local Ollama remains usable. This is Linux-specific until other OS credential providers are implemented. The code does not automatically install, unlock or persist keys in files.
+
+
+## Linux resource telemetry (M5)
+
+`GET /inference/telemetry` reports system RAM using `/proc/meminfo` and optional first-GPU VRAM statistics using `nvidia-smi` when available. Missing GPU data is reported as unavailable instead of fabricated. AMD/Intel support, GPU process accounting, telemetry sampling, automatic eviction and VRAM reclamation validation remain outstanding. Do not infer that a model fits in memory from total VRAM alone.

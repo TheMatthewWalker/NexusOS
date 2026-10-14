@@ -2,15 +2,25 @@ using System.Net.Http.Json;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://127.0.0.1:5077"); // MVP: loopback only, no remote access.
-builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSeconds(180));
+builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSeconds(180))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false });
 builder.Services.AddSingleton<NexusStatePaths>();
 builder.Services.AddSingleton<ProviderStore>();
 builder.Services.AddSingleton<ConversationStore>();
 builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<LocalApiToken>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("ai", _ => RateLimitPartition.GetFixedWindowLimiter("single-user", __ => new FixedWindowRateLimiterOptions
+    {
+        PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+    }));
+});
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65536);
 var app = builder.Build();
 app.Use(async (context, next) =>
@@ -28,6 +38,7 @@ app.Use(async (context, next) =>
     }
     await next(context);
 });
+app.UseRateLimiter();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "NexusOS.Core", version = "0.2.0-dev" }));
 app.MapGet("/providers", (ProviderStore store) => Results.Ok(new { selected = store.Selected, providers = store.Names }));
@@ -60,7 +71,7 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
     {
         return Results.Problem(ex.Message, statusCode: 503);
     }
-});
+}).RequireRateLimiting("ai");
 app.MapGet("/system", () => Results.Ok(new
 {
     os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
@@ -84,6 +95,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
         if (provider == "local")
         {
             var url = config["NEXUS_OLLAMA_URL"] ?? "http://127.0.0.1:11434";
+            ProviderEndpointGuard.RequireLoopback(url);
             // This service is single-user, local-only for MVP. Endpoints must be configured by operator.
             var model = config["NEXUS_OLLAMA_MODEL"] ?? "llama3.2:3b";
             using var response = await client.PostAsJsonAsync(url.TrimEnd('/') + "/api/generate",
@@ -95,6 +107,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
         if (provider == "openai-compatible")
         {
             var endpoint = config["NEXUS_OPENAI_ENDPOINT"] ?? "https://api.openai.com/v1";
+            ProviderEndpointGuard.RequireCloudEndpoint(endpoint, config["NEXUS_CLOUD_HOSTS"]);
             var token = config["NEXUS_OPENAI_API_KEY"];
             if (string.IsNullOrWhiteSpace(token))
                 throw new InvalidOperationException("Set NEXUS_OPENAI_API_KEY before using openai-compatible.");

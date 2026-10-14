@@ -17,4 +17,4 @@ Next stage: pinned NixOS flake, evaluated derivations using `nix eval` / `nix bu
 
 The `nix/guardian/flake.nix` test boots a disposable NixOS 26.05 VM and verifies that a deliberately configured service starts. The `Guardian NixOS VM` workflow runs this in GitHub Actions, independently of Core CI. This verifies a *test configuration* only: it does not stage a user's actual machine configuration, prove that their display drivers work, confirm bootloader rollback, or test a failing candidate recovery.
 
-**Important:** The flake uses the 26.05 branch without a committed lockfile yet. Until the nixpkgs revision is pinned in `flake.lock`, it is not reproducible across time and must not be considered an M4 release gate.
+**Dependency pinning:** The NixOS 26.05 nixpkgs revision is now recorded in `nix/guardian/flake.lock`, so CI uses a pinned dependency graph. This still does not demonstrate staged deployment or bootloader rollback.

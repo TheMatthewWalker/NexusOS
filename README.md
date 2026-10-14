@@ -102,3 +102,8 @@ On a workstation with Ollama and a model loaded, run `python3 scripts/bench-olla
 ## Unix-domain API transport (M2)
 
 On Linux, set `NEXUS_API_MODE=unix` for both Core and CLI to communicate over `$NEXUS_STATE_DIR/nexus.sock` rather than TCP. The socket lives within a per-user mode-0700 state directory and requests still require the local bearer token. Core generates the token before opening the listener. A stale socket left after an unclean shutdown must be removed manually after verifying the old process is stopped. TCP is still the development default; privileged Guardian operations require a separately authenticated executor.
+
+
+## Inference concurrency limits (M2)
+
+Nexus Core now rejects a chat request with HTTP 429 when all inference slots are busy. The default is one in-flight inference request; `NEXUS_MAX_CONCURRENT_INFERENCE` allows 1–8 slots (values outside the range are clamped). Slots are released in a `finally`-safe lease even on backend failure or cancellation. This provides backpressure and helps avoid accidental simultaneous model loads. It does not yet implement model-specific VRAM admission control or queue prioritisation.

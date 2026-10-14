@@ -92,3 +92,8 @@ Set `NEXUS_MODEL_IDLE_SECONDS` to a value of at least 30 to enable a periodic, b
 ## Local llama.cpp server (M5)
 
 Nexus Core can now route requests to a separate llama.cpp HTTP server using `nexus use llama-cpp`. Configure `NEXUS_LLAMA_ENDPOINT` (defaults to HTTP loopback port 8080) and `NEXUS_LLAMA_MODEL` (defaults to `default`). This requires an independently running llama.cpp server with an OpenAI-compatible `/v1/chat/completions` endpoint. The service does not yet launch the model, pick quantisation, allocate CPU/GPU layers, or automatically offload model weights. CI tests the protocol through a mock only.
+
+
+## Local inference benchmark (M5 hardware acceptance)
+
+On a workstation with Ollama and a model loaded, run `python3 scripts/bench-ollama.py --model llama3.2:3b --runs 3`. It records wall-clock latency and Ollama-reported output tokens per second when available. It limits endpoints to HTTP loopback and response bodies to 4 MiB. To study cold starts and offloading, compare runs before and after explicitly unloading the model, while separately capturing VRAM telemetry. This script does not prove VRAM reclamation or SSD-based model paging and does not itself run on GPU hardware in CI.

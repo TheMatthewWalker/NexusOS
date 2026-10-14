@@ -24,8 +24,15 @@ public sealed class LocalApiToken
         }
         NexusStatePaths.RestrictPermissions(TokenPath, false);
         var token = File.ReadAllText(TokenPath).Trim();
-        if (token.Length != 64 || !Convert.TryFromHexString(token, new byte[32], out var written) || written != 32)
+        try
+        {
+            if (token.Length != 64 || Convert.FromHexString(token).Length != 32)
+                throw new FormatException("Invalid API token length");
+        }
+        catch (FormatException)
+        {
             throw new InvalidOperationException("Local API token file is invalid; inspect the state directory.");
+        }
         _expected = Encoding.ASCII.GetBytes(token);
     }
 

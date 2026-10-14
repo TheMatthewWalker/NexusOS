@@ -23,7 +23,7 @@ public sealed class MemoryTelemetry
     {
         var first = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
         var columns = first?.Split(',', StringSplitOptions.TrimEntries);
-        if (columns?.Length < 2 ||
+        if (columns is null || columns.Length < 2 ||
             !long.TryParse(columns[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var total) ||
             !long.TryParse(columns[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var free))
             return (null, null);

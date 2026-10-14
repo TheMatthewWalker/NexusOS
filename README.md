@@ -82,3 +82,8 @@ For cloud API requests, Nexus Core reads the `openai-compatible` credential from
 ## Linux resource telemetry (M5)
 
 `GET /inference/telemetry` reports system RAM using `/proc/meminfo` and optional first-GPU VRAM statistics using `nvidia-smi` when available. Missing GPU data is reported as unavailable instead of fabricated. AMD/Intel support, GPU process accounting, telemetry sampling, automatic eviction and VRAM reclamation validation remain outstanding. Do not infer that a model fits in memory from total VRAM alone.
+
+
+## Provider response limits (M2)
+
+Incoming provider response JSON is buffered with a 4 MiB upper bound. This prevents unbounded provider JSON allocation but does not yet limit generated tokens, concurrent requests, or streaming output. Further model-output policy work remains.

@@ -62,3 +62,20 @@ test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN"
 TOKEN="$(cat "$NEXUS_STATE_DIR/api-token")"
 curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:5077/inference/status | grep -q '"available":true'
 curl -fsS -X POST -H "Authorization: Bearer $TOKEN" http://127.0.0.1:5077/inference/unload | grep -q '"unloadRequested":true'
+
+# Record a reviewed Guardian acknowledgement; no configuration is applied.
+python3 - <<'PY'
+import json, os, urllib.request
+base = "http://127.0.0.1:5077"
+token = open(os.path.join(os.environ["NEXUS_STATE_DIR"],"api-token"),encoding="utf-8").read().strip()
+headers = {"Authorization":"Bearer "+token,"Content-Type":"application/json"}
+plan = {"description":"Enable printing","changes":[{"option":"services.printing.enable","enabled":True}]}
+def send(path, payload):
+    request = urllib.request.Request(base+path,data=json.dumps(payload).encode(),headers=headers,method="POST")
+    with urllib.request.urlopen(request) as response:
+        return json.load(response)
+preview = send("/guardian/preview",plan)
+ack = {**plan,"expectedPlanId":preview["id"],"acknowledgement":"I APPROVE"}
+result = send("/guardian/acknowledge",ack)
+assert result["accepted"] is True and result["executed"] is False
+PY

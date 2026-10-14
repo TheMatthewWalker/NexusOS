@@ -52,3 +52,8 @@ Nexus Core now creates a random per-user bearer token in `$NEXUS_STATE_DIR/api-t
 ## History retention controls (M2)
 
 `NEXUS_HISTORY_LIMIT` sets the maximum number of saved successful conversations (default 200, accepted range 0–1000, with 0 disabling future saves). `nexus clear-history` removes currently saved conversation entries. History remains unencrypted plaintext and must not contain secrets. The clear operation is a normal file replacement, not secure erasure from snapshots, backups or storage media. HTTP requests are limited to 64 KiB. Future work includes a keyring-backed secret store, expiry retention and peer-authenticated Unix sockets.
+
+
+## M2 provider endpoint restrictions
+
+Cloud API calls default to `https://api.openai.com/v1`. Additional trusted HTTPS hosts must be explicitly listed in `NEXUS_CLOUD_HOSTS` (comma-separated exact hostnames); only port 443 is supported. The local Ollama URL must be HTTP loopback, and `/chat` has a basic 20-request/minute single-user rate limit. This is a first network policy, **not** complete protection against DNS rebinding, redirects, proxy configuration, model response abuse, or untrusted tools. Avoid adding privileged tools until those boundaries are hardened.

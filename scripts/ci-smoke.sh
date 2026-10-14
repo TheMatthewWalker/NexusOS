@@ -11,7 +11,7 @@ trap cleanup EXIT
 
 python3 scripts/mock-ollama.py > out/mock.log 2>&1 &
 MOCK_PID=$!
-NEXUS_OLLAMA_URL=http://127.0.0.1:11435 dotnet out/core/NexusOS.Core.dll > out/core.log 2>&1 &
+NEXUS_OLLAMA_URL=http://127.0.0.1:11435 NEXUS_LLAMA_ENDPOINT=http://127.0.0.1:11435 dotnet out/core/NexusOS.Core.dll > out/core.log 2>&1 &
 CORE_PID=$!
 
 ready=0
@@ -82,3 +82,6 @@ PY
 
 TOKEN="$(cat "$NEXUS_STATE_DIR/api-token")"
 curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:5077/inference/telemetry | grep -q '"ramTotalBytes"'
+
+dotnet out/cli/NexusOS.Cli.dll use llama-cpp | grep -q 'llama-cpp'
+dotnet out/cli/NexusOS.Cli.dll ask "Hello llama" | grep -q 'Nexus llama mock: Hello llama'

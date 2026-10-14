@@ -142,7 +142,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
             using var response = await client.PostAsJsonAsync(url.TrimEnd('/') + "/api/generate",
                 new { model, prompt, stream = false }, ct);
             response.EnsureSuccessStatusCode();
-            using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            using var doc = await ModelResponseGuard.ReadAsync(response.Content, ct);
             return (doc.RootElement.GetProperty("response").GetString() ?? string.Empty, provider);
         }
         if (provider == "llama-cpp")
@@ -153,7 +153,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
             using var result = await client.PostAsJsonAsync(endpoint.TrimEnd('/') + "/v1/chat/completions",
                 new { model, messages = new[] { new { role = "user", content = prompt } }, stream = false }, ct);
             result.EnsureSuccessStatusCode();
-            using var doc = await JsonDocument.ParseAsync(await result.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            using var doc = await ModelResponseGuard.ReadAsync(result.Content, ct);
             return (doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty, provider);
         }
         if (provider == "openai-compatible")
@@ -172,7 +172,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
             }), Encoding.UTF8, "application/json");
             using var response = await client.SendAsync(message, ct);
             response.EnsureSuccessStatusCode();
-            using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            using var doc = await ModelResponseGuard.ReadAsync(response.Content, ct);
             return (doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty, provider);
         }
         throw new InvalidOperationException("Unknown provider");

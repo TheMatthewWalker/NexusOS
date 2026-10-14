@@ -25,14 +25,14 @@ dotnet run --project src/NexusOS.Cli -- ask "Hello Nexus"
 
 For local AI, install and start Ollama, then run `ollama pull llama3.2:3b`. Override the local model with `NEXUS_OLLAMA_MODEL` and base URL with `NEXUS_OLLAMA_URL` (only trusted endpoints).
 
-For an OpenAI-compatible provider, set `NEXUS_OPENAI_API_KEY`, optionally `NEXUS_OPENAI_ENDPOINT` and `NEXUS_OPENAI_MODEL`, restart Core, then:
+For an OpenAI-compatible provider, install `libsecret-tools` and ensure a user Secret Service keyring is unlocked. Enter your API key with `secret-tool store --label="NexusOS OpenAI" app nexusos provider openai-compatible` (type or paste the key on stdin, then finish with EOF). Set `NEXUS_OPENAI_ENDPOINT` and `NEXUS_OPENAI_MODEL` if required, restart Core, then:
 
 ```bash
 dotnet run --project src/NexusOS.Cli -- use openai-compatible
 dotnet run --project src/NexusOS.Cli -- ask "Explain Linux namespaces"
 ```
 
-**Security notes:** API credentials via environment variables are a temporary developer-only measure. Do not commit secrets, do not bind the daemon publicly, and do not assume OpenAI-compatible means every cloud provider works without adaptation.
+**Security notes:** API credentials are read from the Linux Secret Service keyring; never place credentials in configuration or CI logs. Do not commit secrets, do not bind the daemon publicly, and do not assume OpenAI-compatible means every cloud provider works without adaptation.
 
 See [the roadmap](docs/ROADMAP.md) and [architecture](docs/ARCHITECTURE.md).
 
@@ -72,3 +72,8 @@ Authenticated `GET /inference/status` checks whether Ollama responds, and `POST 
 ## Guardian acknowledgement audit (M3 prototype)
 
 `POST /guardian/acknowledge` requires the exact reviewed plan ID and the literal acknowledgement `I APPROVE`. It writes a hash-chained entry in `guardian-audit.jsonl` and returns `executed:false`. No system change is made. This chain detects accidental edits, but it is **not immutable or tamper-proof** against a process with write access to the user's files; the production executor and audit must live in a separately privileged service. No LLM may directly execute system commands.
+
+
+## Linux Secret Service integration (M2)
+
+For cloud API requests, Nexus Core reads the `openai-compatible` credential from the logged-in user's Secret Service through `secret-tool`. It does not accept `NEXUS_OPENAI_API_KEY` as an alternate plaintext environment source. A headless daemon without an unlocked keyring will fail cloud requests cleanly; local Ollama remains usable. This is Linux-specific until other OS credential providers are implemented. The code does not automatically install, unlock or persist keys in files.

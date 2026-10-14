@@ -18,6 +18,11 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@v3
       - name: Resolve and record Nix dependency revisions
         run: nix flake lock ./nix/guardian
+      - name: Print public dependency lockfile
+        run: |
+          echo GUARDIAN_LOCK_BEGIN
+          cat nix/guardian/flake.lock
+          echo GUARDIAN_LOCK_END
       - name: Upload lockfile for pinning
         uses: actions/upload-artifact@v4
         with:

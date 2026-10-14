@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 
 var root = Environment.GetEnvironmentVariable("NEXUS_STATE_DIR");
 if (string.IsNullOrWhiteSpace(root))
@@ -17,7 +18,26 @@ if (!File.Exists(tokenPath))
     return 1;
 }
 var token = (await File.ReadAllTextAsync(tokenPath)).Trim();
-using var http = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:5077"), Timeout = TimeSpan.FromMinutes(4) };
+HttpMessageHandler handler;
+if (OperatingSystem.IsLinux() && Environment.GetEnvironmentVariable("NEXUS_API_MODE") == "unix")
+{
+    var socketPath = Path.Combine(root, "nexus.sock");
+    handler = new SocketsHttpHandler
+    {
+        ConnectCallback = async (_, ct) =>
+        {
+            var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            try
+            {
+                await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), ct);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch { socket.Dispose(); throw; }
+        }
+    };
+}
+else handler = new SocketsHttpHandler();
+using var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5077"), Timeout = TimeSpan.FromMinutes(4) };
 http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 if (args.Length == 0) { Usage(); return 2; }
 try

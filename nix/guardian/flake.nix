@@ -10,7 +10,7 @@
       checks.${system}.guardian-boot = pkgs.testers.runNixOSTest {
         name = "nexus-guardian-boot";
         nodes.machine = { pkgs, ... }: {
-          services.openssh.enable = true;
+          imports = [ ./generated-candidate.nix ];
           system.stateVersion = "26.05";
         };
         testScript = ''

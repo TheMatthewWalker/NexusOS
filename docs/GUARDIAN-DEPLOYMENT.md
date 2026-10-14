@@ -29,3 +29,8 @@ python3 scripts/guardian/candidate.py --changes changes.json --baseline generati
 ```
 
 This creates a deterministic hash-based candidate ID for the validated Nix module and the claimed known-good baseline, with the only permitted next stages listed as `evaluate`, `build`, and `vm-test`. The manifest explicitly marks activation as `prohibited`; it does **not** establish that the baseline actually exists, that the manifest is signed or tamper-proof, or that a rollback can be performed. A later privileged, policy-enforcing executor must revalidate all fields, verify the system generation and approval, and stage or activate only after independent tests. No host system change is authorised by this manifest.
+
+
+## Candidate-backed VM validation (M4)
+
+The pinned Guardian test VM imports `nix/guardian/generated-candidate.nix`. CI reconstructs the candidate from `candidate-changes.json` and the declared baseline, validates the complete manifest, generates the Nix module independently, and compares it byte-for-byte with the module imported by the VM. Only then does the disposable NixOS VM test run. This connects the tested VM configuration to the verified change proposal instead of merely booting a separate hardcoded configuration. It **does not** validate that a real system baseline generation exists, stage a host deployment, or prove a bootloader fallback; the privileged deployment and recovery pathway remains unfinished.

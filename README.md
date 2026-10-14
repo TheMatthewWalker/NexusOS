@@ -97,3 +97,8 @@ Nexus Core can now route requests to a separate llama.cpp HTTP server using `nex
 ## Local inference benchmark (M5 hardware acceptance)
 
 On a workstation with Ollama and a model loaded, run `python3 scripts/bench-ollama.py --model llama3.2:3b --runs 3`. It records wall-clock latency and Ollama-reported output tokens per second when available. It limits endpoints to HTTP loopback and response bodies to 4 MiB. To study cold starts and offloading, compare runs before and after explicitly unloading the model, while separately capturing VRAM telemetry. This script does not prove VRAM reclamation or SSD-based model paging and does not itself run on GPU hardware in CI.
+
+
+## Unix-domain API transport (M2)
+
+On Linux, set `NEXUS_API_MODE=unix` for both Core and CLI to communicate over `$NEXUS_STATE_DIR/nexus.sock` rather than TCP. The socket lives within a per-user mode-0700 state directory and requests still require the local bearer token. Core generates the token before opening the listener. A stale socket left after an unclean shutdown must be removed manually after verifying the old process is stopped. TCP is still the development default; privileged Guardian operations require a separately authenticated executor.

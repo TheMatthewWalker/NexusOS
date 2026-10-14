@@ -54,6 +54,9 @@ jobs:
       - name: End-to-end smoke tests with mock Ollama
         run: bash scripts/ci-smoke.sh
 
+      - name: Validate benchmark parser
+        run: python3 -m unittest discover -s tests/bench -v
+
       - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@v4

@@ -41,6 +41,8 @@ builder.Services.AddRateLimiter(options =>
 });
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65536);
 var app = builder.Build();
+// Initialise authentication before accepting IPC connections.
+_ = app.Services.GetRequiredService<LocalApiToken>();
 app.Use(async (context, next) =>
 {
     var token = context.RequestServices.GetRequiredService<LocalApiToken>();

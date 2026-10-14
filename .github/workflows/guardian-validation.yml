@@ -19,6 +19,17 @@ jobs:
           echo '[{"option":"services.printing.enable","enabled":true}]' > /tmp/guardian-plan.json
           python3 scripts/guardian/validate.py --changes /tmp/guardian-plan.json > /tmp/guardian-generated.nix
           test -s /tmp/guardian-generated.nix
+      - name: Build non-activating deployment candidate
+        run: |
+          python3 scripts/guardian/candidate.py --changes /tmp/guardian-plan.json --baseline generation-42 --output /tmp/guardian-candidate.json
+          python3 - <<'PY'
+          import json
+          with open("/tmp/guardian-candidate.json", encoding="utf-8") as f:
+              candidate = json.load(f)
+          assert candidate["activation"] == "prohibited"
+          assert candidate["rollbackTarget"] == "generation-42"
+          assert candidate["operations"] == ["evaluate", "build", "vm-test"]
+          PY
       - name: Confirm no deployment operations
         run: |
           ! grep -E 'nixos-rebuild.*(switch|boot)|sudo|pkexec' scripts/guardian/validate.py

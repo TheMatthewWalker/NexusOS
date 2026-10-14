@@ -72,6 +72,11 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
         return Results.Problem(ex.Message, statusCode: 503);
     }
 }).RequireRateLimiting("ai");
+app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
+{
+    try { return Results.Ok(GuardianPlanner.Preview(request.Description, request.Changes)); }
+    catch (ArgumentException) { return Results.BadRequest(new { error = "Unsupported or invalid change plan." }); }
+});
 app.MapGet("/system", () => Results.Ok(new
 {
     os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
@@ -84,6 +89,7 @@ app.Run();
 
 public sealed record ChatRequest(string Prompt);
 public sealed record SelectRequest(string Name);
+public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
 
 public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore providers, IConfiguration config)
 {

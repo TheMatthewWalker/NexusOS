@@ -50,3 +50,12 @@ test "$(dotnet out/cli/NexusOS.Cli.dll history | tr -d '[:space:]')" = "[]"
 test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(cat "$NEXUS_STATE_DIR/api-token")" -H 'Content-Type: application/json' -d '{"name":"not-a-provider"}' http://127.0.0.1:5077/providers/select)" = 400
 test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(cat "$NEXUS_STATE_DIR/api-token")" -H 'Content-Type: application/json' -d '{"prompt":""}' http://127.0.0.1:5077/chat)" = 400
 echo "Nexus Core end-to-end smoke tests passed."
+
+# Guardian must generate a safe preview and reject arbitrary configuration.
+TOKEN="$(cat "$NEXUS_STATE_DIR/api-token")"
+curl -fsS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"description":"Enable printing","changes":[{"option":"services.printing.enable","enabled":true}]}' \
+  http://127.0.0.1:5077/guardian/preview | grep -q 'services.printing.enable'
+test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"description":"unsafe","changes":[{"option":"imports","enabled":true}]}' \
+  http://127.0.0.1:5077/guardian/preview)" = 400

@@ -79,3 +79,6 @@ ack = {**plan,"expectedPlanId":preview["id"],"acknowledgement":"I APPROVE"}
 result = send("/guardian/acknowledge",ack)
 assert result["accepted"] is True and result["executed"] is False
 PY
+
+TOKEN="$(cat "$NEXUS_STATE_DIR/api-token")"
+curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:5077/inference/telemetry | grep -q '"ramTotalBytes"'

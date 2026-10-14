@@ -14,6 +14,7 @@ builder.Services.AddSingleton<ConversationStore>();
 builder.Services.AddSingleton<IProviderCredentialStore, LinuxSecretToolStore>();
 builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceLifecycle>();
+builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianAuditStore>();
 builder.Services.AddSingleton<LocalApiToken>();
 builder.Services.AddRateLimiter(options =>
@@ -95,6 +96,8 @@ app.MapPost("/guardian/acknowledge", async (GuardianApprovalRequest request, Gua
     catch (ArgumentException) { return Results.BadRequest(new { error = "Invalid plan." }); }
     catch (InvalidDataException) { return Results.Problem("Audit verification failed; no action recorded.", statusCode: 409); }
 });
+app.MapGet("/inference/telemetry", async (MemoryTelemetry telemetry, CancellationToken ct) =>
+    Results.Ok(await telemetry.ReadAsync(ct)));
 app.MapGet("/inference/status", async (InferenceLifecycle life, CancellationToken ct) =>
     Results.Ok(new { backend = "ollama", available = await life.IsBackendAvailableAsync(ct) }));
 app.MapPost("/inference/unload", async (InferenceLifecycle life, CancellationToken ct) =>

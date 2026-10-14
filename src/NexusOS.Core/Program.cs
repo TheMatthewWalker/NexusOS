@@ -11,6 +11,7 @@ builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSec
 builder.Services.AddSingleton<NexusStatePaths>();
 builder.Services.AddSingleton<ProviderStore>();
 builder.Services.AddSingleton<ConversationStore>();
+builder.Services.AddSingleton<IProviderCredentialStore, LinuxSecretToolStore>();
 builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceLifecycle>();
 builder.Services.AddSingleton<GuardianAuditStore>();
@@ -116,7 +117,7 @@ public sealed record SelectRequest(string Name);
 public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
 public sealed record GuardianApprovalRequest(string Description, GuardianChange[] Changes, string ExpectedPlanId, string Acknowledgement);
 
-public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore providers, IConfiguration config)
+public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore providers, IConfiguration config, IProviderCredentialStore credentials)
 {
     public string CurrentProvider => providers.Selected;
     public async Task<(string Answer, string Provider)> AskAsync(string prompt, CancellationToken ct)
@@ -139,9 +140,9 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
         {
             var endpoint = config["NEXUS_OPENAI_ENDPOINT"] ?? "https://api.openai.com/v1";
             ProviderEndpointGuard.RequireCloudEndpoint(endpoint, config["NEXUS_CLOUD_HOSTS"]);
-            var token = config["NEXUS_OPENAI_API_KEY"];
+            var token = await credentials.GetAsync(provider, ct);
             if (string.IsNullOrWhiteSpace(token))
-                throw new InvalidOperationException("Set NEXUS_OPENAI_API_KEY before using openai-compatible.");
+                throw new InvalidOperationException("OpenAI credential missing from OS keyring.");
             var model = config["NEXUS_OPENAI_MODEL"] ?? "gpt-4.1-mini";
             using var message = new HttpRequestMessage(HttpMethod.Post, endpoint.TrimEnd('/') + "/chat/completions");
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);

@@ -34,3 +34,10 @@ This creates a deterministic hash-based candidate ID for the validated Nix modul
 ## Candidate-backed VM validation (M4)
 
 The pinned Guardian test VM imports `nix/guardian/generated-candidate.nix`. CI reconstructs the candidate from `candidate-changes.json` and the declared baseline, validates the complete manifest, generates the Nix module independently, and compares it byte-for-byte with the module imported by the VM. Only then does the disposable NixOS VM test run. This connects the tested VM configuration to the verified change proposal instead of merely booting a separate hardcoded configuration. It **does not** validate that a real system baseline generation exists, stage a host deployment, or prove a bootloader fallback; the privileged deployment and recovery pathway remains unfinished.
+
+
+## Fail-closed promotion review gate (M4)
+
+`scripts/guardian/recovery_gate.py` independently reconstructs a candidate and checks that a separate evidence document names the same candidate ID and baseline, all three requested checks (`evaluate`, `build`, `vm-test`) are explicitly `true`, and the provided current baseline still matches. Missing, failed, unexpected or stale checks result in **ineligible for review**. CI deliberately supplies a failed-build fixture and confirms it is rejected.
+
+This is a **nonprivileged prototype**, not an approval or deployment authorisation mechanism. The evidence JSON and baseline argument are supplied by the caller and are **not cryptographically trusted**. It must never be used by itself to grant root access or perform NixOS activation; a separate privileged executor must obtain trusted CI/build attestations, query the active generation itself, enforce explicit user approval and provide tested rollback.

@@ -10,7 +10,23 @@ builder.Services.AddSingleton<NexusStatePaths>();
 builder.Services.AddSingleton<ProviderStore>();
 builder.Services.AddSingleton<ConversationStore>();
 builder.Services.AddSingleton<ModelRouter>();
+builder.Services.AddSingleton<LocalApiToken>();
 var app = builder.Build();
+app.Use(async (context, next) =>
+{
+    var token = context.RequestServices.GetRequiredService<LocalApiToken>();
+    var auth = context.Request.Headers.Authorization.ToString();
+    const string prefix = "Bearer ";
+    if (!auth.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+        !token.Verify(auth[prefix.Length..]))
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        context.Response.Headers.WWWAuthenticate = "Bearer";
+        await context.Response.WriteAsJsonAsync(new { error = "Authentication required" });
+        return;
+    }
+    await next(context);
+});
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "NexusOS.Core", version = "0.2.0-dev" }));
 app.MapGet("/providers", (ProviderStore store) => Results.Ok(new { selected = store.Selected, providers = store.Names }));

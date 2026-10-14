@@ -17,7 +17,7 @@ CORE_PID=$!
 
 ready=0
 for i in $(seq 1 60); do
-  if curl --fail --silent http://127.0.0.1:5077/health > /dev/null; then ready=1; break; fi
+  if curl --fail --silent -H "Authorization: Bearer $(cat "$NEXUS_STATE_DIR/api-token")" http://127.0.0.1:5077/health > /dev/null; then ready=1; break; fi
   if ! kill -0 "$CORE_PID" 2>/dev/null; then echo "Core exited unexpectedly"; cat out/core.log; exit 1; fi
   sleep 1
 done
@@ -35,6 +35,8 @@ for _ in range(50):
 else:
     raise SystemExit("Mock Ollama did not become ready")
 PY
+test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5077/health)" = 401
+test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer invalid' http://127.0.0.1:5077/history)" = 401
 bash scripts/smoke.sh
 dotnet out/cli/NexusOS.Cli.dll health | tee /dev/stderr | grep -q '"status": "ok"'
 dotnet out/cli/NexusOS.Cli.dll providers | tee /dev/stderr | grep -q '"selected": "local"'
@@ -43,6 +45,6 @@ dotnet out/cli/NexusOS.Cli.dll ask "Hello Nexus" | tee /dev/stderr | grep -q 'Ne
 dotnet out/cli/NexusOS.Cli.dll history | tee /dev/stderr | grep -q 'Hello Nexus'
 
 # Invalid selections and malformed chat must be rejected.
-test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"name":"not-a-provider"}' http://127.0.0.1:5077/providers/select)" = 400
-test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"prompt":""}' http://127.0.0.1:5077/chat)" = 400
+test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(cat "$NEXUS_STATE_DIR/api-token")" -H 'Content-Type: application/json' -d '{"name":"not-a-provider"}' http://127.0.0.1:5077/providers/select)" = 400
+test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(cat "$NEXUS_STATE_DIR/api-token")" -H 'Content-Type: application/json' -d '{"prompt":""}' http://127.0.0.1:5077/chat)" = 400
 echo "Nexus Core end-to-end smoke tests passed."

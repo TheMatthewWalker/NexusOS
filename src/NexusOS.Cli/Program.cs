@@ -1,7 +1,24 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Net.Http.Headers;
 
+var root = Environment.GetEnvironmentVariable("NEXUS_STATE_DIR");
+if (string.IsNullOrWhiteSpace(root))
+{
+    var xdg = Environment.GetEnvironmentVariable("XDG_STATE_HOME");
+    root = string.IsNullOrWhiteSpace(xdg)
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "state", "nexusos")
+        : Path.Combine(xdg, "nexusos");
+}
+var tokenPath = Path.Combine(root, "api-token");
+if (!File.Exists(tokenPath))
+{
+    Console.Error.WriteLine("Nexus Core token missing. Start Nexus Core first.");
+    return 1;
+}
+var token = (await File.ReadAllTextAsync(tokenPath)).Trim();
 using var http = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:5077"), Timeout = TimeSpan.FromMinutes(4) };
+http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 if (args.Length == 0) { Usage(); return 2; }
 try
 {

@@ -145,6 +145,17 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
             using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
             return (doc.RootElement.GetProperty("response").GetString() ?? string.Empty, provider);
         }
+        if (provider == "llama-cpp")
+        {
+            var endpoint = config["NEXUS_LLAMA_ENDPOINT"] ?? "http://127.0.0.1:8080";
+            ProviderEndpointGuard.RequireLoopback(endpoint);
+            var model = config["NEXUS_LLAMA_MODEL"] ?? "default";
+            using var result = await client.PostAsJsonAsync(endpoint.TrimEnd('/') + "/v1/chat/completions",
+                new { model, messages = new[] { new { role = "user", content = prompt } }, stream = false }, ct);
+            result.EnsureSuccessStatusCode();
+            using var doc = await JsonDocument.ParseAsync(await result.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            return (doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty, provider);
+        }
         if (provider == "openai-compatible")
         {
             var endpoint = config["NEXUS_OPENAI_ENDPOINT"] ?? "https://api.openai.com/v1";

@@ -44,14 +44,17 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def do_POST(self):
-        if self.path != "/api/generate":
+        if self.path not in ("/api/generate", "/v1/chat/completions"):
             self.send_error(404)
             return
         try:
             body = json.loads(self.read_body())
             if not body.get("model"):
                 raise ValueError("Missing model")
-            if body.get("keep_alive") == 0 and "prompt" not in body:
+            if self.path == "/v1/chat/completions":
+                message = body.get("messages", [{}])[0].get("content", "")
+                content = json.dumps({"choices":[{"message":{"role":"assistant","content":"Nexus llama mock: " + message}}]}).encode()
+            elif body.get("keep_alive") == 0 and "prompt" not in body:
                 content = json.dumps({"response": "", "done": True}).encode()
             elif isinstance(body.get("prompt"), str):
                 content = json.dumps({"response": "Nexus mock response: " + body["prompt"]}).encode()

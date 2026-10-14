@@ -15,6 +15,6 @@ public sealed class ModelResponseGuardTests
     public async Task RejectsOversizedResponse()
     {
         using var content = new ByteArrayContent(new byte[ModelResponseGuard.MaxResponseBytes + 1]);
-        await Assert.ThrowsAnyAsync<Exception>(() => ModelResponseGuard.ReadAsync(content, CancellationToken.None));
+        await Assert.ThrowsAsync<HttpRequestException>(() => ModelResponseGuard.ReadAsync(content, CancellationToken.None));
     }
 }

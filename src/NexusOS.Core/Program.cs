@@ -61,9 +61,11 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
     try
     {
-        activity.Touch();
-        var (response, provider) = await router.AskAsync(request.Prompt, ct);
-        activity.Touch();
+        activity.BeginRequest();
+        (string response, string provider) answer;
+        try { answer = await router.AskAsync(request.Prompt, ct); }
+        finally { activity.EndRequest(); }
+        var (response, provider) = answer;
         await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, provider, request.Prompt, response), ct);
         return Results.Ok(new { answer = response, provider });
     }

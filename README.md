@@ -67,3 +67,8 @@ Cloud API calls default to `https://api.openai.com/v1`. Additional trusted HTTPS
 ## M5 inference lifecycle prototype
 
 Authenticated `GET /inference/status` checks whether Ollama responds, and `POST /inference/unload` sends an Ollama `keep_alive=0` request for the configured local model. This is a request to unload, not a guarantee of reclaimed VRAM. The budget planner supports tests for reserving GPU headroom. There is not yet GPU telemetry, a llama.cpp adapter, preemption, active KV-cache control, automatic idle eviction, nor measured performance on real hardware.
+
+
+## Guardian acknowledgement audit (M3 prototype)
+
+`POST /guardian/acknowledge` requires the exact reviewed plan ID and the literal acknowledgement `I APPROVE`. It writes a hash-chained entry in `guardian-audit.jsonl` and returns `executed:false`. No system change is made. This chain detects accidental edits, but it is **not immutable or tamper-proof** against a process with write access to the user's files; the production executor and audit must live in a separately privileged service. No LLM may directly execute system commands.

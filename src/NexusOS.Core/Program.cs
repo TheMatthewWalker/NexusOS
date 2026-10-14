@@ -26,6 +26,7 @@ builder.Services.AddSingleton<IProviderCredentialStore, LinuxSecretToolStore>();
 builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceLifecycle>();
 builder.Services.AddSingleton<InferenceActivity>();
+builder.Services.AddSingleton<InferenceConcurrencyGate>();
 builder.Services.AddHostedService<IdleModelEvictionService>();
 builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianAuditStore>();
@@ -67,10 +68,12 @@ app.MapPost("/providers/select", (SelectRequest request, ProviderStore store) =>
 });
 app.MapDelete("/history", async (ConversationStore history, CancellationToken ct) => { await history.ClearAsync(ct); return Results.NoContent(); });
 app.MapGet("/history", async (ConversationStore history, CancellationToken ct) => Results.Ok(await history.RecentAsync(50, ct)));
-app.MapPost("/chat", async (ChatRequest request, ModelRouter router, ConversationStore history, InferenceActivity activity, CancellationToken ct) =>
+app.MapPost("/chat", async (ChatRequest request, ModelRouter router, ConversationStore history, InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
+    using var slot = await concurrency.TryEnterAsync(ct);
+    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
     try
     {
         activity.BeginRequest();

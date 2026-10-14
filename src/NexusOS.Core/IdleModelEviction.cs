@@ -1,8 +1,10 @@
 public sealed class InferenceActivity
 {
     private long _lastActivity = Environment.TickCount64;
+    private long _generation;
+    public long Generation => Interlocked.Read(ref _generation);
     public long MillisecondsIdle => Math.Max(0, Environment.TickCount64 - Interlocked.Read(ref _lastActivity));
-    public void Touch() => Interlocked.Exchange(ref _lastActivity, Environment.TickCount64);
+    public void Touch() { Interlocked.Exchange(ref _lastActivity, Environment.TickCount64); Interlocked.Increment(ref _generation); }
 }
 
 public sealed class IdleModelEvictionService(
@@ -19,18 +21,18 @@ public sealed class IdleModelEvictionService(
             return;
         }
 
-        var lastUnloadedActivity = -1L;
+        var lastUnloadedGeneration = -1L;
         using var ticker = new PeriodicTimer(TimeSpan.FromSeconds(10));
         while (await ticker.WaitForNextTickAsync(stoppingToken))
         {
             var idle = activity.MillisecondsIdle;
-            if (idle < idleSeconds * 1000L || idle == lastUnloadedActivity)
+            if (idle < idleSeconds * 1000L || activity.Generation == lastUnloadedGeneration)
                 continue;
 
             try
             {
                 await lifecycle.UnloadAsync(stoppingToken);
-                lastUnloadedActivity = idle;
+                lastUnloadedGeneration = activity.Generation;
                 logger.LogInformation("Requested idle model unload.");
             }
             catch (HttpRequestException ex)

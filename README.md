@@ -92,3 +92,8 @@ Set `NEXUS_MODEL_IDLE_SECONDS` to a value of at least 30 to enable a periodic, b
 ## Local llama.cpp server (M5)
 
 Nexus Core can now route requests to a separate llama.cpp HTTP server using `nexus use llama-cpp`. Configure `NEXUS_LLAMA_ENDPOINT` (defaults to HTTP loopback port 8080) and `NEXUS_LLAMA_MODEL` (defaults to `default`). This requires an independently running llama.cpp server with an OpenAI-compatible `/v1/chat/completions` endpoint. The service does not yet launch the model, pick quantisation, allocate CPU/GPU layers, or automatically offload model weights. CI tests the protocol through a mock only.
+
+
+## Unix-domain API transport (M2)
+
+On Linux, set `NEXUS_API_MODE=unix` for both Core and CLI to communicate through `$NEXUS_STATE_DIR/nexus.sock` rather than TCP. The socket is created inside a per-user directory restricted to mode 0700 and requests still require the bearer token. A stale socket after a crash must be removed manually before restarting. The default TCP mode remains available for development and legacy clients; Unix transport is not yet the default. CI verifies that Unix mode does not bind TCP and exercises the CLI. This does not constitute separate privileged-process identity verification; Guardian execution will require its own permission broker.

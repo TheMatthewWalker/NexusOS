@@ -54,6 +54,9 @@ jobs:
       - name: End-to-end smoke tests with mock Ollama
         run: bash scripts/ci-smoke.sh
 
+      - name: Verify protected Unix-domain IPC
+        run: bash scripts/ci-unix.sh
+
       - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@v4

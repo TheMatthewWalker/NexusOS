@@ -14,6 +14,8 @@ builder.Services.AddSingleton<ConversationStore>();
 builder.Services.AddSingleton<IProviderCredentialStore, LinuxSecretToolStore>();
 builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceLifecycle>();
+builder.Services.AddSingleton<InferenceActivity>();
+builder.Services.AddHostedService<IdleModelEvictionService>();
 builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianAuditStore>();
 builder.Services.AddSingleton<LocalApiToken>();
@@ -53,13 +55,17 @@ app.MapPost("/providers/select", (SelectRequest request, ProviderStore store) =>
 });
 app.MapDelete("/history", async (ConversationStore history, CancellationToken ct) => { await history.ClearAsync(ct); return Results.NoContent(); });
 app.MapGet("/history", async (ConversationStore history, CancellationToken ct) => Results.Ok(await history.RecentAsync(50, ct)));
-app.MapPost("/chat", async (ChatRequest request, ModelRouter router, ConversationStore history, CancellationToken ct) =>
+app.MapPost("/chat", async (ChatRequest request, ModelRouter router, ConversationStore history, InferenceActivity activity, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
     try
     {
-        var (response, provider) = await router.AskAsync(request.Prompt, ct);
+        activity.BeginRequest();
+        (string response, string provider) answer;
+        try { answer = await router.AskAsync(request.Prompt, ct); }
+        finally { activity.EndRequest(); }
+        var (response, provider) = answer;
         await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, provider, request.Prompt, response), ct);
         return Results.Ok(new { answer = response, provider });
     }

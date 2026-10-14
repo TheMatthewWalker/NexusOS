@@ -82,3 +82,8 @@ For cloud API requests, Nexus Core reads the `openai-compatible` credential from
 ## Linux resource telemetry (M5)
 
 `GET /inference/telemetry` reports system RAM using `/proc/meminfo` and optional first-GPU VRAM statistics using `nvidia-smi` when available. Missing GPU data is reported as unavailable instead of fabricated. AMD/Intel support, GPU process accounting, telemetry sampling, automatic eviction and VRAM reclamation validation remain outstanding. Do not infer that a model fits in memory from total VRAM alone.
+
+
+## Automatic idle model unloading (experimental M5)
+
+Set `NEXUS_MODEL_IDLE_SECONDS` to a value of at least 30 to enable a periodic, best-effort Ollama model-unload request after inactivity. The service is disabled by default, checks every ten seconds, and attempts one unload per interval of request activity. This is not GPU preemption and makes no guarantee of actual memory reclamation. Background tasks other than `/chat` aren't yet tracked, and failures do not interrupt the OS.

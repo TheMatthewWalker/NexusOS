@@ -153,7 +153,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
             using var result = await client.PostAsJsonAsync(endpoint.TrimEnd('/') + "/v1/chat/completions",
                 new { model, messages = new[] { new { role = "user", content = prompt } }, stream = false }, ct);
             result.EnsureSuccessStatusCode();
-            using var doc = await ModelResponseGuard.ReadAsync(result.Content, ct);
+            using var doc = await JsonDocument.ParseAsync(await result.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
             return (doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty, provider);
         }
         if (provider == "openai-compatible")

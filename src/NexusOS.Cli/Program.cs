@@ -32,6 +32,9 @@ try
             await PrintGet("/providers"); return 0;
         case "history":
             await PrintGet("/history"); return 0;
+        case "clear-history":
+            using (var res = await http.DeleteAsync("/history"))
+            { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
         case "use" when args.Length == 2:
             using (var res = await http.PostAsJsonAsync("/providers/select", new { name = args[1] }))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
@@ -59,4 +62,4 @@ static async Task PrintResponse(HttpResponseMessage response)
     }
     catch (JsonException) { Console.WriteLine(raw); }
 }
-static void Usage() => Console.WriteLine("nexus [health|system|providers|history|use <local|openai-compatible>|ask <prompt>]");
+static void Usage() => Console.WriteLine("nexus [health|system|providers|history|clear-history|use <local|openai-compatible>|ask <prompt>]");

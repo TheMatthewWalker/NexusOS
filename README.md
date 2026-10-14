@@ -47,3 +47,8 @@ Provider selection and successful chat requests now persist under `$XDG_STATE_HO
 Nexus Core now creates a random per-user bearer token in `$NEXUS_STATE_DIR/api-token` (or the XDG state directory) and requires it on **every** endpoint, including health checks. The CLI loads the token from the same user's state directory automatically; start Core before running the CLI. Direct API clients must send `Authorization: Bearer <token>`. The file must not be committed, shared, or logged. For development, changing/removing the token while Core is stopped regenerates authentication at startup; existing clients must reconnect.
 
 **Important limitations:** This is initial loopback authentication, not a completed multi-user security boundary. Other processes running as the same Linux user can still read the token. Core is still bound to 127.0.0.1:5077, and chat transcripts remain plaintext. The eventual NexusOS daemon will use authenticated Unix-domain sockets with peer identity checks and an OS secrets service. Avoid privileged capabilities until those are in place.
+
+
+## History retention controls (M2)
+
+`NEXUS_HISTORY_LIMIT` sets the maximum number of saved successful conversations (default 200, accepted range 0–1000, with 0 disabling future saves). `nexus clear-history` removes currently saved conversation entries. History remains unencrypted plaintext and must not contain secrets. The clear operation is a normal file replacement, not secure erasure from snapshots, backups or storage media. HTTP requests are limited to 64 KiB. Future work includes a keyring-backed secret store, expiry retention and peer-authenticated Unix sockets.

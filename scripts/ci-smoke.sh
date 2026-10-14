@@ -59,3 +59,7 @@ curl -fsS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' 
 test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"description":"unsafe","changes":[{"option":"imports","enabled":true}]}' \
   http://127.0.0.1:5077/guardian/preview)" = 400
+
+TOKEN="$(cat "$NEXUS_STATE_DIR/api-token")"
+curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:5077/inference/status | grep -q '"available":true'
+curl -fsS -X POST -H "Authorization: Bearer $TOKEN" http://127.0.0.1:5077/inference/unload | grep -q '"unloadRequested":true'

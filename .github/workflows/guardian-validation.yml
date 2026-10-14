@@ -30,6 +30,20 @@ jobs:
           assert candidate["rollbackTarget"] == "generation-42"
           assert candidate["operations"] == ["evaluate", "build", "vm-test"]
           PY
+      - name: Verify fail-closed review gate
+        run: |
+          python3 - <<'PY'
+          import json
+          candidate = json.load(open("/tmp/guardian-candidate.json", encoding="utf-8"))
+          evidence = {"candidateId":candidate["candidateId"],"baseline":candidate["baseline"],
+                      "checks":{"evaluate":True,"build":False,"vm-test":True}}
+          with open("/tmp/guardian-failed-evidence.json","w",encoding="utf-8") as stream:
+              json.dump(evidence,stream)
+          PY
+          if python3 scripts/guardian/recovery_gate.py --candidate /tmp/guardian-candidate.json --changes /tmp/guardian-plan.json --evidence /tmp/guardian-failed-evidence.json --current-baseline generation-42; then
+            echo "ERROR: failed candidate was eligible for review" >&2
+            exit 1
+          fi
       - name: Confirm no deployment operations
         run: |
           ! grep -E 'nixos-rebuild.*(switch|boot)|sudo|pkexec' scripts/guardian/validate.py

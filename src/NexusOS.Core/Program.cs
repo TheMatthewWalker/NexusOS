@@ -6,25 +6,29 @@ using System.Text.Json;
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls("http://127.0.0.1:5077"); // MVP: loopback only, no remote access.
 builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSeconds(180));
+builder.Services.AddSingleton<NexusStatePaths>();
 builder.Services.AddSingleton<ProviderStore>();
+builder.Services.AddSingleton<ConversationStore>();
 builder.Services.AddSingleton<ModelRouter>();
 var app = builder.Build();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "NexusOS.Core", version = "0.1.0" }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "NexusOS.Core", version = "0.2.0-dev" }));
 app.MapGet("/providers", (ProviderStore store) => Results.Ok(new { selected = store.Selected, providers = store.Names }));
 app.MapPost("/providers/select", (SelectRequest request, ProviderStore store) =>
 {
     if (!store.Select(request.Name)) return Results.BadRequest(new { error = "Unknown provider" });
     return Results.Ok(new { selected = store.Selected });
 });
-app.MapPost("/chat", async (ChatRequest request, ModelRouter router, CancellationToken ct) =>
+app.MapGet("/history", async (ConversationStore history, CancellationToken ct) => Results.Ok(await history.RecentAsync(50, ct)));
+app.MapPost("/chat", async (ChatRequest request, ModelRouter router, ConversationStore history, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
     try
     {
-        var response = await router.AskAsync(request.Prompt, ct);
-        return Results.Ok(new { answer = response, provider = router.CurrentProvider });
+        var (response, provider) = await router.AskAsync(request.Prompt, ct);
+        await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, provider, request.Prompt, response), ct);
+        return Results.Ok(new { answer = response, provider });
     }
     catch (HttpRequestException)
     {
@@ -52,23 +56,10 @@ app.Run();
 public sealed record ChatRequest(string Prompt);
 public sealed record SelectRequest(string Name);
 
-public sealed class ProviderStore
-{
-    private string _selected = "local";
-    public string Selected => Volatile.Read(ref _selected);
-    public string[] Names => ["local", "openai-compatible"];
-    public bool Select(string name)
-    {
-        if (!Names.Contains(name, StringComparer.OrdinalIgnoreCase)) return false;
-        Interlocked.Exchange(ref _selected, name.ToLowerInvariant());
-        return true;
-    }
-}
-
 public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore providers, IConfiguration config)
 {
     public string CurrentProvider => providers.Selected;
-    public async Task<string> AskAsync(string prompt, CancellationToken ct)
+    public async Task<(string Answer, string Provider)> AskAsync(string prompt, CancellationToken ct)
     {
         var provider = CurrentProvider;
         var client = factory.CreateClient("ai");
@@ -81,7 +72,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
                 new { model, prompt, stream = false }, ct);
             response.EnsureSuccessStatusCode();
             using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-            return doc.RootElement.GetProperty("response").GetString() ?? string.Empty;
+            return (doc.RootElement.GetProperty("response").GetString() ?? string.Empty, provider);
         }
         if (provider == "openai-compatible")
         {
@@ -99,7 +90,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
             using var response = await client.SendAsync(message, ct);
             response.EnsureSuccessStatusCode();
             using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-            return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty;
+            return (doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty, provider);
         }
         throw new InvalidOperationException("Unknown provider");
     }

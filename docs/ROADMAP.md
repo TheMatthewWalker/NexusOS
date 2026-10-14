@@ -6,12 +6,12 @@
 
 | Gate | Milestone | Acceptance criteria | Status |
 |---|---|---|---|
-| M0 | Repository/bootstrap | Build on Ubuntu in GitHub CI; test project runs; README reproduces local setup | TODO (files drafted) |
-| M1 | Nexus Core v0.1 | Health, provider listing/selection, read-only system inventory, local Ollama chat, cloud OpenAI-compatible chat; CLI returns meaningful errors | TODO (implementation drafted, not compiled) |
-| M2 | Hardened Core v0.2 | Unix socket or authenticated loopback, per-user storage, encrypted secrets, persistent provider selection, log redaction, request limits, mock-provider integration tests | TODO |
-| M3 | Guardian preview | Typed change schema; immutable audit log; Nix diff; explicit confirmation; no arbitrary shell | TODO |
+| M0 | Repository/bootstrap | Build on Ubuntu in GitHub CI; test project runs; README reproduces local setup | DONE — CI verified |
+| M1 | Nexus Core v0.1 | Health, provider listing/selection, read-only system inventory, local Ollama chat, cloud OpenAI-compatible chat; CLI returns meaningful errors | PARTIAL — mock CI passed; physical Ollama/cloud test open |
+| M2 | Hardened Core v0.2 | Authenticated IPC, per-user storage, OS-keyring credentials, retention, request limits and provider isolation | IN PROGRESS — bearer auth, history limits, rate limits, endpoint restrictions; credential/keyring work open |
+| M3 | Guardian preview | Typed plans, policy, Nix diff, approval, privileged immutable audit, no shell | IN PROGRESS — safe preview and review-only hash chain; execution boundary and Nix diff open |
 | M4 | Guardian rollback | Reproducible Nix builds, VM smoke checks, staged boot, known-good recovery demonstrated on test hardware | TODO |
-| M5 | Inference manager | llama.cpp adapter, context/KV budget, VRAM/RAM telemetry, model eviction and idle sleep; application foreground priority | TODO |
+| M5 | Inference manager | llama.cpp adapter, KV budget, VRAM/RAM monitoring, eviction/idle sleep and application priority | IN PROGRESS — Ollama status/unload and budget maths; runtime policy and measurements open |
 | M6 | Desktop alpha | Hyprland/Quickshell command palette, provider switch, memory widget, visual change proposal and offline fallback | TODO |
 | M7 | OS alpha image | Reproducible bootable NixOS ISO, onboarding, supported hardware matrix, rollback and recovery documentation | TODO |
 | M8 | Context/search | Permission-aware semantic indexing, opt-in workspace context, retention/delete/export controls | TODO |
@@ -62,3 +62,15 @@ Documented API/CLI; automated unit and integration checks; security review; log/
 1. Run CI for initial source tree; repair any build/test errors (M0).
 2. Add fake Ollama and OpenAI HTTP integration tests, then run against a real local model (M1).
 3. Harden IPC, credential management and persistent state before enabling external plugins (M2).
+
+
+## Evidence and outstanding gates (2026-10-14)
+
+- **M0:** GitHub CI builds and tests source on Ubuntu.
+- **M1:** Mock Ollama end-to-end chat path works; an actual downloaded model and paid cloud API remain **unverified**.
+- **M2:** Per-user bearer authentication, persistent settings/history, deletion, basic rate limiting and provider URL restrictions exist. Remaining: OS-keyring secrets, Unix socket peer credentials, bounded provider responses, multi-user boundaries, comprehensive logging/egress protections.
+- **M3:** Typed allowlisted Nix preview, explicit non-executing acknowledgement and hash-linked user-file audit are implemented. Remaining: trusted privileged broker, protected audit store, real Nix diff and policy enforcement.
+- **M4:** **NOT STARTED.** Requires NixOS builds, disposable VM boot testing, staged generation promotion and tested physical recovery, including user-data backups. The current Guardian cannot apply changes.
+- **M5:** Backend availability and explicit Ollama unload request plus budget arithmetic exist. Remaining: llama.cpp lifecycle, VRAM/RAM telemetry, KV budgeting, idle eviction, foreground preemption and benchmarks on real GPUs.
+
+No milestone M2–M5 is DONE until its own definition-of-done criteria are satisfied. No desktop/UI work begins before these are addressed.

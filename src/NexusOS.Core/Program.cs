@@ -19,6 +19,13 @@ else
 }
 builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSeconds(180))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false });
+builder.Services.AddHttpClient("cloud", client => client.Timeout = TimeSpan.FromSeconds(180))
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        UseProxy = false,
+        ConnectCallback = CloudAddressPolicy.ConnectAsync
+    });
 builder.Services.AddSingleton<NexusStatePaths>();
 builder.Services.AddSingleton<ProviderStore>();
 builder.Services.AddSingleton<ConversationStore>();
@@ -194,6 +201,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
             if (string.IsNullOrWhiteSpace(token))
                 throw new InvalidOperationException("OpenAI credential missing from OS keyring.");
             var model = config["NEXUS_OPENAI_MODEL"] ?? "gpt-4.1-mini";
+            client = factory.CreateClient("cloud");
             using var message = new HttpRequestMessage(HttpMethod.Post, endpoint.TrimEnd('/') + "/chat/completions");
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             message.Content = new StringContent(JsonSerializer.Serialize(new

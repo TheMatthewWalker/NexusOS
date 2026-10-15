@@ -118,3 +118,10 @@ The policy remains: do not claim these milestones complete merely because CI is 
 - **NixOS VM gate:** No DNS interception/egress test has been performed in the NixOS VM for this change. Existing pinned NixOS boot smoke tests are a different gate.
 - **Hardware/live-network gate:** No live cloud provider, DNS rebinding, GPU or physical rollback test has been performed. No claims of physical validation.
 - **Remaining M2 gates:** native Unix IPC peer credentials, per-user SQLite persistence, unlocked keyring integration and stronger end-to-end network egress validation. M2–M5 remain IN PROGRESS; no Desktop/UI work.
+
+## M2 IPv6 egress follow-up — 2026-10-15
+
+- Follow-up to merged DNS pinning PRs #33 and #34: deny 6to4 `2002::/16` and IPv6 documentation `3fff::/20` destinations. Both are inappropriate for cloud model endpoint egress; tests include 6to4 addresses embedding public and private IPv4.
+- **Mock/unit evidence:** targeted address-policy tests are committed; CI is pending for this branch. No live DNS or network egress test has been performed.
+- **NixOS VM evidence:** no VM egress validation on this change. **Hardware-only gates:** physical cloud network, GPU and rollback checks remain unperformed.
+- M2–M5 remain IN PROGRESS; Desktop/UI is out of scope.

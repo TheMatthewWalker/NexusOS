@@ -125,3 +125,9 @@ The policy remains: do not claim these milestones complete merely because CI is 
 - **Mock/unit evidence:** targeted address-policy tests are committed; CI is pending for this branch. No live DNS or network egress test has been performed.
 - **NixOS VM evidence:** no VM egress validation on this change. **Hardware-only gates:** physical cloud network, GPU and rollback checks remain unperformed.
 - M2–M5 remain IN PROGRESS; Desktop/UI is out of scope.
+
+## M2 JSONL retention correctness — 2026-10-15
+
+- A narrow backward-compatible correction excludes malformed legacy JSONL lines from the history retention budget during append; existing valid conversations are preserved. Regression test covers a malformed line between valid entries and a two-entry retention limit.
+- **Unit/mock:** tests committed, CI pending. **NixOS VM:** no persistence migration or VM test claimed. **Hardware:** no multi-user/keyring validation performed.
+- This is not the SQLite migration. SQLite transactional migration, legacy backup/recovery and IPC peer-credential checks remain open; M2–M5 IN PROGRESS and M6 UI excluded.

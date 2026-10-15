@@ -16,6 +16,10 @@ public class CloudAddressPolicyTests
     [InlineData("::ffff:127.0.0.1")]
     [InlineData("2001:db8::1")]
     [InlineData("2001::1")]
+    [InlineData("2002:c0a8:0101::1")]
+    [InlineData("2002:0808:0808::1")]
+    [InlineData("3fff::1")]
+    [InlineData("3fff:0fff::1")]
     public void RejectsNonPublicAddresses(string raw)
     {
         Assert.Throws<InvalidOperationException>(() => CloudAddressPolicy.Validate(IPAddress.Parse(raw)));

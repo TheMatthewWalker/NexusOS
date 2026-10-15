@@ -127,3 +127,8 @@ Sending prompts to the OpenAI-compatible provider is disabled by default. The Co
 ## Guardian review replay protection (M3)
 
 Before `POST /guardian/acknowledge`, the authenticated client must now call `POST /guardian/review-token` with the same validated plan. The token is random, expires in two minutes and can be consumed exactly once; a repeated acknowledgement is rejected. This is an **in-memory review protocol**, not a trusted human-presence proof or a privileged authorization. Tokens expire on Core restart; the resulting acknowledgement remains `executed:false`. The privileged Guardian broker is not implemented.
+
+
+## Chat history age retention (M2)
+
+`NEXUS_HISTORY_MAX_DAYS` limits which saved chats can be returned by `/history` and which survive the next successful chat append (default 30 days; accepted range clamped to 1–365). Malformed and future-dated entries are ignored. This is a logical read filter plus lazy file compaction, **not automatic timer-based erasure**: expired entries may remain on disk until another successful chat is saved, and backup copies are not erased. `nexus clear-history` remains available for manual deletion.

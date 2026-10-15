@@ -1,16 +1,22 @@
 using System.Net;
-using System.Net.Sockets;
 using Xunit;
 
 public class CloudConnectionPolicyTests
 {
-    [Fact]
-    public async Task RejectsLiteralIpHostBeforeOpeningSocket()
+    [Theory]
+    [InlineData("127.0.0.1")]
+    [InlineData("::1")]
+    [InlineData("169.254.169.254")]
+    [InlineData("")]
+    public void RejectsLiteralIpOrEmptyCloudHost(string host)
     {
-        var context = new SocketsHttpConnectionContext(
-            new DnsEndPoint("127.0.0.1", 443), null, null);
-        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await CloudAddressPolicy.ConnectAsync(context, CancellationToken.None));
+        Assert.Throws<InvalidOperationException>(() => CloudAddressPolicy.RequireDnsHostname(host));
+    }
+
+    [Fact]
+    public void AcceptsDnsCloudHostname()
+    {
+        CloudAddressPolicy.RequireDnsHostname("api.openai.com");
     }
 
     [Theory]

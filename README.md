@@ -112,3 +112,8 @@ Nexus Core now rejects a chat request with HTTP 429 when all inference slots are
 ## Inference token budgets (M5)
 
 `NEXUS_CONTEXT_TOKENS` (default 4096, supported 512–131072) and `NEXUS_MAX_OUTPUT_TOKENS` (default 512, must be less than context) provide a bounded budget. Ollama receives `num_ctx`/`num_predict`; llama.cpp and the cloud adapter receive `max_tokens`. Invalid configurations fail rather than silently allowing unbounded generation. **This is an advertised token budget, not a tokeniser or admission controller:** provider/model support varies and a prompt may still exceed its available context. KV-cache memory and actual truncation are not yet measured or guaranteed.
+
+
+## Guardian typed configuration diff (M3)
+
+`GuardianDiffPlanner.Compare` produces before/after differences for allowlisted boolean NixOS settings, omitting unchanged options. The baseline is supplied by the caller and **is not observed or trusted** (`UsesObservedBaseline=false`); a future privileged Guardian broker must independently read the active system before applying changes. This is useful for preview rendering and testing, not deployment authorization.

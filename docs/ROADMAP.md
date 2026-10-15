@@ -97,3 +97,8 @@ The policy remains: do not claim these milestones complete merely because CI is 
 - **M5:** Ollama and llama.cpp API routing, optional idle unload, first-NVIDIA VRAM/RAM telemetry, configured output/context token budgets (#26), local latency benchmark and inference concurrency exist. Remaining: managed process lifecycle, measured GPU offloading and KV usage, foreground preemption, AMD/Intel support and CPU/8GB/24GB hardware benchmarks.
 
 **Completion policy:** Keep M2–M5 marked IN PROGRESS until their security and actual-system gates pass. The pinned test VM does not prove hardware rollback or GPU behaviour. Desktop/UI stays out of scope.
+
+### M2 security work in progress — PR #33 (not merged)
+
+- Cloud endpoint guard now rejects literal IP addresses even when explicitly listed as cloud hosts; xUnit regression cases added for IPv4, IPv6, mapped IPv6, metadata and loopback addresses.
+- This is **not** DNS rebinding protection: hostname resolution is not pinned to the outbound connection. CI, live DNS behavior, NixOS VM and hardware validation are not yet evidenced for this PR. M2 remains IN PROGRESS.

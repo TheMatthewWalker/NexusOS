@@ -130,3 +130,9 @@ The policy remains: do not claim these milestones complete merely because CI is 
 
 - PR #36 was superseded by merged PR #37; the current `IsRecentEntry` filter already removes malformed JSONL records from count-based retention. The isolated regression test is ported to main without overwriting PR #37 age-based filtering.
 - **Mock/unit:** deterministic test committed; CI pending. **NixOS VM:** no new VM test performed. **Physical hardware:** no hardware checks performed. SQLite migration and native IPC peer authentication remain outstanding; M2–M5 IN PROGRESS.
+
+## M2 SQLite foundation — 2026-10-15
+
+- Candidate per-user `history.sqlite3` storage replaces active JSONL writes, with parameterized statements, SQLite transaction for first-use legacy JSONL import, idempotent migration marker, and retention pruning. The legacy JSONL file is left intact for recovery. SQLite DB permissions are restricted to the owning user on Unix.
+- **Mock/unit:** migration/restart/clear regression test committed; CI pending. **NixOS VM:** SQLite migration has not been tested in a NixOS VM. **Physical hardware:** no keyring, native IPC peer identity, recovery, GPU or reboot validation claimed.
+- Remaining hardening: power-loss/corrupt DB recovery, schema upgrades, safe legacy file retirement, secure deletion semantics, native IPC credentials and M3–M5 acceptance. M2–M5 remain IN PROGRESS; M6 Desktop/UI excluded.

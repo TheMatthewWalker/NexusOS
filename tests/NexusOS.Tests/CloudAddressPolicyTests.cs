@@ -21,6 +21,28 @@ public class CloudAddressPolicyTests
         Assert.Throws<InvalidOperationException>(() => CloudAddressPolicy.Validate(IPAddress.Parse(raw)));
     }
 
+    [Fact]
+    public void RejectsMixedPublicAndPrivateDnsAnswersRegardlessOfOrder()
+    {
+        var publicIp = IPAddress.Parse("8.8.8.8");
+        var privateIp = IPAddress.Parse("10.0.0.1");
+        Assert.Throws<InvalidOperationException>(() => CloudAddressPolicy.SelectValidatedAddress(new[] { publicIp, privateIp }));
+        Assert.Throws<InvalidOperationException>(() => CloudAddressPolicy.SelectValidatedAddress(new[] { privateIp, publicIp }));
+    }
+
+    [Fact]
+    public void RejectsEmptyDnsAnswers()
+    {
+        Assert.Throws<InvalidOperationException>(() => CloudAddressPolicy.SelectValidatedAddress(Array.Empty<IPAddress>()));
+    }
+
+    [Fact]
+    public void SelectsValidatedPublicDnsAddress()
+    {
+        var address = IPAddress.Parse("1.1.1.1");
+        Assert.Equal(address, CloudAddressPolicy.SelectValidatedAddress(new[] { address }));
+    }
+
     [Theory]
     [InlineData("8.8.8.8")]
     [InlineData("1.1.1.1")]

@@ -173,6 +173,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
         }
         if (provider == "openai-compatible")
         {
+            CloudEgressPolicy.RequireConsent(config);
             var endpoint = config["NEXUS_OPENAI_ENDPOINT"] ?? "https://api.openai.com/v1";
             ProviderEndpointGuard.RequireCloudEndpoint(endpoint, config["NEXUS_CLOUD_HOSTS"]);
             var token = await credentials.GetAsync(provider, ct);

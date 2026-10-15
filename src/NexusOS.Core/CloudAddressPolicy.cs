@@ -41,11 +41,16 @@ public static class CloudAddressPolicy
         return addresses[0];
     }
 
+    public static void RequireDnsHostname(string host)
+    {
+        if (string.IsNullOrWhiteSpace(host) || IPAddress.TryParse(host, out _))
+            throw new InvalidOperationException("Cloud endpoint must use DNS.");
+    }
+
     public static async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
     {
         var host = context.DnsEndPoint.Host;
-        if (IPAddress.TryParse(host, out _))
-            throw new InvalidOperationException("Cloud endpoint must use DNS.");
+        RequireDnsHostname(host);
         var addresses = await Dns.GetHostAddressesAsync(host, cancellationToken);
         // Fail closed for mixed answers. The connected address is exactly the validated one.
         var selected = SelectValidatedAddress(addresses);

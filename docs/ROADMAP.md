@@ -110,3 +110,11 @@ The policy remains: do not claim these milestones complete merely because CI is 
 - CI evidence: Nexus Core CI #88 and Guardian Validation #60 passed on `8c660ce8`. Subsequent commits require their own checks before merge.
 - **NixOS VM:** DNS egress behavior has not been independently validated in a VM. **Physical hardware:** no live cloud, GPU or rollback validation performed.
 - M2 stays **IN PROGRESS**: native IPC peer identity, SQLite migration, keyring integration and broader egress threat review remain open. M3–M5 also remain IN PROGRESS; no Desktop/UI work is authorized.
+
+## M2 cloud connection regression follow-up — PR #34 (2026-10-15)
+
+- **Mock/unit gate:** PR #34 extends fail-closed mixed DNS-answer tests and checks literal-IP/empty hostname rejection at the connection-policy entry point.
+- **CI:** Initial Nexus Core CI #93 **failed** during test-project compilation (CS1729: unsupported `SocketsHttpConnectionContext` constructor). Guardian Validation #65 passed. Tests were revised to exercise a dedicated hostname guard; revised-head CI must pass before merging.
+- **NixOS VM gate:** No DNS interception/egress test has been performed in the NixOS VM for this change. Existing pinned NixOS boot smoke tests are a different gate.
+- **Hardware/live-network gate:** No live cloud provider, DNS rebinding, GPU or physical rollback test has been performed. No claims of physical validation.
+- **Remaining M2 gates:** native Unix IPC peer credentials, per-user SQLite persistence, unlocked keyring integration and stronger end-to-end network egress validation. M2–M5 remain IN PROGRESS; no Desktop/UI work.

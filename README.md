@@ -117,3 +117,8 @@ Nexus Core now rejects a chat request with HTTP 429 when all inference slots are
 ## Cloud egress (M2)
 
 Sending prompts to the OpenAI-compatible provider is disabled by default. The Core operator must explicitly set `NEXUS_CLOUD_EGRESS_ALLOWED=true` to permit external transmission. Provider selection alone is insufficient. This is a process-level operator consent guard, not per-message approval or a network firewall.
+
+
+## Guardian typed configuration diff (M3)
+
+`GuardianDiffPlanner.Compare` produces before/after changes for allowlisted boolean NixOS settings and excludes unchanged options. The supplied baseline is **not observed or trusted**, and must be independently checked by a privileged Guardian broker prior to any deployment. This component is only for review and tests.

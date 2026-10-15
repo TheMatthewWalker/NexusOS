@@ -33,17 +33,22 @@ public static class CloudAddressPolicy
         return address;
     }
 
+    public static IPAddress SelectValidatedAddress(IReadOnlyList<IPAddress> addresses)
+    {
+        if (addresses.Count == 0)
+            throw new InvalidOperationException("Cloud endpoint has no DNS addresses.");
+        foreach (var address in addresses) Validate(address);
+        return addresses[0];
+    }
+
     public static async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
     {
         var host = context.DnsEndPoint.Host;
         if (IPAddress.TryParse(host, out _))
             throw new InvalidOperationException("Cloud endpoint must use DNS.");
         var addresses = await Dns.GetHostAddressesAsync(host, cancellationToken);
-        if (addresses.Length == 0)
-            throw new InvalidOperationException("Cloud endpoint has no DNS addresses.");
         // Fail closed for mixed answers. The connected address is exactly the validated one.
-        foreach (var address in addresses) Validate(address);
-        var selected = addresses[0];
+        var selected = SelectValidatedAddress(addresses);
         var socket = new Socket(selected.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
         try
         {

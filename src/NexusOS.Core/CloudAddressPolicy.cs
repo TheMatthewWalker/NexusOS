@@ -24,7 +24,9 @@ public static class CloudAddressPolicy
         else if (address.AddressFamily == AddressFamily.InterNetworkV6)
         {
             // Allow only globally routable IPv6 unicast (2000::/3).
-            if ((bytes[0] & 0xe0) != 0x20)
+            if ((bytes[0] & 0xe0) != 0x20 ||
+                (bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x0d && bytes[3] == 0xb8) || // documentation range
+                (bytes[0] == 0x20 && bytes[1] == 0x01 && (bytes[2] & 0xf0) == 0x00)) // IETF special-use
                 throw new InvalidOperationException("Cloud endpoint resolves to a disallowed address.");
         }
         else throw new InvalidOperationException("Unsupported cloud address family.");

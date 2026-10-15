@@ -97,3 +97,16 @@ The policy remains: do not claim these milestones complete merely because CI is 
 - **M5:** Ollama and llama.cpp API routing, optional idle unload, first-NVIDIA VRAM/RAM telemetry, configured output/context token budgets (#26), local latency benchmark and inference concurrency exist. Remaining: managed process lifecycle, measured GPU offloading and KV usage, foreground preemption, AMD/Intel support and CPU/8GB/24GB hardware benchmarks.
 
 **Completion policy:** Keep M2–M5 marked IN PROGRESS until their security and actual-system gates pass. The pinned test VM does not prove hardware rollback or GPU behaviour. Desktop/UI stays out of scope.
+
+### M2 security work in progress — PR #33 (not merged)
+
+- Cloud endpoint guard now rejects literal IP addresses even when explicitly listed as cloud hosts; xUnit regression cases added for IPv4, IPv6, mapped IPv6, metadata and loopback addresses.
+- This is **not** DNS rebinding protection: hostname resolution is not pinned to the outbound connection. CI, live DNS behavior, NixOS VM and hardware validation are not yet evidenced for this PR. M2 remains IN PROGRESS.
+
+## M2 DNS hardening PR #33 — acceptance evidence (2026-10-15)
+
+- Cloud HTTP handler validates every resolved DNS address and connects to a selected validated IP; automatic redirects and proxies remain disabled. Literal IP cloud endpoints are rejected.
+- Deterministic unit tests cover public/private mixed DNS answer order, empty answers, selected public address and special-use IPv4/IPv6 rejection. This is **unit/mock-level evidence**, not an external DNS, proxy or live cloud integration test.
+- CI evidence: Nexus Core CI #88 and Guardian Validation #60 passed on `8c660ce8`. Subsequent commits require their own checks before merge.
+- **NixOS VM:** DNS egress behavior has not been independently validated in a VM. **Physical hardware:** no live cloud, GPU or rollback validation performed.
+- M2 stays **IN PROGRESS**: native IPC peer identity, SQLite migration, keyring integration and broader egress threat review remain open. M3–M5 also remain IN PROGRESS; no Desktop/UI work is authorized.

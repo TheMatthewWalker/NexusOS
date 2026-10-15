@@ -1,3 +1,5 @@
+using System.Net;
+
 public static class ProviderEndpointGuard
 {
     public static void RequireLoopback(string raw)
@@ -18,6 +20,8 @@ public static class ProviderEndpointGuard
             !string.IsNullOrEmpty(uri.Fragment) ||
             uri.Port != 443)
             throw new InvalidOperationException("Cloud provider endpoint must use HTTPS on port 443.");
+        if (IPAddress.TryParse(uri.IdnHost, out _))
+            throw new InvalidOperationException("Cloud provider endpoint must use an allowlisted DNS hostname.");
         var allowed = new[] { "api.openai.com" }
             .Concat((extraHosts ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
         if (!allowed.Contains(uri.IdnHost, StringComparer.OrdinalIgnoreCase))

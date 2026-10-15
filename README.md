@@ -107,3 +107,8 @@ On Linux, set `NEXUS_API_MODE=unix` for both Core and CLI to communicate over `$
 ## Inference concurrency limits (M2)
 
 Nexus Core now rejects a chat request with HTTP 429 when all inference slots are busy. The default is one in-flight inference request; `NEXUS_MAX_CONCURRENT_INFERENCE` allows 1–8 slots (values outside the range are clamped). Slots are released in a `finally`-safe lease even on backend failure or cancellation. This provides backpressure and helps avoid accidental simultaneous model loads. It does not yet implement model-specific VRAM admission control or queue prioritisation.
+
+
+## Inference token budgets (M5)
+
+`NEXUS_CONTEXT_TOKENS` (default 4096, supported 512–131072) and `NEXUS_MAX_OUTPUT_TOKENS` (default 512, must be less than context) provide a bounded budget. Ollama receives `num_ctx`/`num_predict`; llama.cpp and the cloud adapter receive `max_tokens`. Invalid configurations fail rather than silently allowing unbounded generation. **This is an advertised token budget, not a tokeniser or admission controller:** provider/model support varies and a prompt may still exceed its available context. KV-cache memory and actual truncation are not yet measured or guaranteed.

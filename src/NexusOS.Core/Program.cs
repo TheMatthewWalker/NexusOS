@@ -27,6 +27,7 @@ builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceLifecycle>();
 builder.Services.AddSingleton<InferenceActivity>();
 builder.Services.AddSingleton<InferenceConcurrencyGate>();
+builder.Services.AddSingleton<InferenceTokenSettings>();
 builder.Services.AddHostedService<IdleModelEvictionService>();
 builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianAuditStore>();
@@ -141,13 +142,14 @@ public sealed record SelectRequest(string Name);
 public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
 public sealed record GuardianApprovalRequest(string Description, GuardianChange[] Changes, string ExpectedPlanId, string Acknowledgement);
 
-public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore providers, IConfiguration config, IProviderCredentialStore credentials)
+public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore providers, IConfiguration config, IProviderCredentialStore credentials, InferenceTokenSettings tokenSettings)
 {
     public string CurrentProvider => providers.Selected;
     public async Task<(string Answer, string Provider)> AskAsync(string prompt, CancellationToken ct)
     {
         var provider = CurrentProvider;
         var client = factory.CreateClient("ai");
+        var budget = tokenSettings.Budget;
         if (provider == "local")
         {
             var url = config["NEXUS_OLLAMA_URL"] ?? "http://127.0.0.1:11434";
@@ -155,7 +157,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
             // This service is single-user, local-only for MVP. Endpoints must be configured by operator.
             var model = config["NEXUS_OLLAMA_MODEL"] ?? "llama3.2:3b";
             using var response = await client.PostAsJsonAsync(url.TrimEnd('/') + "/api/generate",
-                new { model, prompt, stream = false }, ct);
+                new { model, prompt, stream = false, options = new { num_ctx = budget.ContextTokens, num_predict = budget.ReservedOutputTokens } }, ct);
             response.EnsureSuccessStatusCode();
             using var doc = await ModelResponseGuard.ReadAsync(response.Content, ct);
             return (doc.RootElement.GetProperty("response").GetString() ?? string.Empty, provider);
@@ -166,7 +168,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
             ProviderEndpointGuard.RequireLoopback(endpoint);
             var model = config["NEXUS_LLAMA_MODEL"] ?? "default";
             using var result = await client.PostAsJsonAsync(endpoint.TrimEnd('/') + "/v1/chat/completions",
-                new { model, messages = new[] { new { role = "user", content = prompt } }, stream = false }, ct);
+                new { model, messages = new[] { new { role = "user", content = prompt } }, stream = false, max_tokens = budget.ReservedOutputTokens }, ct);
             result.EnsureSuccessStatusCode();
             using var doc = await ModelResponseGuard.ReadAsync(result.Content, ct);
             return (doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty, provider);
@@ -183,7 +185,7 @@ public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore provid
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             message.Content = new StringContent(JsonSerializer.Serialize(new
             {
-                model, messages = new[] { new { role = "user", content = prompt } }
+                model, messages = new[] { new { role = "user", content = prompt } }, max_tokens = budget.ReservedOutputTokens
             }), Encoding.UTF8, "application/json");
             using var response = await client.SendAsync(message, ct);
             response.EnsureSuccessStatusCode();

@@ -107,3 +107,8 @@ On Linux, set `NEXUS_API_MODE=unix` for both Core and CLI to communicate over `$
 ## Inference concurrency limits (M2)
 
 Nexus Core now rejects a chat request with HTTP 429 when all inference slots are busy. The default is one in-flight inference request; `NEXUS_MAX_CONCURRENT_INFERENCE` allows 1–8 slots (values outside the range are clamped). Slots are released in a `finally`-safe lease even on backend failure or cancellation. This provides backpressure and helps avoid accidental simultaneous model loads. It does not yet implement model-specific VRAM admission control or queue prioritisation.
+
+
+## Explicit cloud prompt egress policy (M2)
+
+Cloud inference is **disabled by default** regardless of selected provider or whether a key exists. To permit external transmission of prompts, explicitly set `NEXUS_CLOUD_EGRESS_ALLOWED=true` in the Core service environment after reviewing the provider host. Any other value, including unset, denies cloud calls with an error. This is a process-level operator opt-in, **not** a per-request consent dialog, privacy classification engine, or full network egress firewall. Local Ollama and llama.cpp routing remains available without cloud permission.

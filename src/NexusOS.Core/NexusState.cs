@@ -93,6 +93,7 @@ public sealed class ConversationStore
 {
     private readonly string _file;
     private readonly int _maxEntries;
+    private readonly TimeSpan _maxAge;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public ConversationStore(NexusStatePaths paths) : this(paths, new ConfigurationBuilder().Build()) { }
@@ -102,6 +103,9 @@ public sealed class ConversationStore
         _file = paths.PathFor("history.jsonl");
         _maxEntries = int.TryParse(config["NEXUS_HISTORY_LIMIT"], out var count)
             ? Math.Clamp(count, 0, 1000) : 200;
+        var days = int.TryParse(config["NEXUS_HISTORY_MAX_DAYS"], out var parsed)
+            ? Math.Clamp(parsed, 1, 365) : 30;
+        _maxAge = TimeSpan.FromDays(days);
     }
 
     public async Task AppendAsync(ConversationEntry entry, CancellationToken ct)
@@ -111,7 +115,8 @@ public sealed class ConversationStore
         try
         {
             var lines = File.Exists(_file) ? await File.ReadAllLinesAsync(_file, ct) : [];
-            var kept = lines.Where(x => !string.IsNullOrWhiteSpace(x))
+            var cutoff = DateTimeOffset.UtcNow - _maxAge;
+            var kept = lines.Where(x => IsRecentEntry(x, cutoff))
                 .TakeLast(_maxEntries - 1)
                 .Append(JsonSerializer.Serialize(entry)).ToArray();
             await WriteAtomicAsync(kept, ct);
@@ -138,6 +143,16 @@ public sealed class ConversationStore
         finally { if (File.Exists(temp)) File.Delete(temp); }
     }
 
+    private static bool IsRecentEntry(string line, DateTimeOffset cutoff)
+    {
+        try
+        {
+            var entry = JsonSerializer.Deserialize<ConversationEntry>(line);
+            return entry is not null && entry.Timestamp >= cutoff && entry.Timestamp <= DateTimeOffset.UtcNow.AddMinutes(5);
+        }
+        catch (JsonException) { return false; }
+    }
+
     public async Task<IReadOnlyList<ConversationEntry>> RecentAsync(int limit, CancellationToken ct)
     {
         if (limit < 1 || limit > 100) throw new ArgumentOutOfRangeException(nameof(limit));
@@ -146,8 +161,10 @@ public sealed class ConversationStore
         {
             if (!File.Exists(_file)) return [];
             var entries = new Queue<ConversationEntry>();
+            var cutoff = DateTimeOffset.UtcNow - _maxAge;
             foreach (var line in await File.ReadAllLinesAsync(_file, ct))
             {
+                if (!IsRecentEntry(line, cutoff)) continue;
                 try
                 {
                     var entry = JsonSerializer.Deserialize<ConversationEntry>(line);

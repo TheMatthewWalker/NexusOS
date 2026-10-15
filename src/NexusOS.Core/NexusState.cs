@@ -111,12 +111,18 @@ public sealed class ConversationStore
         try
         {
             var lines = File.Exists(_file) ? await File.ReadAllLinesAsync(_file, ct) : [];
-            var kept = lines.Where(x => !string.IsNullOrWhiteSpace(x))
+            var kept = lines.Where(x => !string.IsNullOrWhiteSpace(x) && IsValidConversationLine(x))
                 .TakeLast(_maxEntries - 1)
                 .Append(JsonSerializer.Serialize(entry)).ToArray();
             await WriteAtomicAsync(kept, ct);
         }
         finally { _gate.Release(); }
+    }
+
+    private static bool IsValidConversationLine(string line)
+    {
+        try { return JsonSerializer.Deserialize<ConversationEntry>(line) is not null; }
+        catch (JsonException) { return false; }
     }
 
     public async Task ClearAsync(CancellationToken ct)

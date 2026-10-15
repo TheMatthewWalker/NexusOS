@@ -125,3 +125,8 @@ The policy remains: do not claim these milestones complete merely because CI is 
 - **Mock/unit evidence:** targeted address-policy tests are committed; CI is pending for this branch. No live DNS or network egress test has been performed.
 - **NixOS VM evidence:** no VM egress validation on this change. **Hardware-only gates:** physical cloud network, GPU and rollback checks remain unperformed.
 - M2–M5 remain IN PROGRESS; Desktop/UI is out of scope.
+
+## M2 malformed-history regression — 2026-10-15
+
+- PR #36 was superseded by merged PR #37; the current `IsRecentEntry` filter already removes malformed JSONL records from count-based retention. The isolated regression test is ported to main without overwriting PR #37 age-based filtering.
+- **Mock/unit:** deterministic test committed; CI pending. **NixOS VM:** no new VM test performed. **Physical hardware:** no hardware checks performed. SQLite migration and native IPC peer authentication remain outstanding; M2–M5 IN PROGRESS.

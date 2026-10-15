@@ -122,3 +122,8 @@ Sending prompts to the OpenAI-compatible provider is disabled by default. The Co
 ## Guardian typed configuration diff (M3)
 
 `GuardianDiffPlanner.Compare` produces before/after changes for allowlisted boolean NixOS settings and excludes unchanged options. The supplied baseline is **not observed or trusted**, and must be independently checked by a privileged Guardian broker prior to any deployment. This component is only for review and tests.
+
+
+## Guardian review replay protection (M3)
+
+Before `POST /guardian/acknowledge`, the authenticated client must now call `POST /guardian/review-token` with the same validated plan. The token is random, expires in two minutes and can be consumed exactly once; a repeated acknowledgement is rejected. This is an **in-memory review protocol**, not a trusted human-presence proof or a privileged authorization. Tokens expire on Core restart; the resulting acknowledgement remains `executed:false`. The privileged Guardian broker is not implemented.

@@ -31,6 +31,7 @@ builder.Services.AddSingleton<InferenceTokenSettings>();
 builder.Services.AddHostedService<IdleModelEvictionService>();
 builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianAuditStore>();
+builder.Services.AddSingleton<GuardianReviewTokens>();
 builder.Services.AddSingleton<LocalApiToken>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -103,7 +104,16 @@ app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
     try { return Results.Ok(GuardianPlanner.Preview(request.Description, request.Changes)); }
     catch (ArgumentException) { return Results.BadRequest(new { error = "Unsupported or invalid change plan." }); }
 });
-app.MapPost("/guardian/acknowledge", async (GuardianApprovalRequest request, GuardianAuditStore audit, CancellationToken ct) =>
+app.MapPost("/guardian/review-token", (GuardianPreviewRequest request, GuardianReviewTokens reviews) =>
+{
+    try
+    {
+        var plan = GuardianPlanner.Preview(request.Description, request.Changes);
+        return Results.Ok(new { planId = plan.Id, reviewToken = reviews.Issue(plan.Id), expiresInSeconds = 120 });
+    }
+    catch (ArgumentException) { return Results.BadRequest(new { error = "Invalid change plan." }); }
+});
+app.MapPost("/guardian/acknowledge", async (GuardianApprovalRequest request, GuardianAuditStore audit, GuardianReviewTokens reviews, CancellationToken ct) =>
 {
     if (request.Acknowledgement != "I APPROVE")
         return Results.BadRequest(new { error = "Explicit acknowledgement required." });
@@ -112,6 +122,8 @@ app.MapPost("/guardian/acknowledge", async (GuardianApprovalRequest request, Gua
         var plan = GuardianPlanner.Preview(request.Description, request.Changes);
         if (plan.Id != request.ExpectedPlanId)
             return Results.BadRequest(new { error = "Plan ID does not match the reviewed preview." });
+        if (!reviews.Consume(request.ReviewToken, plan.Id))
+            return Results.BadRequest(new { error = "Review token expired, mismatched or already used." });
         var entry = await audit.RecordApprovalAsync(plan, ct);
         return Results.Ok(new { accepted = true, executed = false, auditHash = entry.Hash });
     }
@@ -140,7 +152,7 @@ app.Run();
 public sealed record ChatRequest(string Prompt);
 public sealed record SelectRequest(string Name);
 public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
-public sealed record GuardianApprovalRequest(string Description, GuardianChange[] Changes, string ExpectedPlanId, string Acknowledgement);
+public sealed record GuardianApprovalRequest(string Description, GuardianChange[] Changes, string ExpectedPlanId, string Acknowledgement, string ReviewToken);
 
 public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore providers, IConfiguration config, IProviderCredentialStore credentials, InferenceTokenSettings tokenSettings)
 {

@@ -75,9 +75,16 @@ def send(path, payload):
     with urllib.request.urlopen(request) as response:
         return json.load(response)
 preview = send("/guardian/preview",plan)
-ack = {**plan,"expectedPlanId":preview["id"],"acknowledgement":"I APPROVE"}
+review = send("/guardian/review-token",plan)
+ack = {**plan,"expectedPlanId":preview["id"],"acknowledgement":"I APPROVE","reviewToken":review["reviewToken"]}
 result = send("/guardian/acknowledge",ack)
 assert result["accepted"] is True and result["executed"] is False
+import urllib.error
+try:
+    send("/guardian/acknowledge",ack)
+    raise AssertionError("Repeated acknowledgement unexpectedly succeeded")
+except urllib.error.HTTPError as error:
+    assert error.code == 400
 PY
 
 TOKEN="$(cat "$NEXUS_STATE_DIR/api-token")"

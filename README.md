@@ -137,3 +137,10 @@ Before `POST /guardian/acknowledge`, the authenticated client must now call `POS
 ## State directory symlink hardening (M2)
 
 Core rejects a state directory whose path or any existing ancestor is a symbolic link, including links to missing targets. This helps prevent accidental redirection of API token and chat files. The check is path-based rather than race-free (`openat2`/directory-fd); it does **not** protect against an attacker concurrently replacing directory components. OS ownership and peer identity checks remain important.
+
+
+## SQLite-backed Core state (M2)
+
+The Core now stores selected provider and conversation history in `$NEXUS_STATE_DIR/state.sqlite3` (Unix mode 0600 in a private mode-0700 state directory), using SQL transactions and parameterized queries. Existing `provider.json` and `history.jsonl` are imported on first SQLite startup in one transaction. Import is marked complete within that transaction, so restarting cannot duplicate history; malformed legacy JSONL rows are skipped. Original legacy files are deliberately **retained as backups**, not deleted or securely erased. History limits, age filtering, and `clear-history` apply to the SQLite table; the legacy backups may still contain old chats and need separate manual handling after migration is verified.
+
+SQLite is **not encrypted at rest**. Avoid treating file permissions as protection against other privileged users or filesystem backups. Legacy provider file constructor is retained for backward-compatible test/utility use, while the Core DI service reads and writes SQLite.

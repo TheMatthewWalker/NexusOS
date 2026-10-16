@@ -3,10 +3,24 @@ using System.Runtime.InteropServices;
 
 public static class LinuxPeerIdentity
 {
-    // Linux-only SO_PEERCRED = 17 at SOL_SOCKET. Struct ucred: pid_t, uid_t, gid_t.
+    // Linux SOL_SOCKET=1 and SO_PEERCRED=17; struct ucred(pid_t,uid_t,gid_t).
+    private const int SolSocket = 1;
     private const int SoPeerCred = 17;
-    [DllImport("libc", EntryPoint = "geteuid", SetLastError = true)]
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct UCred
+    {
+        public int ProcessId;
+        public uint UserId;
+        public uint GroupId;
+    }
+
+    [DllImport("libc", EntryPoint = "geteuid")]
     private static extern uint GetEffectiveUserId();
+
+    [DllImport("libc", EntryPoint = "getsockopt", SetLastError = true)]
+    private static extern int GetSocketOption(nint fd, int level, int name,
+        out UCred value, ref uint length);
 
     public static uint ServerUserId()
     {
@@ -21,14 +35,17 @@ public static class LinuxPeerIdentity
     {
         if (!OperatingSystem.IsLinux() || socket is null || socket.AddressFamily != AddressFamily.Unix)
             return null;
+
+        // Hold an owned managed Socket alive while calling getsockopt on its descriptor.
+        uint length = (uint)Marshal.SizeOf<UCred>();
         try
         {
-            var data = socket.GetSocketOption(SocketOptionLevel.Socket,
-                (SocketOptionName)SoPeerCred, 12);
-            if (data is null || data.Length != 12) return null;
-            return BitConverter.ToUInt32(data, 4);
+            var fd = socket.SafeHandle.DangerousGetHandle();
+            if (GetSocketOption(fd, SolSocket, SoPeerCred, out var credentials, ref length) != 0 ||
+                length != Marshal.SizeOf<UCred>())
+                return null;
+            return credentials.UserId;
         }
-        catch (SocketException) { return null; }
-        catch (ArgumentException) { return null; }
+        catch (ObjectDisposedException) { return null; }
     }
 }

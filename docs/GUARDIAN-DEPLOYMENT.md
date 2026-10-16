@@ -81,3 +81,6 @@ The pinned NixOS VM suite now includes `guardian-recovery`, which boots a known-
 ## Disk-backed bootloader VM fixture (M4, development)
 
 The flake now exposes `packages.x86_64-linux.guardian-bootloader-vm`, a VM with a GRUB bootloader and an isolated, persistent virtual disk. Unlike the direct-kernel QEMU test harness, this fixture is intended for real boot-menu and generation recovery experiments. CI currently **evaluates the derivation**, while existing direct-kernel VM tests continue to boot and verify services. Merely evaluating a bootloader-backed VM does **not** verify that it boots, stages a second generation, fails at boot, or restores a known-good generation. These end-to-end recovery gates are explicitly **not yet passed** and no host staging or activation is enabled.
+
+
+The lab also exposes `packages.x86_64-linux.guardian-broken-generation`, a separate NixOS toplevel with an intentionally invalid kernel-init path. Both the known-good GRUB disk-VM and the broken generation are evaluated by the VM workflow. **Neither building a derivation nor evaluating the broken generation constitutes staging it in the VM**: the initial lab deliberately does not write the system profile, select GRUB entries or reboot. The full manual-selection recovery test must be implemented and executed before M4 can be called complete.

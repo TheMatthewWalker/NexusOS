@@ -1,9 +1,9 @@
-{ lib, config, pkgs, ... }:
+{ lib, pkgs, ... }:
 {
   system.stateVersion = "26.05";
   # The standalone NixOS evaluation needs a root declaration; the bootloader
   # VM variant creates and mounts its own root disk image.
-  fileSystems."/" = lib.mkIf (!config.virtualisation.useBootLoader) {
+  fileSystems."/" = {
     device = "/dev/vda1";
     fsType = "ext4";
   };

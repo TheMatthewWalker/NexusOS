@@ -25,6 +25,10 @@
         name = "nexus-guardian-staged-recovery";
         nodes.machine = { pkgs, ... }: {
           system.stateVersion = "26.05";
+          systemd.services.nexus-staged-broken = {
+            serviceConfig.Type = "oneshot";
+            script = "exit 1";
+          };
           systemd.services.nexus-known-good = {
             wantedBy = [ "multi-user.target" ];
             serviceConfig.Type = "oneshot";
@@ -37,7 +41,7 @@
           machine.wait_for_file("/run/nexus-known-good")
           machine.succeed("grep -qx baseline-ready /run/nexus-known-good")
           # Simulate a broken staged service, without touching bootloader or activation.
-          machine.succeed("systemd-run --unit=nexus-staged-broken --wait /bin/false >/dev/null 2>&1 || true")
+          machine.succeed("systemctl start nexus-staged-broken.service >/dev/null 2>&1 || true")
           machine.succeed("systemctl is-failed nexus-staged-broken.service")
           machine.succeed("grep -qx baseline-ready /run/nexus-known-good")
           machine.succeed("systemctl is-active multi-user.target")

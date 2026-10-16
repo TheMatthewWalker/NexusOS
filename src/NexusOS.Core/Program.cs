@@ -27,8 +27,10 @@ builder.Services.AddHttpClient("cloud", client => client.Timeout = TimeSpan.From
         ConnectCallback = CloudAddressPolicy.ConnectAsync
     });
 builder.Services.AddSingleton<NexusStatePaths>();
-builder.Services.AddSingleton<ProviderStore>();
-builder.Services.AddSingleton<ConversationStore>();
+builder.Services.AddSingleton<SqliteStateDatabase>();
+builder.Services.AddSingleton<ProviderStore>(sp => new ProviderStore(sp.GetRequiredService<SqliteStateDatabase>()));
+builder.Services.AddSingleton<ConversationStore>(sp => new ConversationStore(
+    sp.GetRequiredService<SqliteStateDatabase>(), sp.GetRequiredService<IConfiguration>()));
 builder.Services.AddSingleton<IProviderCredentialStore, LinuxSecretToolStore>();
 builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceLifecycle>();

@@ -73,8 +73,8 @@
           boot.loader.timeout = 8;
           boot.loader.grub.extraConfig = ''
             serial --unit=0 --speed=115200
-            terminal_input serial
-            terminal_output serial
+            terminal_input console serial
+            terminal_output console serial
           '';
           boot.kernelParams = [ "console=ttyS0,115200n8" ];
           system.extraDependencies = [

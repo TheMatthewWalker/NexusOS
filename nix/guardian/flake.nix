@@ -34,11 +34,11 @@
           machine.start()
           machine.wait_for_unit("multi-user.target")
           machine.wait_for_file("/run/nexus-known-good")
-          machine.succeed("test "$(cat /run/nexus-known-good)" = baseline-ready")
+          machine.succeed("grep -qx baseline-ready /run/nexus-known-good")
           # Simulate a broken staged service, without touching bootloader or activation.
           machine.succeed("systemd-run --unit=nexus-staged-broken --wait /bin/false >/dev/null 2>&1 || true")
           machine.succeed("systemctl is-failed nexus-staged-broken.service")
-          machine.succeed("test "$(cat /run/nexus-known-good)" = baseline-ready")
+          machine.succeed("grep -qx baseline-ready /run/nexus-known-good")
           machine.succeed("systemctl is-active multi-user.target")
         '';
       };

@@ -14,7 +14,7 @@ if (OperatingSystem.IsLinux() && builder.Configuration["NEXUS_API_MODE"] == "uni
         throw new InvalidOperationException("Nexus socket already exists; remove a stale socket only after stopping Core.");
     builder.WebHost.ConfigureKestrel(options => options.ListenUnixSocket(socketPath, listen =>
     {
-        listen.Use((connection, next) =>
+        listen.Use(next => connection =>
         {
             var socket = connection.Features.Get<IConnectionSocketFeature>()?.Socket;
             if (!LinuxPeerIdentity.IsAuthorized(LinuxPeerIdentity.ReadPeerUserId(socket),
@@ -23,7 +23,7 @@ if (OperatingSystem.IsLinux() && builder.Configuration["NEXUS_API_MODE"] == "uni
                 connection.Abort();
                 return Task.CompletedTask;
             }
-            return next();
+            return next(connection);
         });
     }));
 }

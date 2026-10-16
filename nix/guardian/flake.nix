@@ -88,7 +88,7 @@
         };
         testScript = ''
           with subtest("Boot real GRUB baseline"):
-              machine.start()
+              machine.start(allow_reboot=True)
               machine.wait_for_unit("multi-user.target")
               machine.wait_for_file("/run/nexus-generation")
               baseline = machine.succeed("readlink -f /run/current-system").strip()

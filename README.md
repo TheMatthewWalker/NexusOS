@@ -132,3 +132,8 @@ Before `POST /guardian/acknowledge`, the authenticated client must now call `POS
 ## Chat history age retention (M2)
 
 `NEXUS_HISTORY_MAX_DAYS` limits which saved chats can be returned by `/history` and which survive the next successful chat append (default 30 days; accepted range clamped to 1–365). Malformed and future-dated entries are ignored. This is a logical read filter plus lazy file compaction, **not automatic timer-based erasure**: expired entries may remain on disk until another successful chat is saved, and backup copies are not erased. `nexus clear-history` remains available for manual deletion.
+
+
+## State directory symlink hardening (M2)
+
+Core rejects a state directory whose path or any existing ancestor is a symbolic link, including links to missing targets. This helps prevent accidental redirection of API token and chat files. The check is path-based rather than race-free (`openat2`/directory-fd); it does **not** protect against an attacker concurrently replacing directory components. OS ownership and peer identity checks remain important.

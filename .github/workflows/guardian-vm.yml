@@ -33,3 +33,4 @@ jobs:
         run: |
           nix build ./nix/guardian#checks.x86_64-linux.guardian-boot --no-update-lock-file --print-build-logs
           nix build ./nix/guardian#checks.x86_64-linux.guardian-recovery --no-update-lock-file --print-build-logs
+          nix build ./nix/guardian#checks.x86_64-linux.guardian-bootloader-rollback --no-update-lock-file --print-build-logs

@@ -3,13 +3,16 @@
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 from validate import render
 
 def prepare(changes, baseline):
     if not isinstance(baseline, str) or not baseline or len(baseline) > 128:
         raise ValueError("A known-good baseline identifier is required")
-    if not all(c.isalnum() or c in ".-_" for c in baseline):
+    symbolic = all(c.isalnum() or c in ".-_" for c in baseline)
+    nix_store = re.fullmatch(r"/nix/store/[a-z0-9]{32}-[A-Za-z0-9+._?=-]+", baseline) is not None
+    if not (symbolic or nix_store):
         raise ValueError("Invalid baseline identifier")
     snippet = render(changes)
     identity = hashlib.sha256((baseline + "\n" + snippet).encode()).hexdigest()[:24]

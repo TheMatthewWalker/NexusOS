@@ -61,6 +61,62 @@
           machine.succeed("systemctl is-active multi-user.target")
         '';
       };
+      guardian-bootloader-rollback = pkgs.testers.runNixOSTest {
+        name = "nexus-guardian-bootloader-rollback";
+        nodes.machine = { lib, ... }: {
+          system.stateVersion = "26.05";
+          virtualisation.useBootLoader = true;
+          virtualisation.diskImage = "./guardian-rollback.qcow2";
+          virtualisation.memorySize = 2048;
+          boot.loader.grub.enable = true;
+          boot.loader.grub.device = "/dev/vda";
+          boot.loader.timeout = 8;
+          boot.loader.grub.extraConfig = ''
+            serial --unit=0 --speed=115200
+            terminal_input serial
+            terminal_output serial
+          '';
+          boot.kernelParams = [ "console=ttyS0,115200n8" ];
+          system.extraDependencies = [
+            self.nixosConfigurations.guardian-broken-generation.config.system.build.toplevel
+          ];
+          systemd.services.nexus-known-good = {
+            wantedBy = [ "multi-user.target" ];
+            serviceConfig.Type = "oneshot";
+            script = "echo known-good > /run/nexus-generation";
+          };
+        };
+        testScript = ''
+          with subtest("Boot real GRUB baseline"):
+              machine.start()
+              machine.wait_for_unit("multi-user.target")
+              machine.wait_for_file("/run/nexus-generation")
+              baseline = machine.succeed("readlink -f /run/current-system").strip()
+              assert baseline.startswith("/nix/store/")
+          with subtest("Stage second NixOS generation for next boot"):
+              broken = "${self.nixosConfigurations.guardian-broken-generation.config.system.build.toplevel}"
+              machine.succeed("test -x " + broken + "/bin/switch-to-configuration")
+              machine.succeed("nix-env --profile /nix/var/nix/profiles/system --set " + broken)
+              machine.succeed(broken + "/bin/switch-to-configuration boot")
+              assert machine.succeed("readlink -f /run/current-system").strip() == baseline
+              assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == broken
+          with subtest("Observe intentionally failed candidate boot"):
+              machine.send_monitor_command("system_reset")
+              machine.wait_for_console_text("Kernel panic", timeout=120)
+          with subtest("Select known-good GRUB generation and recover"):
+              machine.send_monitor_command("system_reset")
+              machine.wait_for_console_text("GNU GRUB", timeout=45)
+              machine.send_key("down")
+              machine.send_key("ret")
+              machine.send_key("down")
+              machine.send_key("ret")
+              machine.wait_for_unit("multi-user.target", timeout=120)
+              machine.succeed("grep -qx known-good /run/nexus-generation")
+              assert machine.succeed("readlink -f /run/current-system").strip() == baseline
+              machine.succeed("nix-env --profile /nix/var/nix/profiles/system --set " + baseline)
+              assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == baseline
+        '';
+      };
       };
     };
 }

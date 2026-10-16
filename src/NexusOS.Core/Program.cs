@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Connections.Features;
 using System.Net.Http.Json;
 using System.Net.Http.Headers;
 using System.Text;
@@ -11,7 +12,20 @@ if (OperatingSystem.IsLinux() && builder.Configuration["NEXUS_API_MODE"] == "uni
     var socketPath = state.PathFor("nexus.sock");
     if (File.Exists(socketPath))
         throw new InvalidOperationException("Nexus socket already exists; remove a stale socket only after stopping Core.");
-    builder.WebHost.ConfigureKestrel(options => options.ListenUnixSocket(socketPath));
+    builder.WebHost.ConfigureKestrel(options => options.ListenUnixSocket(socketPath, listen =>
+    {
+        listen.Use(next => connection =>
+        {
+            var socket = connection.Features.Get<IConnectionSocketFeature>()?.Socket;
+            if (!LinuxPeerIdentity.IsAuthorized(LinuxPeerIdentity.ReadPeerUserId(socket),
+                    LinuxPeerIdentity.ServerUserId()))
+            {
+                connection.Abort();
+                return Task.CompletedTask;
+            }
+            return next(connection);
+        });
+    }));
 }
 else
 {

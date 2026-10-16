@@ -76,3 +76,8 @@ This is **root-operator-only integration groundwork**. It does not provide safe 
 ## Failed staged-service isolation regression (M4)
 
 The pinned NixOS VM suite now includes `guardian-recovery`, which boots a known-good guest, intentionally starts a failing transient systemd service, and verifies the known-good baseline marker and multi-user target remain operational. CI runs this separately from the candidate-backed positive boot smoke test. This is a **service-level failure-containment simulation**, not an actual NixOS generation-stage/bootloader rollback: no new system profile is staged, no bootloader generation is selected and no reboot into a broken OS is attempted. Those are separate mandatory M4 acceptance gates and have not been achieved by this change. Host activation remains prohibited.
+
+
+## Disk-backed bootloader VM fixture (M4, development)
+
+The flake now exposes `packages.x86_64-linux.guardian-bootloader-vm`, a VM with a GRUB bootloader and an isolated, persistent virtual disk. Unlike the direct-kernel QEMU test harness, this fixture is intended for real boot-menu and generation recovery experiments. CI currently **evaluates the derivation**, while existing direct-kernel VM tests continue to boot and verify services. Merely evaluating a bootloader-backed VM does **not** verify that it boots, stages a second generation, fails at boot, or restores a known-good generation. These end-to-end recovery gates are explicitly **not yet passed** and no host staging or activation is enabled.

@@ -46,3 +46,10 @@ This is a **nonprivileged prototype**, not an approval or deployment authorisati
 ## Read-only active generation inspection (M4)
 
 Run `python3 scripts/guardian/baseline_inspect.py` on a NixOS host to observe whether `/run/current-system` and `/nix/var/nix/profiles/system` are symlinks resolving to the same Nix store path. Missing links, non-store targets and divergence fail closed. A mismatch can be legitimate after staging or switching generations; investigate it before deployment. The checker never edits profiles, executes commands or grants approval. It is an **observation**, not a cryptographically trusted privileged attestation: a future independent broker must verify the real state and provenance at decision time.
+
+
+## Independent policy verification prototype (M3)
+
+`scripts/guardian/broker_policy.py` is a **pure, non-executing** policy verifier. It requires matching candidate and evidence identities, an HMAC-SHA256 evidence authenticator, an explicitly marked single-use approval record, a matching independently supplied baseline identifier, and passing evaluation/build/VM checks. Negative unit tests reject forged signatures, unsigned failures, stale baselines and malformed approvals.
+
+**Security boundary:** this module is **not a privileged broker**. No secure key provisioning, proof of trusted CI origin, protected append-only audit, verified OS generation observation, persistent nonce consumption or privilege separation is provided by this code. A caller can fabricate a signed attestation if they hold the key; an `approval.singleUse` field by itself does not stop replay. The verifier does not stage, switch, boot or roll back NixOS. Production use must wait for a separately isolated root-owned broker with key isolation, one-time authorization state, kernel-authenticated callers and tested host rollback.

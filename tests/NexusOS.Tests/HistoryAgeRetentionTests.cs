@@ -20,7 +20,10 @@ public sealed class HistoryAgeRetentionTests
             var recent = await store.RecentAsync(50, CancellationToken.None);
             Assert.Single(recent);
             Assert.Equal("new", recent[0].Prompt);
-            Assert.DoesNotContain("old", File.ReadAllText(Path.Combine(root, "history.jsonl")));
+            // The active history is SQLite; legacy JSONL is deliberately preserved for recovery.
+            Assert.True(File.Exists(Path.Combine(root, "history.sqlite3")));
+            var reopened = new ConversationStore(new NexusStatePaths(config), config);
+            Assert.DoesNotContain(await reopened.RecentAsync(50, CancellationToken.None), entry => entry.Prompt == "old");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

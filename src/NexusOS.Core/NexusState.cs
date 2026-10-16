@@ -33,7 +33,7 @@ public sealed class NexusStatePaths
                 if ((attributes & FileAttributes.ReparsePoint) != 0)
                     throw new IOException("Nexus state path cannot contain symbolic links.");
             }
-            else if (File.ResolveLinkTarget(path, false) is not null)
+            else if (new FileInfo(path).LinkTarget is not null)
                 throw new IOException("Nexus state path cannot contain symbolic links.");
             var parent = Path.GetDirectoryName(path);
             if (parent is null || parent == path) break;

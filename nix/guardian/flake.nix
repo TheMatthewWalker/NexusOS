@@ -101,7 +101,7 @@
               assert machine.succeed("readlink -f /run/current-system").strip() == baseline
               assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == broken
           with subtest("Observe intentionally failed candidate boot"):
-              machine.send_monitor_command("system_reset")
+              machine.reboot()
               machine.wait_for_console_text("Kernel panic", timeout=120)
           with subtest("Select known-good GRUB generation and recover"):
               machine.send_monitor_command("system_reset")

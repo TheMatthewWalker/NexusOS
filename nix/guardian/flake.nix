@@ -7,7 +7,8 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
     in {
-      checks.${system}.guardian-boot = pkgs.testers.runNixOSTest {
+      checks.${system} = {
+        guardian-boot = pkgs.testers.runNixOSTest {
         name = "nexus-guardian-boot";
         nodes.machine = { pkgs, ... }: {
           imports = [ ./generated-candidate.nix ];
@@ -20,7 +21,7 @@
           machine.succeed("systemctl is-active sshd.service")
         '';
       };
-      checks.${system}.guardian-recovery = pkgs.testers.runNixOSTest {
+      guardian-recovery = pkgs.testers.runNixOSTest {
         name = "nexus-guardian-staged-recovery";
         nodes.machine = { pkgs, ... }: {
           system.stateVersion = "26.05";
@@ -41,6 +42,7 @@
           machine.succeed("grep -qx baseline-ready /run/nexus-known-good")
           machine.succeed("systemctl is-active multi-user.target")
         '';
+      };
       };
     };
 }

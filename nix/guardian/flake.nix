@@ -102,19 +102,25 @@
               assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == broken
           with subtest("Observe intentionally failed candidate boot"):
               machine.reboot()
-              machine.wait_for_console_text("Kernel panic", timeout=120)
+              machine.wait_for_console_text("Timed out waiting for device /dev/vda1", timeout=160)
           with subtest("Select known-good GRUB generation and recover"):
               machine.send_monitor_command("system_reset")
               machine.wait_for_console_text("GNU GRUB", timeout=45)
-              machine.send_key("down")
-              machine.send_key("ret")
-              machine.send_key("down")
-              machine.send_key("ret")
+              machine.send_key("down", delay=0.25)
+              machine.send_key("ret", delay=0.25)
+              machine.send_key("down", delay=0.25)
+              machine.send_key("ret", delay=0.25)
               machine.wait_for_unit("multi-user.target", timeout=120)
               machine.succeed("grep -qx known-good /run/nexus-generation")
               assert machine.succeed("readlink -f /run/current-system").strip() == baseline
               machine.succeed("nix-env --profile /nix/var/nix/profiles/system --set " + baseline)
               assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == baseline
+              machine.succeed(baseline + "/bin/switch-to-configuration boot")
+          with subtest("Verify recovered baseline survives a normal reboot"):
+              machine.reboot()
+              machine.wait_for_unit("multi-user.target", timeout=120)
+              machine.succeed("grep -qx known-good /run/nexus-generation")
+              assert machine.succeed("readlink -f /run/current-system").strip() == baseline
         '';
       };
       };

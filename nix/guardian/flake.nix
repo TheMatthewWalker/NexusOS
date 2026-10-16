@@ -11,6 +11,12 @@
         inherit system;
         modules = [ ./bootloader-vm.nix ];
       };
+      nixosConfigurations.guardian-broken-generation = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [ ./bootloader-vm.nix ./bootloader-broken.nix ];
+      };
+      packages.${system}.guardian-broken-generation =
+        self.nixosConfigurations.guardian-broken-generation.config.system.build.toplevel;
       packages.${system}.guardian-bootloader-vm =
         self.nixosConfigurations.guardian-bootloader-lab.config.system.build.vmWithBootLoader;
       checks.${system} = {

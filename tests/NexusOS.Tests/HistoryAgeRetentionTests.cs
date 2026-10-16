@@ -20,7 +20,13 @@ public sealed class HistoryAgeRetentionTests
             var recent = await store.RecentAsync(50, CancellationToken.None);
             Assert.Single(recent);
             Assert.Equal("new", recent[0].Prompt);
-            Assert.DoesNotContain("old", File.ReadAllText(Path.Combine(root, "history.jsonl")));
+            using var db = new Microsoft.Data.Sqlite.SqliteConnection(
+                new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+                { DataSource = Path.Combine(root, "state.sqlite3") }.ToString());
+            db.Open();
+            using var count = db.CreateCommand();
+            count.CommandText = "SELECT COUNT(*) FROM history WHERE prompt='old'";
+            Assert.Equal(0L, Convert.ToInt64(count.ExecuteScalar()));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

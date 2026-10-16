@@ -23,6 +23,8 @@ jobs:
           diff -u nix/guardian/generated-candidate.nix /tmp/guardian-verified.nix
       - name: Nix flake evaluation
         run: nix flake show ./nix/guardian --no-update-lock-file --accept-flake-config
+      - name: Evaluate real bootloader VM derivation
+        run: nix eval --raw ./nix/guardian#packages.x86_64-linux.guardian-bootloader-vm.drvPath --no-update-lock-file
       - name: Run QEMU-based guest tests
         run: |
           nix build ./nix/guardian#checks.x86_64-linux.guardian-boot --no-update-lock-file --print-build-logs

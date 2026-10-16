@@ -7,6 +7,12 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
     in {
+      nixosConfigurations.guardian-bootloader-lab = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [ ./bootloader-vm.nix ];
+      };
+      packages.${system}.guardian-bootloader-vm =
+        self.nixosConfigurations.guardian-bootloader-lab.config.system.build.vmWithBootLoader;
       checks.${system} = {
         guardian-boot = pkgs.testers.runNixOSTest {
         name = "nexus-guardian-boot";

@@ -20,13 +20,10 @@ public sealed class HistoryAgeRetentionTests
             var recent = await store.RecentAsync(50, CancellationToken.None);
             Assert.Single(recent);
             Assert.Equal("new", recent[0].Prompt);
-            using var db = new Microsoft.Data.Sqlite.SqliteConnection(
-                new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
-                { DataSource = Path.Combine(root, "state.sqlite3") }.ToString());
-            db.Open();
-            using var count = db.CreateCommand();
-            count.CommandText = "SELECT COUNT(*) FROM history WHERE prompt='old'";
-            Assert.Equal(0L, Convert.ToInt64(count.ExecuteScalar()));
+            // The active history is SQLite; legacy JSONL is deliberately preserved for recovery.
+            Assert.True(File.Exists(Path.Combine(root, "history.sqlite3")));
+            var reopened = new ConversationStore(new NexusStatePaths(config), config);
+            Assert.DoesNotContain(await reopened.RecentAsync(50, CancellationToken.None), entry => entry.Prompt == "old");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

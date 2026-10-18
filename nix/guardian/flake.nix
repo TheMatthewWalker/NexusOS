@@ -102,7 +102,20 @@
               assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == broken
           with subtest("Observe intentionally failed candidate boot"):
               machine.reboot()
-              machine.wait_for_console_text("/sysroot", timeout=190)
+              # Poll the complete serial transcript. wait_for_console_text only
+              # consumes future lines and has repeatedly missed the failure
+              # even though the test driver logged it.
+              import re
+              import time
+              deadline = time.monotonic() + 190
+              failure_seen = False
+              while time.monotonic() < deadline:
+                  transcript = re.sub(r"\x1b\[[0-9;:]*[A-Za-z]", "", machine.get_console_log())
+                  if "Dependency failed for" in transcript and "/sysroot" in transcript:
+                      failure_seen = True
+                      break
+                  time.sleep(2)
+              assert failure_seen, "Broken generation did not produce the expected root mount failure"
           with subtest("Select known-good GRUB generation and recover"):
               machine.send_monitor_command("system_reset")
               machine.wait_for_console_text("GNU GRUB", timeout=45)

@@ -130,3 +130,8 @@ The policy remains: do not claim these milestones complete merely because CI is 
 
 - PR #36 was superseded by merged PR #37; the current `IsRecentEntry` filter already removes malformed JSONL records from count-based retention. The isolated regression test is ported to main without overwriting PR #37 age-based filtering.
 - **Mock/unit:** deterministic test committed; CI pending. **NixOS VM:** no new VM test performed. **Physical hardware:** no hardware checks performed. SQLite migration and native IPC peer authentication remain outstanding; M2–M5 IN PROGRESS.
+
+## M2 SQLite migration reconciliation — 2026-10-18
+
+- Rebases PR #39's transactional JSONL-to-SQLite conversation import and retention logic onto the latest hardened NexusStatePaths, preserving symlink-component rejection and existing Microsoft.Data.Sqlite dependency. PR #39's old branch conflicts with main and must not be merged directly.
+- **Unit/mock:** SQLite migration/restart/clear tests and adapted age-retention assertion committed; CI pending. **NixOS VM:** no new SQLite VM validation. **Hardware:** no physical tests performed. Recovery from damaged SQLite databases, IPC peer authentication and remaining M2–M5 gates are open.

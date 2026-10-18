@@ -102,7 +102,7 @@
               assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == broken
           with subtest("Observe intentionally failed candidate boot"):
               machine.reboot()
-              machine.wait_for_console_text("Timed out waiting for device /dev/vda1", timeout=160)
+              machine.wait_for_console_text("Dependency failed for", timeout=160)
           with subtest("Select known-good GRUB generation and recover"):
               machine.send_monitor_command("system_reset")
               machine.wait_for_console_text("GNU GRUB", timeout=45)

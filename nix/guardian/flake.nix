@@ -70,7 +70,7 @@
           virtualisation.memorySize = 2048;
           boot.loader.grub.enable = true;
           boot.loader.grub.device = "/dev/vda";
-          boot.loader.timeout = 8;
+          boot.loader.timeout = 45;
           boot.loader.grub.extraConfig = ''
             serial --unit=0 --speed=115200
             terminal_input console serial
@@ -119,10 +119,13 @@
           with subtest("Select known-good GRUB generation and recover"):
               machine.send_monitor_command("system_reset")
               machine.wait_for_console_text("GNU GRUB", timeout=45)
-              machine.send_key("down", delay=0.25)
-              machine.send_key("ret", delay=0.25)
-              machine.send_key("down", delay=0.25)
-              machine.send_key("ret", delay=0.25)
+              # The older-generation submenu is the final top-level GRUB entry.
+              # Select it using End rather than assuming the number of entries.
+              machine.send_key("end", delay=0.5)
+              machine.send_key("ret", delay=0.5)
+              # The previously booted generation is the first submenu entry.
+              machine.send_key("home", delay=0.5)
+              machine.send_key("ret", delay=0.5)
               machine.wait_for_unit("multi-user.target", timeout=120)
               machine.succeed("grep -qx known-good /run/nexus-generation")
               assert machine.succeed("readlink -f /run/current-system").strip() == baseline

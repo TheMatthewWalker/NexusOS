@@ -204,14 +204,36 @@
               # Confirm that GRUB selected the old kernel using host-side
               # serial evidence before attempting any guest backdoor call.
               recovery_deadline = time.monotonic() + 90
-              recovered_kernel = False
+              recovered_cmdline = None
+              # Match only a single new kernel command line, never an arbitrary
+              # occurrence of the baseline store path in old serial output.
               while time.monotonic() < recovery_deadline:
                   recovery_log = machine.get_console_log()[recovery_offset:]
-                  if baseline in recovery_log and "Kernel command line:" in recovery_log:
-                      recovered_kernel = True
+                  for line in recovery_log.splitlines():
+                      if "Kernel command line:" not in line:
+                          continue
+                      cmdline = line.split("Kernel command line:", 1)[1].strip()
+                      init_args = re.findall(r"(?:^|\\s)init=([^\\s]+)", cmdline)
+                      if broken in cmdline or "nexus-intentionally-missing-init" in cmdline:
+                          raise AssertionError("GRUB selected the broken generation again: " + cmdline)
+                      if baseline in init_args:
+                          recovered_cmdline = cmdline
+                          break
+                      raise AssertionError("GRUB selected an unexpected kernel init: " + cmdline)
+                  if recovered_cmdline is not None:
                       break
                   time.sleep(2)
-              assert recovered_kernel, "GRUB never selected the known-good generation"
+              assert recovered_cmdline is not None, "No fresh kernel command line proved known-good GRUB selection"
+              print("RECOVERY KERNEL VERIFIED: " + recovered_cmdline, flush=True)
+              # system_reset bypasses the driver's reboot lifecycle. The old
+              # virtconsole shell socket still belongs to the previous boot;
+              # discard it before the next guest command triggers connect().
+              if machine.shell is not None:
+                  machine.shell.close()
+                  machine.shell = None
+              machine.connected = False
+              machine.connect()
+              print("RECOVERY BACKDOOR RECONNECTED", flush=True)
               machine.wait_for_unit("multi-user.target", timeout=75)
               machine.succeed("grep -qx known-good /run/nexus-generation")
               assert machine.succeed("readlink -f /run/current-system").strip() == baseline

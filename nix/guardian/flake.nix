@@ -115,26 +115,32 @@
                       siblings = entries if parent is None else parent["children"]
                       entry = dict(kind=match.group(1), label=match.group(3),
                                    index=len(siblings), depth=depth,
-                                   children=[], has_baseline=False)
+                                   children=[], init_paths=[])
                       siblings.append(entry)
                       active.append(entry)
-                  if active and baseline in line and re.search(r"\binit=", line):
-                      active[-1]["has_baseline"] = True
+                  if active and re.match(r"^\s*linux(?:16|efi)?\s+", line):
+                      active[-1]["init_paths"].extend(
+                          arg[5:] for arg in line.split() if arg.startswith("init="))
                   depth += line.count("{") - line.count("}")
                   while active and depth <= active[-1]["depth"]:
                       active.pop()
-              def locate(entries, prefix=()):
-                  for entry in entries:
+              def flatten(nodes, prefix=()):
+                  for entry in nodes:
                       selection = prefix + (entry["index"],)
-                      if entry["kind"] == "menuentry" and entry["has_baseline"]:
-                          return selection
-                      result = locate(entry["children"], selection)
-                      if result is not None:
-                          return result
-                  return None
-              known_good_selection = locate(entries)
-              assert known_good_selection is not None, (
-                  "No GRUB menuentry boots the exact known-good generation")
+                      print("GRUB ENTRY: path=" + str(selection) + " kind=" +
+                            entry["kind"] + " label=" + entry["label"] +
+                            " init=" + repr(entry["init_paths"]), flush=True)
+                      if entry["kind"] == "menuentry":
+                          yield selection, entry
+                      yield from flatten(entry["children"], selection)
+              all_entries = list(flatten(entries))
+              baseline_init = baseline + "/init"
+              matching = [(selection, entry) for selection, entry in all_entries
+                          if baseline_init in entry["init_paths"]]
+              assert len(matching) == 1, (
+                  "Expected exactly one GRUB entry for running baseline init " +
+                  baseline_init + "; matches=" + str(len(matching)))
+              known_good_selection = matching[0][0]
               assert len(known_good_selection) <= 3, "Unexpected GRUB menu nesting"
               print("GRUB KNOWN-GOOD SELECTION: " + str(known_good_selection), flush=True)
           with subtest("Observe intentionally failed candidate boot"):
@@ -213,10 +219,10 @@
                       if "Kernel command line:" not in line:
                           continue
                       cmdline = line.split("Kernel command line:", 1)[1].strip()
-                      init_args = re.findall(r"(?:^|\\s)init=([^\\s]+)", cmdline)
+                      init_args = [arg[5:] for arg in cmdline.split() if arg.startswith("init=")]
                       if broken in cmdline or "nexus-intentionally-missing-init" in cmdline:
                           raise AssertionError("GRUB selected the broken generation again: " + cmdline)
-                      if baseline in init_args:
+                      if baseline_init in init_args:
                           recovered_cmdline = cmdline
                           break
                       raise AssertionError("GRUB selected an unexpected kernel init: " + cmdline)

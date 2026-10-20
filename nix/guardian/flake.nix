@@ -145,7 +145,15 @@
               # This is a host QEMU monitor command, not a guest-shell command.
               recovery_offset = len(machine.get_console_log())
               machine.send_monitor_command("system_reset")
-              machine.wait_for_console_text("GNU GRUB", timeout=45)
+              # Do not use the consumptive wait_for_console_text queue: GRUB
+              # output may arrive before the waiter begins consuming it.
+              grub_deadline = time.monotonic() + 45
+              while time.monotonic() < grub_deadline:
+                  if "GNU GRUB" in machine.get_console_log()[recovery_offset:]:
+                      break
+                  time.sleep(0.25)
+              else:
+                  raise AssertionError("GRUB menu not observed after QEMU reset")
               # The older-generation submenu is the final top-level GRUB entry.
               # Select it using End rather than assuming the number of entries.
               machine.send_key("end", delay=0.5)

@@ -191,6 +191,9 @@
                   time.sleep(0.25)
               else:
                   raise AssertionError("GRUB menu not observed after QEMU reset")
+              # The welcome banner precedes GRUB's interactive menu rendering.
+              # Give firmware and menu initialization time to accept key input.
+              time.sleep(2)
               # The indices come from parsing grub.cfg above, not from a
               # hard-coded assumption about the order of NixOS generations.
               for index in known_good_selection:

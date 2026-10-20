@@ -105,7 +105,10 @@
               import time
               # Snapshot before reboot: only evidence emitted by this boot counts.
               offset = len(machine.get_console_log())
-              machine.reboot()
+              # A reboot() call waits for the guest backdoor to reconnect.
+              # A deliberately unbootable system never reconnects; use QEMU
+              # keyboard reset and serial-only observation instead.
+              machine.send_key("ctrl-alt-delete")
               deadline = time.monotonic() + 190
               boot_identity = False
               failure_seen = False

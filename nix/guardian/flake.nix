@@ -109,7 +109,8 @@
               # A deliberately unbootable system never reconnects; use QEMU
               # keyboard reset and serial-only observation instead.
               machine.send_key("ctrl-alt-delete")
-              deadline = time.monotonic() + 190
+              deadline = time.monotonic() + 145
+              last_progress = 0
               boot_identity = False
               failure_seen = False
               failure_patterns = [
@@ -132,11 +133,17 @@
                       for pattern in failure_patterns
                   )
                   if boot_identity and failure_seen:
+                      print("SERIAL EVIDENCE: broken generation reached failed boot state", flush=True)
                       break
+                  if time.monotonic() - last_progress > 10:
+                      print("SERIAL WATCH: bytes=" + str(len(output)) + " identity=" + str(boot_identity) + " failure=" + str(failure_seen), flush=True)
+                      last_progress = time.monotonic()
                   time.sleep(2)
               assert boot_identity, "Serial log never proved GRUB started the broken generation"
               assert failure_seen, "No boot failure evidence in the broken generation serial log"
           with subtest("Select known-good GRUB generation and recover"):
+              # This is a host QEMU monitor command, not a guest-shell command.
+              recovery_offset = len(machine.get_console_log())
               machine.send_monitor_command("system_reset")
               machine.wait_for_console_text("GNU GRUB", timeout=45)
               # The older-generation submenu is the final top-level GRUB entry.
@@ -146,7 +153,18 @@
               # The previously booted generation is the first submenu entry.
               machine.send_key("home", delay=0.5)
               machine.send_key("ret", delay=0.5)
-              machine.wait_for_unit("multi-user.target", timeout=120)
+              # Confirm that GRUB selected the old kernel using host-side
+              # serial evidence before attempting any guest backdoor call.
+              recovery_deadline = time.monotonic() + 90
+              recovered_kernel = False
+              while time.monotonic() < recovery_deadline:
+                  recovery_log = machine.get_console_log()[recovery_offset:]
+                  if baseline in recovery_log and "Kernel command line:" in recovery_log:
+                      recovered_kernel = True
+                      break
+                  time.sleep(2)
+              assert recovered_kernel, "GRUB never selected the known-good generation"
+              machine.wait_for_unit("multi-user.target", timeout=75)
               machine.succeed("grep -qx known-good /run/nexus-generation")
               assert machine.succeed("readlink -f /run/current-system").strip() == baseline
               machine.succeed("nix-env --profile /nix/var/nix/profiles/system --set " + baseline)

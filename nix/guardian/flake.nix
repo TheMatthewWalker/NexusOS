@@ -109,7 +109,7 @@
               active = []
               depth = 0
               for line in grub_cfg.splitlines():
-                  match = re.match(r"^\\s*(menuentry|submenu)\\s+(['\\\"])(.*?)\\2.*\\{\\s*$", line)
+                  match = re.match(r"^\s*(menuentry|submenu)\s+(['\"])(.*?)\2.*\{\s*$", line)
                   if match:
                       parent = active[-1] if active else None
                       siblings = entries if parent is None else parent["children"]
@@ -118,7 +118,7 @@
                                    children=[], has_baseline=False)
                       siblings.append(entry)
                       active.append(entry)
-                  if active and baseline in line and re.search(r"\\binit=", line):
+                  if active and baseline in line and re.search(r"\binit=", line):
                       active[-1]["has_baseline"] = True
                   depth += line.count("{") - line.count("}")
                   while active and depth <= active[-1]["depth"]:

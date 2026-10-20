@@ -7,6 +7,20 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
     in {
+      nixosConfigurations.guardian-bootloader-lab = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [ ./bootloader-vm.nix ];
+      };
+      nixosConfigurations.guardian-broken-generation = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [ ./bootloader-vm.nix ./bootloader-broken.nix ];
+      };
+      packages.${system} = {
+        guardian-broken-generation =
+          self.nixosConfigurations.guardian-broken-generation.config.system.build.toplevel;
+        guardian-bootloader-vm =
+          self.nixosConfigurations.guardian-bootloader-lab.config.system.build.vmWithBootLoader;
+      };
       checks.${system} = {
         guardian-boot = pkgs.testers.runNixOSTest {
         name = "nexus-guardian-boot";
@@ -45,6 +59,214 @@
           machine.succeed("systemctl is-failed nexus-staged-broken.service")
           machine.succeed("grep -qx baseline-ready /run/nexus-known-good")
           machine.succeed("systemctl is-active multi-user.target")
+        '';
+      };
+      guardian-bootloader-rollback = pkgs.testers.runNixOSTest {
+        name = "nexus-guardian-bootloader-rollback";
+        nodes.machine = { lib, ... }: {
+          system.stateVersion = "26.05";
+          virtualisation.useBootLoader = true;
+          virtualisation.diskImage = "./guardian-rollback.qcow2";
+          virtualisation.memorySize = 2048;
+          boot.loader.grub.enable = true;
+          boot.loader.grub.device = "/dev/vda";
+          boot.loader.timeout = 45;
+          boot.loader.grub.extraConfig = ''
+            serial --unit=0 --speed=115200
+            terminal_input console serial
+            terminal_output console serial
+          '';
+          boot.kernelParams = [ "console=ttyS0,115200n8" ];
+          system.extraDependencies = [
+            self.nixosConfigurations.guardian-broken-generation.config.system.build.toplevel
+          ];
+          systemd.services.nexus-known-good = {
+            wantedBy = [ "multi-user.target" ];
+            serviceConfig.Type = "oneshot";
+            script = "echo known-good > /run/nexus-generation";
+          };
+        };
+        testScript = ''
+          with subtest("Boot real GRUB baseline"):
+              machine.start(allow_reboot=True)
+              machine.wait_for_unit("multi-user.target")
+              machine.wait_for_file("/run/nexus-generation")
+              baseline = machine.succeed("readlink -f /run/current-system").strip()
+              assert baseline.startswith("/nix/store/")
+          with subtest("Stage second NixOS generation for next boot"):
+              broken = "${self.nixosConfigurations.guardian-broken-generation.config.system.build.toplevel}"
+              machine.succeed("test -x " + broken + "/bin/switch-to-configuration")
+              machine.succeed("nix-env --profile /nix/var/nix/profiles/system --set " + broken)
+              machine.succeed(broken + "/bin/switch-to-configuration boot")
+              assert machine.succeed("readlink -f /run/current-system").strip() == baseline
+              assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == broken
+              # Parse the generated GRUB configuration while the guest is healthy.
+              # Select the menuentry whose Linux init argument names the exact
+              # known-good store path, rather than assuming a menu position.
+              import re
+              grub_cfg = machine.succeed("cat /boot/grub/grub.cfg")
+              entries = []
+              active = []
+              depth = 0
+              for line in grub_cfg.splitlines():
+                  match = re.match(r"^\s*(menuentry|submenu)\s+(['\"])(.*?)\2.*\{\s*$", line)
+                  if match:
+                      parent = active[-1] if active else None
+                      siblings = entries if parent is None else parent["children"]
+                      entry = dict(kind=match.group(1), label=match.group(3),
+                                   index=len(siblings), depth=depth,
+                                   children=[], init_paths=[])
+                      siblings.append(entry)
+                      active.append(entry)
+                  if active and re.match(r"^\s*linux(?:16|efi)?\s+", line):
+                      active[-1]["init_paths"].extend(
+                          arg[5:] for arg in line.split() if arg.startswith("init="))
+                  depth += line.count("{") - line.count("}")
+                  while active and depth <= active[-1]["depth"]:
+                      active.pop()
+              def flatten(nodes, prefix=()):
+                  for entry in nodes:
+                      selection = prefix + (entry["index"],)
+                      print("GRUB ENTRY: path=" + str(selection) + " kind=" +
+                            entry["kind"] + " label=" + entry["label"] +
+                            " init=" + repr(entry["init_paths"]), flush=True)
+                      if entry["kind"] == "menuentry":
+                          yield selection, entry
+                      yield from flatten(entry["children"], selection)
+              all_entries = list(flatten(entries))
+              baseline_init = baseline + "/init"
+              matching = [(selection, entry) for selection, entry in all_entries
+                          if baseline_init in entry["init_paths"]]
+              assert len(matching) == 1, (
+                  "Expected exactly one GRUB entry for running baseline init " +
+                  baseline_init + "; matches=" + str(len(matching)))
+              known_good_selection = matching[0][0]
+              assert len(known_good_selection) <= 3, "Unexpected GRUB menu nesting"
+              print("GRUB KNOWN-GOOD SELECTION: " + str(known_good_selection), flush=True)
+          with subtest("Observe intentionally failed candidate boot"):
+              import re
+              import time
+              # Snapshot before reboot: only evidence emitted by this boot counts.
+              offset = len(machine.get_console_log())
+              # A reboot() call waits for the guest backdoor to reconnect.
+              # A deliberately unbootable system never reconnects; use QEMU
+              # keyboard reset and serial-only observation instead.
+              machine.send_key("ctrl-alt-delete")
+              deadline = time.monotonic() + 145
+              last_progress = 0
+              boot_identity = False
+              failure_seen = False
+              failure_patterns = [
+                  r"Timed out waiting for device",
+                  r"Dependency failed for (?:/sysroot|Initrd Root|Initrd File)",
+                  r"Failed to (?:mount|start).*?(?:root|sysroot)",
+                  r"Kernel panic",
+                  r"You are in emergency mode",
+              ]
+              while time.monotonic() < deadline:
+                  output = machine.get_console_log()[offset:]
+                  transcript = re.sub(r"\x1b\[[0-9;:]*[A-Za-z]", "", output)
+                  # The kernel command line identifies the generation selected by GRUB.
+                  boot_identity = boot_identity or (
+                      broken in transcript and
+                      "Kernel command line:" in transcript
+                  )
+                  failure_seen = failure_seen or any(
+                      re.search(pattern, transcript, re.IGNORECASE)
+                      for pattern in failure_patterns
+                  )
+                  if boot_identity and failure_seen:
+                      print("SERIAL EVIDENCE: broken generation reached failed boot state", flush=True)
+                      break
+                  if time.monotonic() - last_progress > 10:
+                      print("SERIAL WATCH: bytes=" + str(len(output)) + " identity=" + str(boot_identity) + " failure=" + str(failure_seen), flush=True)
+                      last_progress = time.monotonic()
+                  time.sleep(2)
+              assert boot_identity, "Serial log never proved GRUB started the broken generation"
+              assert failure_seen, "No boot failure evidence in the broken generation serial log"
+          with subtest("Select known-good GRUB generation and recover"):
+              # This is a host QEMU monitor command, not a guest-shell command.
+              recovery_offset = len(machine.get_console_log())
+              machine.send_monitor_command("system_reset")
+              # Do not use the consumptive wait_for_console_text queue: GRUB
+              # output may arrive before the waiter begins consuming it.
+              grub_deadline = time.monotonic() + 45
+              while time.monotonic() < grub_deadline:
+                  if "Welcome to GRUB!" in machine.get_console_log()[recovery_offset:]:
+                      break
+                  time.sleep(0.25)
+              else:
+                  raise AssertionError("GRUB menu not observed after QEMU reset")
+              # The welcome banner precedes GRUB's interactive menu rendering.
+              # Give firmware and menu initialization time to accept key input.
+              time.sleep(2)
+              # The indices come from parsing grub.cfg above, not from a
+              # hard-coded assumption about the order of NixOS generations.
+              for index in known_good_selection:
+                  machine.send_key("home", delay=0.3)
+                  for _ in range(index):
+                      machine.send_key("down", delay=0.2)
+                  machine.send_key("ret", delay=0.5)
+              # Confirm that GRUB selected the old kernel using host-side
+              # serial evidence before attempting any guest backdoor call.
+              recovery_deadline = time.monotonic() + 90
+              recovered_cmdline = None
+              # Match only a single new kernel command line, never an arbitrary
+              # occurrence of the baseline store path in old serial output.
+              while time.monotonic() < recovery_deadline:
+                  recovery_log = machine.get_console_log()[recovery_offset:]
+                  for line in recovery_log.splitlines():
+                      if "Kernel command line:" not in line:
+                          continue
+                      cmdline = line.split("Kernel command line:", 1)[1].strip()
+                      init_args = [arg[5:] for arg in cmdline.split() if arg.startswith("init=")]
+                      if broken in cmdline or "nexus-intentionally-missing-init" in cmdline:
+                          raise AssertionError("GRUB selected the broken generation again: " + cmdline)
+                      if baseline_init in init_args:
+                          recovered_cmdline = cmdline
+                          break
+                      raise AssertionError("GRUB selected an unexpected kernel init: " + cmdline)
+                  if recovered_cmdline is not None:
+                      break
+                  time.sleep(2)
+              assert recovered_cmdline is not None, "No fresh kernel command line proved known-good GRUB selection"
+              print("RECOVERY KERNEL VERIFIED: " + recovered_cmdline, flush=True)
+              # QEMU keeps its virtconsole socket connected across system_reset.
+              # The driver's start() accepted that socket once; closing it
+              # here permanently breaks the channel. Its reboot() method
+              # only marks connected=False and waits for a new guest handshake.
+              import threading
+              machine.connected = False
+              reconnect_result = {}
+              def reconnect_guest():
+                  try:
+                      machine.connect()
+                      reconnect_result["ok"] = True
+                  except BaseException as exc:
+                      reconnect_result["error"] = repr(exc)
+              reconnect_thread = threading.Thread(target=reconnect_guest, daemon=True)
+              reconnect_thread.start()
+              reconnect_thread.join(timeout=75)
+              assert not reconnect_thread.is_alive(), (
+                  "Recovery backdoor handshake timed out after 75s; " +
+                  "QEMU virtconsole remained open but guest did not reconnect")
+              assert reconnect_result.get("ok"), (
+                  "Recovery backdoor reconnect failed: " +
+                  reconnect_result.get("error", "unknown error"))
+              print("RECOVERY BACKDOOR RECONNECTED", flush=True)
+              # A successful shell handshake is not proof that systemd reached
+              # its normal target; check the service state separately.
+              machine.wait_for_unit("multi-user.target", timeout=75)
+              machine.succeed("grep -qx known-good /run/nexus-generation")
+              assert machine.succeed("readlink -f /run/current-system").strip() == baseline
+              machine.succeed("nix-env --profile /nix/var/nix/profiles/system --set " + baseline)
+              assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == baseline
+              machine.succeed(baseline + "/bin/switch-to-configuration boot")
+          with subtest("Verify recovered baseline survives a normal reboot"):
+              machine.reboot()
+              machine.wait_for_unit("multi-user.target", timeout=120)
+              machine.succeed("grep -qx known-good /run/nexus-generation")
+              assert machine.succeed("readlink -f /run/current-system").strip() == baseline
         '';
       };
       };

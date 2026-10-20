@@ -76,3 +76,23 @@ This is **root-operator-only integration groundwork**. It does not provide safe 
 ## Failed staged-service isolation regression (M4)
 
 The pinned NixOS VM suite now includes `guardian-recovery`, which boots a known-good guest, intentionally starts a failing transient systemd service, and verifies the known-good baseline marker and multi-user target remain operational. CI runs this separately from the candidate-backed positive boot smoke test. This is a **service-level failure-containment simulation**, not an actual NixOS generation-stage/bootloader rollback: no new system profile is staged, no bootloader generation is selected and no reboot into a broken OS is attempted. Those are separate mandatory M4 acceptance gates and have not been achieved by this change. Host activation remains prohibited.
+
+
+## Disk-backed GRUB rollback VM regression (M4)
+
+The Guardian NixOS VM CI builds an isolated disk-backed GRUB VM and runs
+`checks.x86_64-linux.guardian-bootloader-rollback`. This test boots the
+known-good generation, stages an intentionally unbootable second NixOS
+generation, and verifies its failed boot from fresh serial evidence.
+
+It then selects the known-good GRUB entry using the generated
+`/boot/grub/grub.cfg` mapping, verifies the recovered kernel's exact
+`init=` path from fresh serial output, reconnects the guest test-driver
+backdoor, and confirms `multi-user.target` and the known-good marker.
+Finally, it restores the system profile and bootloader configuration,
+reboots normally, and checks that the known-good generation remains active.
+
+The end-to-end rollback regression passed in Guardian NixOS VM workflow #41
+on commit `70b8ae4`. The broken generation and test disk are isolated to
+the CI lab; **this is not host deployment authorization**. Host staging
+and activation remain disabled.

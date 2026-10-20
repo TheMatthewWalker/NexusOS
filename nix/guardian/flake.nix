@@ -101,21 +101,38 @@
               assert machine.succeed("readlink -f /run/current-system").strip() == baseline
               assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == broken
           with subtest("Observe intentionally failed candidate boot"):
-              machine.reboot()
-              # Poll the complete serial transcript. wait_for_console_text only
-              # consumes future lines and has repeatedly missed the failure
-              # even though the test driver logged it.
               import re
               import time
+              # Snapshot before reboot: only evidence emitted by this boot counts.
+              offset = len(machine.get_console_log())
+              machine.reboot()
               deadline = time.monotonic() + 190
+              boot_identity = False
               failure_seen = False
+              failure_patterns = [
+                  r"Timed out waiting for device",
+                  r"Dependency failed for (?:/sysroot|Initrd Root|Initrd File)",
+                  r"Failed to (?:mount|start).*?(?:root|sysroot)",
+                  r"Kernel panic",
+                  r"You are in emergency mode",
+              ]
               while time.monotonic() < deadline:
-                  transcript = re.sub(r"\x1b\[[0-9;:]*[A-Za-z]", "", machine.get_console_log())
-                  if "Dependency failed for" in transcript and "/sysroot" in transcript:
-                      failure_seen = True
+                  output = machine.get_console_log()[offset:]
+                  transcript = re.sub(r"\x1b\[[0-9;:]*[A-Za-z]", "", output)
+                  # The kernel command line identifies the generation selected by GRUB.
+                  boot_identity = boot_identity or (
+                      broken in transcript and
+                      "Kernel command line:" in transcript
+                  )
+                  failure_seen = failure_seen or any(
+                      re.search(pattern, transcript, re.IGNORECASE)
+                      for pattern in failure_patterns
+                  )
+                  if boot_identity and failure_seen:
                       break
                   time.sleep(2)
-              assert failure_seen, "Broken generation did not produce the expected root mount failure"
+              assert boot_identity, "Serial log never proved GRUB started the broken generation"
+              assert failure_seen, "No boot failure evidence in the broken generation serial log"
           with subtest("Select known-good GRUB generation and recover"):
               machine.send_monitor_command("system_reset")
               machine.wait_for_console_text("GNU GRUB", timeout=45)

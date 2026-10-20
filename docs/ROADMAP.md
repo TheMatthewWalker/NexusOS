@@ -8,9 +8,9 @@
 |---|---|---|---|
 | M0 | Repository/bootstrap | Build on Ubuntu in GitHub CI; test project runs; README reproduces local setup | DONE — CI verified |
 | M1 | Nexus Core v0.1 | Health, provider listing/selection, read-only system inventory, local Ollama chat, cloud OpenAI-compatible chat; CLI returns meaningful errors | PARTIAL — mock CI passed; physical Ollama/cloud test open |
-| M2 | Hardened Core v0.2 | Authenticated IPC, per-user storage, OS-keyring credentials, retention, request limits and provider isolation | IN PROGRESS — keyring reader, bearer auth, retention, response bounds and rate limits CI verified; Unix IPC merged (#19); token budget and cloud egress verified (#26, #28) |
+| M2 | Hardened Core v0.2 | Authenticated IPC, per-user storage, OS-keyring credentials, retention, request limits and provider isolation | IN PROGRESS — SQLite migration and Linux Unix SO_PEERCRED checks merged; live keyring, multi-user, network-egress and security acceptance still open |
 | M3 | Guardian preview | Typed plans, policy, Nix diff, approval, privileged immutable audit, no shell | IN PROGRESS — allowlisted typed previews and review acknowledgement with local hash-linked audit; advisory diff and one-time review tokens verified (#30, #31); privileged audit and executor open |
-| M4 | Guardian rollback | Reproducible Nix builds, VM smoke checks, staged boot, known-good recovery demonstrated on test hardware | IN PROGRESS — pinned NixOS 26.05 disposable VM boot and service check CI verified; staging and rollback unimplemented |
+| M4 | Guardian rollback | Reproducible Nix builds, VM smoke checks, staged boot, known-good recovery demonstrated on test hardware | IN PROGRESS — isolated GRUB-backed staged-broken-generation rollback and subsequent normal reboot passed in Guardian NixOS VM #41 (PR #47); privileged staging, data backup and physical hardware recovery remain open |
 | M5 | Inference manager | llama.cpp adapter, KV budget, VRAM/RAM monitoring, eviction/idle sleep and application priority | IN PROGRESS — llama.cpp API route, Ollama unload, optional idle eviction, Linux/NVIDIA telemetry and benchmark harness CI verified; actual offloading, KV budget and hardware tests open |
 | M6 | Desktop alpha | Hyprland/Quickshell command palette, provider switch, memory widget, visual change proposal and offline fallback | TODO |
 | M7 | OS alpha image | Reproducible bootable NixOS ISO, onboarding, supported hardware matrix, rollback and recovery documentation | TODO |
@@ -130,3 +130,35 @@ The policy remains: do not claim these milestones complete merely because CI is 
 
 - PR #36 was superseded by merged PR #37; the current `IsRecentEntry` filter already removes malformed JSONL records from count-based retention. The isolated regression test is ported to main without overwriting PR #37 age-based filtering.
 - **Mock/unit:** deterministic test committed; CI pending. **NixOS VM:** no new VM test performed. **Physical hardware:** no hardware checks performed. SQLite migration and native IPC peer authentication remain outstanding; M2–M5 IN PROGRESS.
+
+
+## Acceptance-gate refresh — 2026-10-20 (after PR #47)
+
+The status table above supersedes older dated progress snapshots below; those snapshots are retained as historical evidence, not current implementation claims.
+
+### M2 — next security acceptance gates
+
+- [x] SQLite-backed per-user provider/history state and transactional legacy JSONL migration implemented; plaintext legacy backups remain and must be handled separately.
+- [x] Unix-domain Core IPC verifies kernel `SO_PEERCRED` UID and requires bearer authentication; TCP development mode is a separate loopback-only boundary.
+- [ ] **Keyring integration:** in a real Linux user session, prove unlocked-keyring success, locked/unavailable-keyring fail-closed behaviour and no credential logging. Record reproducible commands and test evidence.
+- [ ] **Multi-user isolation:** exercise distinct Linux UIDs against each other's socket, token, state directory and SQLite files; prove access denied and no cross-user history disclosure.
+- [ ] **Persistence/retention:** exercise SQLite migration restart/idempotence, malformed records, permissions, age/limit expiry, clear-history and retained legacy backup handling.
+- [ ] **Egress and abuse:** exercise DNS answer changes, denied private/special-use addresses, redirects/proxies, oversized responses, cancellation, concurrency and sensitive-data log inspection against an integration environment.
+- [ ] Complete security review and document evidence per gate before declaring M2 DONE.
+
+### M3 — next broker integration gates (after M2 security boundary)
+
+- [x] Non-executing typed previews, one-time review acknowledgement, root-owned review-broker and approval-issuer prototypes exist.
+- [ ] Package the review-only broker as an isolated systemd/NixOS VM service and test ownership, `SO_PEERCRED`, restart, denial and resource limits.
+- [ ] Separate trusted attestation signing from verification; bind approvals to candidate hash, observed generation, authorised UID and expiry, with durable nonce consumption.
+- [ ] Persist protected approval, denial and outcome audit records; test replay, forgery, stale baselines, filesystem replacement and crash recovery.
+- [ ] Independently review privilege boundaries before implementing any staging executor. No host activation until these gates pass.
+
+### M4 — newly verified VM gate and remaining acceptance
+
+- [x] GRUB-backed disposable VM boots baseline, stages a deliberately broken generation, observes failed boot, selects original generation from parsed GRUB entries, verifies exact recovered kernel init, reconnects to healthy userspace, restores the default profile and survives another reboot. **Evidence:** PR #47, Guardian NixOS VM workflow #41, commit `70b8ae4`.
+- [ ] Authorised, narrowly scoped staging executor and trusted build provenance (depends on M3).
+- [ ] Separate user-data backup/restore, interruption/power-loss scenarios and documented recovery drills.
+- [ ] Physical hardware boot-failure recovery and health checks. Passing CI/VM is not hardware acceptance.
+
+**Evidence rule:** Every unchecked gate requires a reproducible test procedure, captured passing result and security review where applicable. M2–M5 remain IN PROGRESS; M6 desktop work is not authorised by these VM results.

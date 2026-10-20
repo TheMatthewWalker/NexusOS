@@ -149,7 +149,7 @@
               # output may arrive before the waiter begins consuming it.
               grub_deadline = time.monotonic() + 45
               while time.monotonic() < grub_deadline:
-                  if "GNU GRUB" in machine.get_console_log()[recovery_offset:]:
+                  if "Welcome to GRUB!" in machine.get_console_log()[recovery_offset:]:
                       break
                   time.sleep(0.25)
               else:

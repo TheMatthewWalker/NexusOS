@@ -231,15 +231,31 @@
                   time.sleep(2)
               assert recovered_cmdline is not None, "No fresh kernel command line proved known-good GRUB selection"
               print("RECOVERY KERNEL VERIFIED: " + recovered_cmdline, flush=True)
-              # system_reset bypasses the driver's reboot lifecycle. The old
-              # virtconsole shell socket still belongs to the previous boot;
-              # discard it before the next guest command triggers connect().
-              if machine.shell is not None:
-                  machine.shell.close()
-                  machine.shell = None
+              # QEMU keeps its virtconsole socket connected across system_reset.
+              # The driver's start() accepted that socket once; closing it
+              # here permanently breaks the channel. Its reboot() method
+              # only marks connected=False and waits for a new guest handshake.
+              import threading
               machine.connected = False
-              machine.connect()
+              reconnect_result = {}
+              def reconnect_guest():
+                  try:
+                      machine.connect()
+                      reconnect_result["ok"] = True
+                  except BaseException as exc:
+                      reconnect_result["error"] = repr(exc)
+              reconnect_thread = threading.Thread(target=reconnect_guest, daemon=True)
+              reconnect_thread.start()
+              reconnect_thread.join(timeout=75)
+              assert not reconnect_thread.is_alive(), (
+                  "Recovery backdoor handshake timed out after 75s; " +
+                  "QEMU virtconsole remained open but guest did not reconnect")
+              assert reconnect_result.get("ok"), (
+                  "Recovery backdoor reconnect failed: " +
+                  reconnect_result.get("error", "unknown error"))
               print("RECOVERY BACKDOOR RECONNECTED", flush=True)
+              # A successful shell handshake is not proof that systemd reached
+              # its normal target; check the service state separately.
               machine.wait_for_unit("multi-user.target", timeout=75)
               machine.succeed("grep -qx known-good /run/nexus-generation")
               assert machine.succeed("readlink -f /run/current-system").strip() == baseline

@@ -100,6 +100,43 @@
               machine.succeed(broken + "/bin/switch-to-configuration boot")
               assert machine.succeed("readlink -f /run/current-system").strip() == baseline
               assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == broken
+              # Parse the generated GRUB configuration while the guest is healthy.
+              # Select the menuentry whose Linux init argument names the exact
+              # known-good store path, rather than assuming a menu position.
+              import re
+              grub_cfg = machine.succeed("cat /boot/grub/grub.cfg")
+              entries = []
+              active = []
+              depth = 0
+              for line in grub_cfg.splitlines():
+                  match = re.match(r"^\\s*(menuentry|submenu)\\s+(['\\\"])(.*?)\\2.*\\{\\s*$", line)
+                  if match:
+                      parent = active[-1] if active else None
+                      siblings = entries if parent is None else parent["children"]
+                      entry = dict(kind=match.group(1), label=match.group(3),
+                                   index=len(siblings), depth=depth,
+                                   children=[], has_baseline=False)
+                      siblings.append(entry)
+                      active.append(entry)
+                  if active and baseline in line and re.search(r"\\binit=", line):
+                      active[-1]["has_baseline"] = True
+                  depth += line.count("{") - line.count("}")
+                  while active and depth <= active[-1]["depth"]:
+                      active.pop()
+              def locate(entries, prefix=()):
+                  for entry in entries:
+                      selection = prefix + (entry["index"],)
+                      if entry["kind"] == "menuentry" and entry["has_baseline"]:
+                          return selection
+                      result = locate(entry["children"], selection)
+                      if result is not None:
+                          return result
+                  return None
+              known_good_selection = locate(entries)
+              assert known_good_selection is not None, (
+                  "No GRUB menuentry boots the exact known-good generation")
+              assert len(known_good_selection) <= 3, "Unexpected GRUB menu nesting"
+              print("GRUB KNOWN-GOOD SELECTION: " + str(known_good_selection), flush=True)
           with subtest("Observe intentionally failed candidate boot"):
               import re
               import time
@@ -154,13 +191,13 @@
                   time.sleep(0.25)
               else:
                   raise AssertionError("GRUB menu not observed after QEMU reset")
-              # The older-generation submenu is the final top-level GRUB entry.
-              # Select it using End rather than assuming the number of entries.
-              machine.send_key("end", delay=0.5)
-              machine.send_key("ret", delay=0.5)
-              # The previously booted generation is the first submenu entry.
-              machine.send_key("home", delay=0.5)
-              machine.send_key("ret", delay=0.5)
+              # The indices come from parsing grub.cfg above, not from a
+              # hard-coded assumption about the order of NixOS generations.
+              for index in known_good_selection:
+                  machine.send_key("home", delay=0.3)
+                  for _ in range(index):
+                      machine.send_key("down", delay=0.2)
+                  machine.send_key("ret", delay=0.5)
               # Confirm that GRUB selected the old kernel using host-side
               # serial evidence before attempting any guest backdoor call.
               recovery_deadline = time.monotonic() + 90

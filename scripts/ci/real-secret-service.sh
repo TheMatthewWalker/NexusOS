@@ -11,13 +11,17 @@ export XDG_DATA_HOME="$data"
 export XDG_CONFIG_HOME="$home/.config"
 export HOME="$home"
 mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME/keyrings"
-# Start actual secrets daemon in isolated D-Bus session.
-daemon_env=$(printf '%s' 'nexusos-ephemeral-ci-keyring' | timeout 15s gnome-keyring-daemon --unlock --components=secrets)
-while IFS= read -r line; do
-  case "$line" in
-    GNOME_KEYRING_CONTROL=*|SSH_AUTH_SOCK=*) export "$line" ;;
-  esac
-done <<< "$daemon_env"
+# All isolated XDG paths are set before dbus-run-session, so D-Bus
+# activation cannot inherit the runner's original HOME.
+if [[ -z "${NEXUS_ISOLATED_DBUS:-}" ]]; then
+  export NEXUS_ISOLATED_DBUS=1
+  dbus-run-session -- bash "$0"
+  exit $?
+fi
+# --login creates the keyring on a clean profile; --unlock alone cannot.
+# Keep the daemon password confined to this ephemeral CI session.
+printf '%s' 'nexusos-ephemeral-ci-keyring' | timeout 15s gnome-keyring-daemon --login --components=secrets >/dev/null
+timeout 15s gnome-keyring-daemon --start --components=secrets >/dev/null
 timeout 10s gdbus introspect --session --dest org.freedesktop.secrets --object-path /org/freedesktop/secrets >/dev/null
 # Preflight: ensure a real, unlocked collection supports store and lookup.
 printf '%s' 'synthetic-preflight-token' | timeout 10s secret-tool store --label='NexusOS CI preflight' app nexusos provider preflight

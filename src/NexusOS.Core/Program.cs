@@ -1,7 +1,14 @@
 using Microsoft.AspNetCore.Connections.Features;
 using System.Threading.RateLimiting;
 
-var builder = WebApplication.CreateBuilder(args);
+// Content root is the install directory, never the caller's working
+// directory: Core must start however it is launched (systemd, runuser, a
+// shell in an unreadable directory), and it serves no files from disk.
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory
+});
 var apiMode = ApiModes.Resolve(builder.Configuration["NEXUS_API_MODE"]);
 if (apiMode == ApiMode.Unix)
 {

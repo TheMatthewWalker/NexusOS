@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export NEXUS_STATE_DIR="$(mktemp -d)"
+PWD_ROOT="$PWD"
 # Unix-domain transport is the Linux default; leave NEXUS_API_MODE unset to prove it.
 unset NEXUS_API_MODE
 cleanup() {
@@ -26,4 +27,11 @@ if curl --fail --silent --max-time 2 http://127.0.0.1:5077/health > /dev/null; t
   exit 1
 fi
 test "$(stat -c %a "$NEXUS_STATE_DIR")" = 700
+# Core must not depend on its working directory: start a second instance from
+# a directory this user cannot traverse and confirm it gets past host startup
+# (it then refuses only because the first Core owns the socket).
+private="$(mktemp -d)"; mkdir "$private/sub"
+( cd "$private/sub" && chmod 000 "$private" && timeout 30 dotnet "$PWD_ROOT/out/core/NexusOS.Core.dll" > "$PWD_ROOT/out/unix-cwd.log" 2>&1 ) || true
+chmod 700 "$private"; rm -rf "$private"
+if grep -q "DirectoryNotFoundException" out/unix-cwd.log; then cat out/unix-cwd.log; exit 1; fi
 echo "Unix-only Core transport smoke checks passed."

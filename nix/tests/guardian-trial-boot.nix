@@ -114,9 +114,9 @@ pkgs.testers.runNixOSTest {
         machine.reboot()  # Returns only once some generation boots and reconnects.
         machine.wait_for_unit("multi-user.target")
         machine.wait_for_unit("nexus-guardian-boot-check.service")
-        log = re.sub(r"\x1b\[[0-9;:]*[A-Za-z]", "", machine.get_console_log()[offset:])
-        assert broken in log, "serial log does not show the broken generation being tried"
-        assert re.search(r"Kernel panic|panic_on_fail|Rebooting in", log), "no panic/auto-reboot evidence"
+        serial = re.sub(r"\x1b\[[0-9;:]*[A-Za-z]", "", machine.get_console_log()[offset:])
+        assert broken in serial, "serial log does not show the broken generation being tried"
+        assert re.search(r"Kernel panic|panic_on_fail|Rebooting in", serial), "no panic/auto-reboot evidence"
         assert current() == candidate, "did not fall back to the last confirmed generation"
         assert events()[-1] == "fell-back", events()
         assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == candidate

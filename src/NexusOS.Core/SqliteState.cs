@@ -4,9 +4,13 @@ using System.Text.Json;
 public sealed class SqliteStateDatabase
 {
     private readonly string _path;
+    // Test-only fault injection: returns true to abort the legacy import after N rows.
+    internal static Func<int, bool>? ImportFault;
+
     public SqliteStateDatabase(NexusStatePaths paths)
     {
         _path = paths.PathFor("state.sqlite3");
+        NexusStatePaths.RejectSymbolicLinkFile(_path);
         using var connection = Open();
         using var schema = connection.CreateCommand();
         schema.CommandText = """
@@ -68,12 +72,15 @@ public sealed class SqliteStateDatabase
         var historyPath = paths.PathFor("history.jsonl");
         if (File.Exists(historyPath))
         {
+            var imported = 0;
             foreach (var line in File.ReadLines(historyPath))
             {
                 try
                 {
                     var entry = JsonSerializer.Deserialize<ConversationEntry>(line);
-                    if (entry is null) continue;
+                    // Valid JSON with missing fields would violate NOT NULL and
+                    // abort the whole import on every startup; treat it as malformed.
+                    if (entry is null || entry.Provider is null || entry.Prompt is null || entry.Answer is null) continue;
                     using var put = connection.CreateCommand();
                     put.Transaction = transaction;
                     put.CommandText = """
@@ -85,6 +92,8 @@ public sealed class SqliteStateDatabase
                     put.Parameters.AddWithValue("$prompt", entry.Prompt);
                     put.Parameters.AddWithValue("$answer", entry.Answer);
                     put.ExecuteNonQuery();
+                    if (ImportFault?.Invoke(++imported) == true)
+                        throw new IOException("Injected legacy import fault.");
                 }
                 catch (JsonException) { /* Skip malformed lines only. */ }
             }
@@ -143,6 +152,7 @@ public sealed class ConversationStore
     private readonly SqliteStateDatabase _database;
     private readonly int _maxEntries;
     private readonly TimeSpan _maxAge;
+    public int MaxEntries => _maxEntries;
 
     public ConversationStore(SqliteStateDatabase database, IConfiguration config)
     {

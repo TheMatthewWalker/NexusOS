@@ -43,6 +43,14 @@ public sealed class NexusStatePaths
 
     public string PathFor(string name) => Path.Combine(Root, name);
 
+    // A state file replaced by a symbolic link could redirect the token or
+    // database to an attacker-chosen location; refuse rather than follow it.
+    public static void RejectSymbolicLinkFile(string path)
+    {
+        if (new FileInfo(path).LinkTarget is not null)
+            throw new IOException("Nexus state files cannot be symbolic links.");
+    }
+
     public static void RestrictPermissions(string path, bool isDirectory)
     {
         if (OperatingSystem.IsWindows()) return;

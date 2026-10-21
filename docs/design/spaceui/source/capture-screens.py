@@ -1,0 +1,38 @@
+from pathlib import Path
+from playwright.sync_api import sync_playwright, expect
+
+ROOT = Path(__file__).resolve().parents[1]
+with sync_playwright() as p:
+    browser = p.chromium.launch(executable_path='/usr/bin/chromium', headless=True)
+    page = browser.new_page(viewport={'width': 1600, 'height': 1000}, device_scale_factor=1, reduced_motion='reduce')
+    page.goto('http://localhost:3000', wait_until='networkidle')
+    expect(page.locator('.pearl-sphere')).to_be_visible()
+    assert page.locator('.pearl-sphere').evaluate('e=>e.complete&&e.naturalWidth>0')
+    page.get_by_role('button', name='Toggle all apps around Nexus AI', exact=True).click()
+    expect(page.locator('.orbital-node')).to_have_count(6)
+    for name in ['Files','Browser','Terminal','Studio','Models','Settings']:
+        expect(page.get_by_role('button',name=f'Open {name} (prototype)',exact=True)).to_be_enabled(timeout=10000)
+    page.wait_for_function("Array.from(document.querySelectorAll('.orbital-node')).every(e => Number(getComputedStyle(e).opacity) > 0.98)", timeout=10000)
+    page.mouse.move(35,950)
+    page.screenshot(path=str(ROOT/'assets/01-ambient-desktop.png'))
+    page.get_by_role('button', name='Select Files', exact=True).click()
+    files=page.locator('[data-window="files"]')
+    files.get_by_role('button', name='Ideas.md, Markdown.', exact=False).click()
+    page.get_by_role('button', name='Nexus control panel', exact=True).hover()
+    page.get_by_role('button', name='Open Wi-Fi settings', exact=True).hover()
+    page.screenshot(path=str(ROOT/'assets/02-files-and-controls.png'))
+    page.get_by_role('button', name='Open Sound settings', exact=True).click()
+    page.mouse.click(45,900)
+    settings=page.locator('[data-window="settings"]')
+    page.get_by_role('button', name='Maximise System Settings', exact=True).click()
+    page.mouse.move(30,930)
+    page.screenshot(path=str(ROOT/'assets/03-full-settings.png'))
+    page.get_by_role('button',name='Restore System Settings',exact=True).click()
+    page.get_by_role('button',name='Maximise Files',exact=True).hover()
+    page.get_by_role('button',name='Two columns',exact=True).click()
+    expect(files).to_have_attribute('data-tile','left')
+    expect(settings).to_have_attribute('data-tile','right')
+    page.mouse.move(35,950)
+    page.screenshot(path=str(ROOT/'assets/04-paired-tiles.png'))
+    print('Captured 4 current-prototype screens at 1600 × 1000.')
+    browser.close()

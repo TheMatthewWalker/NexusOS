@@ -55,3 +55,24 @@ jobs:
           echo "## M1 live acceptance" >> "$GITHUB_STEP_SUMMARY"
           NEXUS_OLLAMA_MODEL="$MODEL" NEXUS_LLAMA_SERVER_BIN="$LLAMA_BIN" NEXUS_LLAMA_MODEL_PATH="$GGUF" \
             NEXUS_M1_EVIDENCE="$GITHUB_STEP_SUMMARY" bash scripts/acceptance/m1-live.sh
+      - name: M5 CPU-only benchmark through Core (real model)
+        run: |
+          state="$(mktemp -d)"
+          NEXUS_STATE_DIR="$state" NEXUS_OLLAMA_MODEL="$MODEL" NEXUS_LLAMA_SERVER_BIN="$LLAMA_BIN" \
+            NEXUS_LLAMA_MODEL_PATH="$GGUF" NEXUS_LLAMA_PORT=18083 dotnet out/core/NexusOS.Core.dll > core-bench.log 2>&1 &
+          for _ in $(seq 1 60); do [ -S "$state/nexus.sock" ] && break; sleep 1; done
+          python3 scripts/bench/nexus_inference_bench.py --state-dir "$state" --provider local --provider llama-cpp \
+            --profile ci-cpu-only-qwen2.5-0.5b --runs 3 --output m5-cpu-benchmark.json
+          {
+            echo "## M5 CPU-only benchmark"
+            echo '```json'
+            cat m5-cpu-benchmark.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload benchmark
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m5-cpu-benchmark
+          path: m5-cpu-benchmark.json
+          if-no-files-found: ignore

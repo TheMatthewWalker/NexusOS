@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export NEXUS_STATE_DIR="$(mktemp -d)"
-export NEXUS_API_MODE=unix
+# Unix-domain transport is the Linux default; leave NEXUS_API_MODE unset to prove it.
+unset NEXUS_API_MODE
 cleanup() {
   kill "${CORE_PID:-}" 2>/dev/null || true
   rm -rf "$NEXUS_STATE_DIR"

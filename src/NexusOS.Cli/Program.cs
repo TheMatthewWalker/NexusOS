@@ -19,9 +19,21 @@ if (!File.Exists(tokenPath))
 }
 var token = (await File.ReadAllTextAsync(tokenPath)).Trim();
 HttpMessageHandler handler;
-if (OperatingSystem.IsLinux() && Environment.GetEnvironmentVariable("NEXUS_API_MODE") == "unix")
+var mode = Environment.GetEnvironmentVariable("NEXUS_API_MODE")?.Trim().ToLowerInvariant();
+if (string.IsNullOrEmpty(mode)) mode = OperatingSystem.IsLinux() ? "unix" : "tcp";
+if (mode is not ("unix" or "tcp") || (mode == "unix" && !OperatingSystem.IsLinux()))
 {
-    var socketPath = Path.Combine(root, "nexus.sock");
+    Console.Error.WriteLine("NEXUS_API_MODE must be 'unix' (Linux only) or 'tcp'.");
+    return 2;
+}
+var socketPath = Path.Combine(root, "nexus.sock");
+if (mode == "unix")
+{
+    if (!File.Exists(socketPath))
+    {
+        Console.Error.WriteLine($"Nexus Core socket not found at {socketPath}. Start Core, or set NEXUS_API_MODE=tcp if Core uses TCP.");
+        return 1;
+    }
     handler = new SocketsHttpHandler
     {
         ConnectCallback = async (_, ct) =>
@@ -45,13 +57,18 @@ try
     switch (args[0].ToLowerInvariant())
     {
         case "health":
-            await PrintGet("/health"); return 0;
+            return await PrintGet("/health");
         case "system":
-            await PrintGet("/system"); return 0;
+            return await PrintGet("/system");
         case "providers":
-            await PrintGet("/providers"); return 0;
+            return await PrintGet("/providers");
         case "history":
-            await PrintGet("/history"); return 0;
+            return await PrintGet("/history");
+        case "status":
+            return await PrintGet("/inference/status");
+        case "unload":
+            using (var res = await http.PostAsync("/inference/unload", null))
+            { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
         case "clear-history":
             using (var res = await http.DeleteAsync("/history"))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
@@ -67,14 +84,20 @@ try
 catch (HttpRequestException ex) { Console.Error.WriteLine($"Nexus Core not reachable: {ex.Message}"); return 1; }
 catch (TaskCanceledException) { Console.Error.WriteLine("Request timed out."); return 1; }
 
-async Task PrintGet(string path)
+async Task<int> PrintGet(string path)
 {
     using var response = await http.GetAsync(path);
     await PrintResponse(response);
+    return response.IsSuccessStatusCode ? 0 : 1;
 }
 static async Task PrintResponse(HttpResponseMessage response)
 {
     var raw = await response.Content.ReadAsStringAsync();
+    if (!response.IsSuccessStatusCode)
+    {
+        Console.Error.WriteLine($"nexus: {ErrorMessage(raw, response)} (HTTP {(int)response.StatusCode})");
+        return;
+    }
     try
     {
         using var document = JsonDocument.Parse(raw);
@@ -82,4 +105,22 @@ static async Task PrintResponse(HttpResponseMessage response)
     }
     catch (JsonException) { Console.WriteLine(raw); }
 }
-static void Usage() => Console.WriteLine("nexus [health|system|providers|history|clear-history|use <local|llama-cpp|openai-compatible>|ask <prompt>]");
+static string ErrorMessage(string raw, HttpResponseMessage response)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(raw);
+        foreach (var key in new[] { "detail", "error", "title" })
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
+                return value.GetString()!;
+    }
+    catch (JsonException) { }
+    return response.StatusCode switch
+    {
+        System.Net.HttpStatusCode.Unauthorized => "Authentication failed; restart Core or check the api-token file.",
+        System.Net.HttpStatusCode.TooManyRequests => "Nexus Core is busy or rate limiting requests; try again shortly.",
+        _ => "Request failed."
+    };
+}
+static void Usage() => Console.WriteLine("nexus [health|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask <prompt>]");

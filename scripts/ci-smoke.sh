@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export NEXUS_STATE_DIR="$(mktemp -d)"
+export NEXUS_API_MODE=tcp
 trap 'status=$?; if [[ $status -ne 0 ]]; then echo "Smoke failure at line $LINENO (exit $status)"; cat out/core.log out/mock.log 2>/dev/null || true; fi' ERR
 
 cleanup() {

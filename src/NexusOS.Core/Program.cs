@@ -1,12 +1,9 @@
 using Microsoft.AspNetCore.Connections.Features;
-using System.Net.Http.Json;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
-if (OperatingSystem.IsLinux() && builder.Configuration["NEXUS_API_MODE"] == "unix")
+var apiMode = ApiModes.Resolve(builder.Configuration["NEXUS_API_MODE"]);
+if (apiMode == ApiMode.Unix)
 {
     var state = new NexusStatePaths(builder.Configuration);
     var socketPath = state.PathFor("nexus.sock");
@@ -46,8 +43,13 @@ builder.Services.AddSingleton<ProviderStore>(sp => new ProviderStore(sp.GetRequi
 builder.Services.AddSingleton<ConversationStore>(sp => new ConversationStore(
     sp.GetRequiredService<SqliteStateDatabase>(), sp.GetRequiredService<IConfiguration>()));
 builder.Services.AddSingleton<IProviderCredentialStore, LinuxSecretToolStore>();
+builder.Services.AddSingleton<LlamaServerProcess>();
+builder.Services.AddSingleton<IModelProvider, OllamaProvider>();
+builder.Services.AddSingleton<IModelProvider>(sp => new LlamaCppProvider(
+    sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<IConfiguration>(),
+    sp.GetRequiredService<LlamaServerProcess>()));
+builder.Services.AddSingleton<IModelProvider, OpenAiCompatibleProvider>();
 builder.Services.AddSingleton<ModelRouter>();
-builder.Services.AddSingleton<InferenceLifecycle>();
 builder.Services.AddSingleton<InferenceActivity>();
 builder.Services.AddSingleton<InferenceConcurrencyGate>();
 builder.Services.AddSingleton<InferenceTokenSettings>();
@@ -66,7 +68,10 @@ builder.Services.AddRateLimiter(options =>
 });
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65536);
 var app = builder.Build();
+// Resolve configuration-dependent services now so invalid settings stop Core
+// at startup with a clear message instead of failing individual requests.
 _ = app.Services.GetRequiredService<LocalApiToken>();
+_ = app.Services.GetRequiredService<ModelRouter>();
 app.Use(async (context, next) =>
 {
     var token = context.RequestServices.GetRequiredService<LocalApiToken>();
@@ -109,17 +114,9 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
         await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, provider, request.Prompt, response), ct);
         return Results.Ok(new { answer = response, provider });
     }
-    catch (HttpRequestException)
+    catch (ProviderException ex)
     {
-        return Results.Problem("The model endpoint is unavailable. Check the provider service and configuration.", statusCode: 502);
-    }
-    catch (TaskCanceledException) when (!ct.IsCancellationRequested)
-    {
-        return Results.Problem("The model request timed out.", statusCode: 504);
-    }
-    catch (InvalidOperationException ex)
-    {
-        return Results.Problem(ex.Message, statusCode: 503);
+        return Results.Problem(ex.Message, statusCode: ex.StatusCode);
     }
 }).RequireRateLimiting("ai");
 app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
@@ -155,11 +152,16 @@ app.MapPost("/guardian/acknowledge", async (GuardianApprovalRequest request, Gua
 });
 app.MapGet("/inference/telemetry", async (MemoryTelemetry telemetry, CancellationToken ct) =>
     Results.Ok(await telemetry.ReadAsync(ct)));
-app.MapGet("/inference/status", async (InferenceLifecycle life, CancellationToken ct) =>
-    Results.Ok(new { backend = "ollama", available = await life.IsBackendAvailableAsync(ct) }));
-app.MapPost("/inference/unload", async (InferenceLifecycle life, CancellationToken ct) =>
+app.MapGet("/inference/status", async (ModelRouter router, CancellationToken ct) =>
 {
-    try { await life.UnloadAsync(ct); return Results.Ok(new { unloadRequested = true }); }
+    var provider = router.Current;
+    return Results.Ok(new { backend = provider.Name, available = await provider.IsAvailableAsync(ct),
+                            unloadSupported = provider.SupportsUnload });
+});
+app.MapPost("/inference/unload", async (ModelRouter router, CancellationToken ct) =>
+{
+    try { await router.Current.UnloadAsync(ct); return Results.Ok(new { unloadRequested = true }); }
+    catch (ProviderException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
     catch (HttpRequestException) { return Results.Problem("Local inference backend unavailable", statusCode: 502); }
 });
 app.MapGet("/system", () => Results.Ok(new
@@ -176,59 +178,3 @@ public sealed record ChatRequest(string Prompt);
 public sealed record SelectRequest(string Name);
 public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
 public sealed record GuardianApprovalRequest(string Description, GuardianChange[] Changes, string ExpectedPlanId, string Acknowledgement, string ReviewToken);
-
-public sealed class ModelRouter(IHttpClientFactory factory, ProviderStore providers, IConfiguration config, IProviderCredentialStore credentials, InferenceTokenSettings tokenSettings)
-{
-    public string CurrentProvider => providers.Selected;
-    public async Task<(string Answer, string Provider)> AskAsync(string prompt, CancellationToken ct)
-    {
-        var provider = CurrentProvider;
-        var client = factory.CreateClient("ai");
-        var budget = tokenSettings.Budget;
-        if (provider == "local")
-        {
-            var url = config["NEXUS_OLLAMA_URL"] ?? "http://127.0.0.1:11434";
-            ProviderEndpointGuard.RequireLoopback(url);
-            // This service is single-user, local-only for MVP. Endpoints must be configured by operator.
-            var model = config["NEXUS_OLLAMA_MODEL"] ?? "llama3.2:3b";
-            using var response = await client.PostAsJsonAsync(url.TrimEnd('/') + "/api/generate",
-                new { model, prompt, stream = false, options = new { num_ctx = budget.ContextTokens, num_predict = budget.ReservedOutputTokens } }, ct);
-            response.EnsureSuccessStatusCode();
-            using var doc = await ModelResponseGuard.ReadAsync(response.Content, ct);
-            return (doc.RootElement.GetProperty("response").GetString() ?? string.Empty, provider);
-        }
-        if (provider == "llama-cpp")
-        {
-            var endpoint = config["NEXUS_LLAMA_ENDPOINT"] ?? "http://127.0.0.1:8080";
-            ProviderEndpointGuard.RequireLoopback(endpoint);
-            var model = config["NEXUS_LLAMA_MODEL"] ?? "default";
-            using var result = await client.PostAsJsonAsync(endpoint.TrimEnd('/') + "/v1/chat/completions",
-                new { model, messages = new[] { new { role = "user", content = prompt } }, stream = false, max_tokens = budget.ReservedOutputTokens }, ct);
-            result.EnsureSuccessStatusCode();
-            using var doc = await ModelResponseGuard.ReadAsync(result.Content, ct);
-            return (doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty, provider);
-        }
-        if (provider == "openai-compatible")
-        {
-            CloudEgressPolicy.RequireConsent(config);
-            var endpoint = config["NEXUS_OPENAI_ENDPOINT"] ?? "https://api.openai.com/v1";
-            ProviderEndpointGuard.RequireCloudEndpoint(endpoint, config["NEXUS_CLOUD_HOSTS"]);
-            var token = await credentials.GetAsync(provider, ct);
-            if (string.IsNullOrWhiteSpace(token))
-                throw new InvalidOperationException("OpenAI credential missing from OS keyring.");
-            var model = config["NEXUS_OPENAI_MODEL"] ?? "gpt-4.1-mini";
-            client = factory.CreateClient("cloud");
-            using var message = new HttpRequestMessage(HttpMethod.Post, endpoint.TrimEnd('/') + "/chat/completions");
-            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            message.Content = new StringContent(JsonSerializer.Serialize(new
-            {
-                model, messages = new[] { new { role = "user", content = prompt } }, max_tokens = budget.ReservedOutputTokens
-            }), Encoding.UTF8, "application/json");
-            using var response = await client.SendAsync(message, ct);
-            response.EnsureSuccessStatusCode();
-            using var doc = await ModelResponseGuard.ReadAsync(response.Content, ct);
-            return (doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? string.Empty, provider);
-        }
-        throw new InvalidOperationException("Unknown provider");
-    }
-}

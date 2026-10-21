@@ -43,7 +43,7 @@ public sealed class CloudAdapterRealKeyringTests
             Environment.SetEnvironmentVariable("NEXUS_OPENAI_API_KEY", "forbidden-environment-fallback");
             var handler = new RecordingHandler();
             var router = CreateRouter(handler);
-            await Assert.ThrowsAsync<InvalidOperationException>(() => router.AskAsync("synthetic prompt", CancellationToken.None));
+            await Assert.ThrowsAsync<ProviderException>(() => router.AskAsync("synthetic prompt", CancellationToken.None));
             Assert.Equal(0, handler.Calls);
         }
         finally { Environment.SetEnvironmentVariable("NEXUS_OPENAI_API_KEY", previous); }
@@ -59,7 +59,7 @@ public sealed class CloudAdapterRealKeyringTests
             Environment.SetEnvironmentVariable("NEXUS_OPENAI_API_KEY", "forbidden-environment-fallback");
             var handler = new RecordingHandler();
             var router = CreateRouter(handler);
-            await Assert.ThrowsAsync<InvalidOperationException>(() => router.AskAsync("synthetic prompt", CancellationToken.None));
+            await Assert.ThrowsAsync<ProviderException>(() => router.AskAsync("synthetic prompt", CancellationToken.None));
             Assert.Equal(0, handler.Calls);
         }
         finally { Environment.SetEnvironmentVariable("NEXUS_OPENAI_API_KEY", previous); }
@@ -86,8 +86,10 @@ public sealed class CloudAdapterRealKeyringTests
         var provider = services.BuildServiceProvider();
         var selection = provider.GetRequiredService<ProviderStore>();
         Assert.True(selection.Select("openai-compatible"));
-        return new ModelRouter(provider.GetRequiredService<IHttpClientFactory>(), selection, config,
-            provider.GetRequiredService<IProviderCredentialStore>(), provider.GetRequiredService<InferenceTokenSettings>());
+        var factory = provider.GetRequiredService<IHttpClientFactory>();
+        return new ModelRouter([new OllamaProvider(factory, config), new LlamaCppProvider(factory, config),
+                new OpenAiCompatibleProvider(factory, config, provider.GetRequiredService<IProviderCredentialStore>())],
+            selection, provider.GetRequiredService<InferenceTokenSettings>());
     }
 
     private sealed class FixtureHttpClientFactory(RecordingHandler handler) : IHttpClientFactory

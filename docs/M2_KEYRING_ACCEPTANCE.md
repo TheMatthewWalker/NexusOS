@@ -1,1 +1,0 @@
-M2-1 acceptance requires real isolated Linux Secret Service testing. Simulated secret-tool helpers are not evidence of live keyring integration. No Guardian host activation is permitted.

@@ -27,7 +27,16 @@ timeout 10s gdbus introspect --session --dest org.freedesktop.secrets --object-p
 printf '%s' 'synthetic-preflight-token' | timeout 10s secret-tool store --label='NexusOS CI preflight' app nexusos provider preflight
 test "$(timeout 10s secret-tool lookup app nexusos provider preflight)" = 'synthetic-preflight-token'
 timeout 10s secret-tool clear app nexusos provider preflight
-NEXUS_REAL_SECRET_SERVICE_TEST=1 dotnet test tests/NexusOS.Tests/NexusOS.Tests.csproj --no-restore --filter '(FullyQualifiedName~LinuxRealSecretServiceTests|FullyQualifiedName~CloudAdapterRealKeyringTests)&FullyQualifiedName!~LockedRealKeyringDoesNotSendEvenWithPlaintextEnvironmentKey&FullyQualifiedName!~LockedCollectionCannotSendCloudRequest' --logger 'console;verbosity=normal'
+# Each phase must execute an exact number of tests, so a broken environment
+# gate cannot turn the real-keyring tests into vacuous passes.
+run_phase() {
+  local expected="$1"; shift
+  local log
+  log=$(mktemp)
+  "$@" | tee "$log"
+  grep -Eq "Passed:[[:space:]]+$expected([^0-9]|$)" "$log" || { echo "Expected exactly $expected real-keyring tests to run" >&2; exit 1; }
+}
+run_phase 4 env NEXUS_REAL_SECRET_SERVICE_TEST=1 dotnet test tests/NexusOS.Tests/NexusOS.Tests.csproj --no-restore --filter '(FullyQualifiedName~LinuxRealSecretServiceTests|FullyQualifiedName~CloudAdapterRealKeyringTests)&FullyQualifiedName!~LockedRealKeyringDoesNotSendEvenWithPlaintextEnvironmentKey&FullyQualifiedName!~LockedCollectionCannotSendCloudRequest' --logger 'console;verbosity=normal'
 printf '%s' 'synthetic-locked-ci-token' | timeout 10s secret-tool store --label='NexusOS isolated locked test' app nexusos provider openai-compatible
 test "$(timeout 10s secret-tool lookup app nexusos provider openai-compatible)" = 'synthetic-locked-ci-token'
 collection=$(timeout 10s gdbus call --session --dest org.freedesktop.secrets --object-path /org/freedesktop/secrets --method org.freedesktop.Secret.Service.ReadAlias default | sed -n "s/.*'\(\/org\/freedesktop\/secrets\/collection\/[^']*\)'.*/\1/p")
@@ -35,4 +44,4 @@ test -n "$collection"
 timeout 10s gdbus call --session --dest org.freedesktop.secrets --object-path /org/freedesktop/secrets --method org.freedesktop.Secret.Service.Lock "['$collection']" >/dev/null
 locked=$(timeout 10s gdbus call --session --dest org.freedesktop.secrets --object-path "$collection" --method org.freedesktop.DBus.Properties.Get org.freedesktop.Secret.Collection Locked)
 grep -q 'true' <<< "$locked"
-NEXUS_REAL_SECRET_SERVICE_TEST=1 NEXUS_EXPECT_LOCKED_KEYRING=1 dotnet test tests/NexusOS.Tests/NexusOS.Tests.csproj --no-restore --filter '(FullyQualifiedName~LockedCollectionCannotSendCloudRequest|FullyQualifiedName~LockedRealKeyringDoesNotSendEvenWithPlaintextEnvironmentKey)' --logger 'console;verbosity=normal'
+run_phase 2 env NEXUS_REAL_SECRET_SERVICE_TEST=1 NEXUS_EXPECT_LOCKED_KEYRING=1 dotnet test tests/NexusOS.Tests/NexusOS.Tests.csproj --no-restore --filter '(FullyQualifiedName~LockedCollectionCannotSendCloudRequest|FullyQualifiedName~LockedRealKeyringDoesNotSendEvenWithPlaintextEnvironmentKey)' --logger 'console;verbosity=normal'

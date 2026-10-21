@@ -35,7 +35,8 @@ public sealed class CloudAdapterRealKeyringTests
     public async Task MissingRealKeyringSecretDoesNotSendEvenWithPlaintextEnvironmentKey()
     {
         if (!Enabled || Environment.GetEnvironmentVariable("NEXUS_EXPECT_LOCKED_KEYRING") == "1") return;
-        await RunSecretToolAsync(new[] { "clear", "app", "nexusos", "provider", "openai-compatible" });
+        // An isolated keyring begins without a provider secret; do not require
+        // secret-tool clear to succeed when no matching item exists.
         var previous = Environment.GetEnvironmentVariable("NEXUS_OPENAI_API_KEY");
         try
         {

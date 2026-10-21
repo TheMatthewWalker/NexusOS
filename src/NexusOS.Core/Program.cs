@@ -61,8 +61,7 @@ builder.Services.AddSingleton<InferenceConcurrencyGate>();
 builder.Services.AddSingleton<InferenceTokenSettings>();
 builder.Services.AddHostedService<IdleModelEvictionService>();
 builder.Services.AddSingleton<MemoryTelemetry>();
-builder.Services.AddSingleton<GuardianAuditStore>();
-builder.Services.AddSingleton<GuardianReviewTokens>();
+builder.Services.AddSingleton<GuardianBrokerClient>();
 builder.Services.AddSingleton<LocalApiToken>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -130,31 +129,43 @@ app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
     try { return Results.Ok(GuardianPlanner.Preview(request.Description, request.Changes)); }
     catch (ArgumentException) { return Results.BadRequest(new { error = "Unsupported or invalid change plan." }); }
 });
-app.MapPost("/guardian/review-token", (GuardianPreviewRequest request, GuardianReviewTokens reviews) =>
+// Guardian decisions belong to the root-owned broker (ADR-002). Core validates
+// the typed plan locally (same shared schema) and forwards it; it never
+// approves, records decisions or applies changes.
+app.MapPost("/guardian/submit", async (GuardianPreviewRequest request, GuardianBrokerClient broker, CancellationToken ct) =>
 {
+    GuardianPlan plan;
+    try { plan = GuardianPlanner.Preview(request.Description, request.Changes); }
+    catch (ArgumentException) { return Results.BadRequest(new { error = "Unsupported or invalid change plan." }); }
     try
     {
-        var plan = GuardianPlanner.Preview(request.Description, request.Changes);
-        return Results.Ok(new { planId = plan.Id, reviewToken = reviews.Issue(plan.Id), expiresInSeconds = 120 });
+        var response = await broker.SendAsync("submit", new
+        {
+            description = plan.Description,
+            changes = plan.Changes.Select(x => new { option = x.Option, enabled = x.Enabled })
+        }, ct);
+        return Results.Ok(new { planId = plan.Id, broker = response });
     }
-    catch (ArgumentException) { return Results.BadRequest(new { error = "Invalid change plan." }); }
+    catch (GuardianBrokerException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
 });
-app.MapPost("/guardian/acknowledge", async (GuardianApprovalRequest request, GuardianAuditStore audit, GuardianReviewTokens reviews, CancellationToken ct) =>
+app.MapGet("/guardian/candidates/{candidateId}", async (string candidateId, GuardianBrokerClient broker, CancellationToken ct) =>
 {
-    if (request.Acknowledgement != "I APPROVE")
-        return Results.BadRequest(new { error = "Explicit acknowledgement required." });
+    if (candidateId.Length != 24 || !candidateId.All(Uri.IsHexDigit))
+        return Results.BadRequest(new { error = "Invalid candidate ID." });
+    try { return Results.Ok(await broker.SendAsync("status", new { candidateId }, ct)); }
+    catch (GuardianBrokerException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
+});
+app.MapPost("/guardian/review", async (GuardianReviewRequest request, GuardianBrokerClient broker, CancellationToken ct) =>
+{
+    if (request.CandidateId is not { Length: 24 } || !request.CandidateId.All(Uri.IsHexDigit) ||
+        request.Attestation.ValueKind != System.Text.Json.JsonValueKind.Object)
+        return Results.BadRequest(new { error = "A candidate ID and attestation object are required." });
     try
     {
-        var plan = GuardianPlanner.Preview(request.Description, request.Changes);
-        if (plan.Id != request.ExpectedPlanId)
-            return Results.BadRequest(new { error = "Plan ID does not match the reviewed preview." });
-        if (!reviews.Consume(request.ReviewToken, plan.Id))
-            return Results.BadRequest(new { error = "Review token expired, mismatched or already used." });
-        var entry = await audit.RecordApprovalAsync(plan, ct);
-        return Results.Ok(new { accepted = true, executed = false, auditHash = entry.Hash });
+        return Results.Ok(await broker.SendAsync("review",
+            new { candidateId = request.CandidateId, attestation = request.Attestation }, ct));
     }
-    catch (ArgumentException) { return Results.BadRequest(new { error = "Invalid plan." }); }
-    catch (InvalidDataException) { return Results.Problem("Audit verification failed; no action recorded.", statusCode: 409); }
+    catch (GuardianBrokerException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
 });
 app.MapGet("/inference/telemetry", async (MemoryTelemetry telemetry, CancellationToken ct) =>
     Results.Ok(await telemetry.ReadAsync(ct)));
@@ -183,6 +194,6 @@ app.Run();
 public sealed record ChatRequest(string Prompt);
 public sealed record SelectRequest(string Name);
 public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
-public sealed record GuardianApprovalRequest(string Description, GuardianChange[] Changes, string ExpectedPlanId, string Acknowledgement, string ReviewToken);
+public sealed record GuardianReviewRequest(string CandidateId, System.Text.Json.JsonElement Attestation);
 
 public partial class Program;

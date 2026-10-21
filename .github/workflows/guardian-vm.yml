@@ -26,7 +26,9 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@v3
       - name: Verify candidate and compare Nix module
         run: |
-          python3 scripts/guardian/candidate.py --changes nix/guardian/candidate-changes.json --baseline generation-42 --output /tmp/guardian-candidate.json
+          python3 scripts/guardian/candidate.py --changes nix/guardian/candidate-changes.json \
+            --baseline /nix/store/00000000000000000000000000000000-nixos-system-guardian-ci-26.05 \
+            --host-config 'path:./nix/guardian#nixosConfigurations.guardian-bootloader-lab' --output /tmp/guardian-candidate.json
           python3 scripts/guardian/verify_candidate.py --candidate /tmp/guardian-candidate.json --changes nix/guardian/candidate-changes.json --output /tmp/guardian-verified.nix
           diff -u nix/guardian/generated-candidate.nix /tmp/guardian-verified.nix
       - name: Nix flake evaluation

@@ -2,6 +2,8 @@ import importlib.util
 import pathlib
 import unittest
 
+import support  # noqa: F401  (puts scripts/guardian on sys.path)
+
 spec = importlib.util.spec_from_file_location("guardian", pathlib.Path(__file__).resolve().parents[2] / "scripts" / "guardian" / "validate.py")
 guardian = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guardian)

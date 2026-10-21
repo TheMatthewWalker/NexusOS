@@ -1,72 +1,77 @@
+import json
 import os
-from pathlib import Path
-import sys
+import pwd
 import tempfile
 import unittest
-from unittest.mock import patch
+from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "guardian"))
-from root_approval_issuer import require_root_console, provision_key, issue
-from root_review_broker import GuardianReviewBroker
+from support import BrokerFixture, HOST
+from root_approval_issuer import approve, load_config, require_root_console, resolve_uids
+from root_review_broker import Denied
 
-class TrustedIssuerTests(unittest.TestCase):
+
+def own_user():
+    return pwd.getpwuid(os.geteuid()).pw_name
+
+
+class ApprovalIssuerTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        os.chmod(self.root, 0o700)
-        self.uid = os.geteuid()
-        self.key = provision_key(self.root, owner=self.uid)
-        self.broker = GuardianReviewBroker(self.root, self.key, {self.uid}, owner=self.uid)
-        self.candidate = "a" * 24
-
-    def test_key_is_private_and_cannot_be_overwritten(self):
-        self.assertEqual(32, self.key.stat().st_size)
-        self.assertEqual(0o600, self.key.stat().st_mode & 0o777)
-        with self.assertRaises(FileExistsError):
-            provision_key(self.root, owner=self.uid)
+        self.fx = BrokerFixture()
+        self.addCleanup(self.fx.close)
+        self.candidate = self.fx.submitted()
 
     def test_root_console_required(self):
-        with self.assertRaises(PermissionError):
-            require_root_console(uid=1000, stdin_tty=True, stdout_tty=True)
-        with self.assertRaises(PermissionError):
-            require_root_console(uid=0, stdin_tty=False, stdout_tty=True)
-        with self.assertRaises(PermissionError):
-            require_root_console(uid=0, stdin_tty=True, stdout_tty=False)
+        for uid, stdin, stdout in ((1000, True, True), (0, False, True), (0, True, False)):
+            with self.assertRaises(PermissionError):
+                require_root_console(uid=uid, stdin_tty=stdin, stdout_tty=stdout)
         require_root_console(uid=0, stdin_tty=True, stdout_tty=True)
 
-    def test_explicit_confirmation_and_single_use_nonce(self):
-        with patch("root_approval_issuer.require_root_console"):
-            with self.assertRaises(PermissionError):
-                issue(self.broker, self.candidate, self.uid, "APPROVE", now=100)
-            nonce = issue(self.broker, self.candidate, self.uid,
-                "ISSUE REVIEW " + self.candidate, now=100)
-        self.assertGreaterEqual(len(nonce), 32)
-        self.assertTrue(self.broker.connect().execute(
-            "SELECT count(*) FROM approvals WHERE consumed=0").fetchone()[0] == 1)
-
-    def test_wrong_client_uid_rejected(self):
-        with patch("root_approval_issuer.require_root_console"):
-            with self.assertRaises(PermissionError):
-                issue(self.broker, self.candidate, self.uid + 1,
-                    "ISSUE REVIEW " + self.candidate, now=100)
-
-    def test_invalid_candidate_identity_rejected(self):
-        with patch("root_approval_issuer.require_root_console"):
-            with self.assertRaises(ValueError):
-                issue(self.broker, "../bad", self.uid, "ISSUE REVIEW ../bad", now=100)
-
-    def test_insecure_directory_rejected(self):
-        os.chmod(self.root, 0o755)
+    def test_approval_requires_console_check(self):
+        def deny():
+            raise PermissionError("no console")
         with self.assertRaises(PermissionError):
-            provision_key(self.root, owner=self.uid)
+            approve(self.fx.broker, self.candidate["candidateId"], own_user(), lambda _: "", console_check=deny)
 
-    def test_systemd_unit_disallows_network_and_exec_privilege(self):
-        unit = (Path(__file__).resolve().parents[2] / "nix" / "guardian" /
-                "nexus-guardian-review.service").read_text()
-        for directive in ("NoNewPrivileges=yes", "ProtectSystem=strict",
-                          "RestrictAddressFamilies=AF_UNIX", "IPAddressDeny=any",
-                          "CapabilityBoundingSet=", "RuntimeDirectoryMode=0700",
-                          "StateDirectoryMode=0700", "User=root"):
-            self.assertIn(directive, unit)
-        self.assertNotIn("nixos-rebuild", unit)
+    def test_confirmation_must_name_the_candidate(self):
+        with self.assertRaises(PermissionError):
+            approve(self.fx.broker, self.candidate["candidateId"], own_user(), lambda _: "APPROVE",
+                    console_check=lambda: None)
+        self.assertFalse(self.fx.broker.status(self.fx.uid, {"candidateId": self.candidate["candidateId"]})["approvalPending"])
+
+    def test_confirmed_approval_is_registered_once(self):
+        approval = approve(self.fx.broker, self.candidate["candidateId"], own_user(),
+                           lambda _: "APPROVE " + self.candidate["candidateId"], console_check=lambda: None)
+        self.assertEqual(32, len(approval))
+        status = self.fx.broker.status(self.fx.uid, {"candidateId": self.candidate["candidateId"]})
+        self.assertTrue(status["approvalPending"])
+        self.fx.broker.review(self.fx.uid, {"candidateId": self.candidate["candidateId"],
+                                            "attestation": self.fx.attest(self.candidate)})
+        self.assertFalse(self.fx.broker.status(self.fx.uid, {"candidateId": self.candidate["candidateId"]})["approvalPending"])
+
+    def test_unknown_candidate_cannot_be_approved(self):
+        with self.assertRaises(Denied):
+            approve(self.fx.broker, "f" * 24, own_user(), lambda _: "APPROVE " + "f" * 24, console_check=lambda: None)
+
+    def test_root_is_never_a_broker_client(self):
+        with self.assertRaises(ValueError):
+            resolve_uids(["root"])
+
+    def test_config_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            config = {"stateDir": "/var/lib/nexus-guardian", "socket": "/run/nexus-guardian/review.sock",
+                      "socketGroup": "nexus-guardian", "allowedUsers": ["alice"], "hostConfig": HOST,
+                      "trustedKeys": "/etc/nexus-guardian/trusted-keys"}
+            path.write_text(json.dumps(config))
+            os.chmod(path, 0o644)
+            self.assertEqual(config, load_config(path, owner=os.geteuid()))
+            path.write_text(json.dumps({**config, "allowRoot": True}))
+            with self.assertRaises(ValueError):
+                load_config(path, owner=os.geteuid())
+            os.chmod(path, 0o666)
+            with self.assertRaises(PermissionError):
+                load_config(path, owner=os.geteuid())
+
+
+if __name__ == "__main__":
+    unittest.main()

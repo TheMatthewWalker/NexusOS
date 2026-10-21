@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "maxChanges": 10,
+  "maxDescriptionLength": 500,
+  "options": {
+    "networking.networkmanager.enable": {
+      "type": "bool",
+      "risk": "review",
+      "summary": "Network connection management"
+    },
+    "services.flatpak.enable": {
+      "type": "bool",
+      "risk": "review",
+      "summary": "Flatpak application runtime"
+    },
+    "services.openssh.enable": {
+      "type": "bool",
+      "risk": "elevated",
+      "elevatedWhen": true,
+      "summary": "OpenSSH remote login server",
+      "riskNote": "Enables remote access; review firewall and authentication."
+    },
+    "services.printing.enable": {
+      "type": "bool",
+      "risk": "review",
+      "summary": "CUPS printing service"
+    }
+  }
+}

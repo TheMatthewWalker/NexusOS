@@ -1,0 +1,108 @@
+{
+  "baseline": "/nix/store/0000000000000000000000000000000a-nixos-system-nexus-lab-26.05",
+  "hostConfig": "path:/etc/nixos#nixosConfigurations.nexus-lab",
+  "cases": [
+    {
+      "changes": [
+        {
+          "option": "services.printing.enable",
+          "enabled": true
+        }
+      ],
+      "moduleText": "{\n  services.printing.enable = true;\n}\n",
+      "planId": "6d9ea26d8dfc7430296f6804",
+      "candidateId": "ad71f67d586a07527508cac9",
+      "risk": "review"
+    },
+    {
+      "changes": [
+        {
+          "option": "services.openssh.enable",
+          "enabled": true
+        },
+        {
+          "option": "networking.networkmanager.enable",
+          "enabled": false
+        }
+      ],
+      "moduleText": "{\n  networking.networkmanager.enable = false;\n  services.openssh.enable = true;\n}\n",
+      "planId": "ccf4682eb1c3afc2516f5ca4",
+      "candidateId": "d8198c06b83cca5e34f6a922",
+      "risk": "elevated"
+    },
+    {
+      "changes": [
+        {
+          "option": "services.openssh.enable",
+          "enabled": false
+        }
+      ],
+      "moduleText": "{\n  services.openssh.enable = false;\n}\n",
+      "planId": "00c73e3c0df1c4fbb873ceba",
+      "candidateId": "ba2b49e55112e93f742e51d4",
+      "risk": "review"
+    },
+    {
+      "changes": [
+        {
+          "option": "services.flatpak.enable",
+          "enabled": true
+        },
+        {
+          "option": "services.printing.enable",
+          "enabled": false
+        },
+        {
+          "option": "services.openssh.enable",
+          "enabled": true
+        },
+        {
+          "option": "networking.networkmanager.enable",
+          "enabled": true
+        }
+      ],
+      "moduleText": "{\n  networking.networkmanager.enable = true;\n  services.flatpak.enable = true;\n  services.openssh.enable = true;\n  services.printing.enable = false;\n}\n",
+      "planId": "192a53baed34a9ceabb2359b",
+      "candidateId": "445f03d8999fc01356bb53ba",
+      "risk": "elevated"
+    }
+  ],
+  "rejected": [
+    [
+      {
+        "option": "imports",
+        "enabled": true
+      }
+    ],
+    [
+      {
+        "option": "services.printing.enable",
+        "enabled": "true"
+      }
+    ],
+    [
+      {
+        "option": "services.printing.enable",
+        "enabled": 1
+      }
+    ],
+    [
+      {
+        "option": "services.printing.enable",
+        "enabled": true
+      },
+      {
+        "option": "services.printing.enable",
+        "enabled": false
+      }
+    ],
+    [
+      {
+        "option": "services.printing.enable",
+        "enabled": true,
+        "extra": 1
+      }
+    ],
+    []
+  ]
+}

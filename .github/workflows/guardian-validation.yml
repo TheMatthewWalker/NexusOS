@@ -12,37 +12,30 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Test strict change schema
+      - name: Guardian unit and protocol tests (shared schema, Ed25519, broker)
         run: python3 -m unittest discover -s tests/guardian -v
       - name: Validate generated Nix expression
         run: |
           echo '[{"option":"services.printing.enable","enabled":true}]' > /tmp/guardian-plan.json
           python3 scripts/guardian/validate.py --changes /tmp/guardian-plan.json > /tmp/guardian-generated.nix
           test -s /tmp/guardian-generated.nix
-      - name: Build non-activating deployment candidate
+      - name: Build non-activating candidate bound to a store-path baseline
         run: |
-          python3 scripts/guardian/candidate.py --changes /tmp/guardian-plan.json --baseline generation-42 --output /tmp/guardian-candidate.json
-          python3 - <<'PY'
-          import json
-          with open("/tmp/guardian-candidate.json", encoding="utf-8") as f:
-              candidate = json.load(f)
-          assert candidate["activation"] == "prohibited"
-          assert candidate["rollbackTarget"] == "generation-42"
-          assert candidate["operations"] == ["evaluate", "build", "vm-test"]
-          PY
-      - name: Verify fail-closed review gate
-        run: |
+          python3 scripts/guardian/candidate.py --changes /tmp/guardian-plan.json \
+            --baseline /nix/store/00000000000000000000000000000000-nixos-system-guardian-ci-26.05 \
+            --host-config 'path:./nix/guardian#nixosConfigurations.guardian-bootloader-lab' --output /tmp/guardian-candidate.json
           python3 - <<'PY'
           import json
           candidate = json.load(open("/tmp/guardian-candidate.json", encoding="utf-8"))
-          evidence = {"candidateId":candidate["candidateId"],"baseline":candidate["baseline"],
-                      "checks":{"evaluate":True,"build":False,"vm-test":True}}
-          with open("/tmp/guardian-failed-evidence.json","w",encoding="utf-8") as stream:
-              json.dump(evidence,stream)
+          assert candidate["activation"] == "prohibited"
+          assert candidate["rollbackTarget"] == candidate["baseline"]
+          assert candidate["operations"] == ["evaluate", "build", "vm-test"]
           PY
-          if python3 scripts/guardian/recovery_gate.py --candidate /tmp/guardian-candidate.json --changes /tmp/guardian-plan.json --evidence /tmp/guardian-failed-evidence.json --current-baseline generation-42; then
-            echo "ERROR: failed candidate was eligible for review" >&2
-            exit 1
+      - name: Symbolic baselines are rejected
+        run: |
+          if python3 scripts/guardian/candidate.py --changes /tmp/guardian-plan.json --baseline generation-42 \
+               --host-config 'path:./nix/guardian#nixosConfigurations.guardian-bootloader-lab'; then
+            echo "ERROR: symbolic baseline accepted" >&2; exit 1
           fi
       - name: Confirm no deployment operations outside the staging executor
         run: |

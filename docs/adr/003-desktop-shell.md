@@ -14,8 +14,13 @@ SpaceUI needs a shell that draws its windowless surfaces on Wayland:
 - the orbital system panel.
 
 It must sit below lock and secure surfaces and let clicks through its
-transparent areas. It also has to integrate with the compositor (Hyprland is
-planned) and with Nexus Core.
+transparent areas. It also has to integrate with the compositor and with
+Nexus Core.
+
+**The compositor is Hyprland** (confirmed by the owner, 21 Oct 2026). Hyprland
+manages the windows: placement, tiling, snapping, workspaces and animations.
+The shell is a separate program running on top of it, drawing the surfaces
+above. This ADR chooses only that shell layer.
 
 The two candidates were a native QML shell (Quickshell on Qt 6) and a web
 shell (WebKitGTK in a layer-shell window with a small host). Both were built

@@ -59,7 +59,7 @@ public sealed class CloudAdapterRealKeyringTests
             Environment.SetEnvironmentVariable("NEXUS_OPENAI_API_KEY", "forbidden-environment-fallback");
             var handler = new RecordingHandler();
             var router = CreateRouter(handler);
-            await Assert.ThrowsAnyAsync<Exception>(() => router.AskAsync("synthetic prompt", CancellationToken.None));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => router.AskAsync("synthetic prompt", CancellationToken.None));
             Assert.Equal(0, handler.Calls);
         }
         finally { Environment.SetEnvironmentVariable("NEXUS_OPENAI_API_KEY", previous); }

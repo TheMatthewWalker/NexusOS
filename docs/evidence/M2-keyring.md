@@ -1,4 +1,4 @@
-# M2-1 Linux Secret Service acceptance — PR #54
+# M2-1 Linux Secret Service acceptance (PR #54)
 
 This gate exercises a **real GNOME Secret Service daemon in a disposable Linux CI session**, with synthetic test credentials only. The HTTP response is supplied by an in-process fixture; no live cloud provider, production user keyring, hardware or external network was tested.
 

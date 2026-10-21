@@ -66,8 +66,13 @@ pkgs.testers.runNixOSTest {
         assert code == 403, (code, body)
 
     with subtest("A crashed Core is restarted by systemd despite the stale socket"):
-        machine.succeed("su - alice -c 'kill -9 $(systemctl --user show -p MainPID --value nexus-core)'")
-        machine.wait_until_succeeds("su - alice -c 'nexus health' | grep -q ok", timeout=120)
-        assert machine.succeed("su - alice -c 'systemctl --user show -p NRestarts --value nexus-core'").strip() != "0"
+        user_unit = "systemctl --user -M alice@ show nexus-core --value -p "
+        pid = machine.succeed(user_unit + "MainPID").strip()
+        assert pid not in ("", "0"), pid
+        machine.succeed("kill -9 " + pid)
+        machine.succeed("test -S /home/alice/.local/state/nexusos/nexus.sock")  # Stale socket left behind.
+        machine.wait_until_succeeds(user_unit + "MainPID | grep -vxE '0|" + pid + "'", timeout=180)
+        machine.wait_until_succeeds("su - alice -c 'nexus health' | grep -q ok", timeout=300)
+        assert machine.succeed(user_unit + "NRestarts").strip() != "0"
   '';
 }

@@ -1,0 +1,57 @@
+name: M1 Live Model
+# Exercises Nexus Core against real inference engines and a real downloaded
+# model (no mocks). This is CPU-only and proves the protocol and lifecycle
+# paths, not model quality or GPU behaviour.
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'scripts/acceptance/**'
+      - '.github/workflows/m1-live-model.yml'
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: m1-live-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  live:
+    name: Real Ollama and llama.cpp acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      MODEL: qwen2.5:0.5b
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Publish Core and CLI
+        run: |
+          dotnet publish src/NexusOS.Core/NexusOS.Core.csproj -c Release -o out/core
+          dotnet publish src/NexusOS.Cli/NexusOS.Cli.csproj -c Release -o out/cli
+      - name: Install Ollama and pull a small real model
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:11434/api/version && break; sleep 1; done
+          ollama pull "$MODEL"
+      - name: Install llama.cpp
+        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Locate llama-server and the model GGUF
+        run: |
+          echo "LLAMA_BIN=$(nix build nixpkgs#llama-cpp --no-link --print-out-paths)/bin/llama-server" >> "$GITHUB_ENV"
+          # Ollama stores the weights as a plain GGUF blob, which llama.cpp loads directly.
+          blob="$(ollama show --modelfile "$MODEL" | awk '/^FROM \//{print $2; exit}')"
+          sudo chmod a+r "$blob"
+          echo "GGUF=$blob" >> "$GITHUB_ENV"
+      - name: Run M1 live acceptance
+        run: |
+          echo "## M1 live acceptance" >> "$GITHUB_STEP_SUMMARY"
+          NEXUS_OLLAMA_MODEL="$MODEL" NEXUS_LLAMA_SERVER_BIN="$LLAMA_BIN" NEXUS_LLAMA_MODEL_PATH="$GGUF" \
+            NEXUS_M1_EVIDENCE="$GITHUB_STEP_SUMMARY" bash scripts/acceptance/m1-live.sh

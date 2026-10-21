@@ -49,6 +49,9 @@ test "$(dotnet out/cli/NexusOS.Cli.dll history | tr -d '[:space:]')" = "[]"
 # Invalid selections and malformed chat must be rejected.
 test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(cat "$NEXUS_STATE_DIR/api-token")" -H 'Content-Type: application/json' -d '{"name":"not-a-provider"}' http://127.0.0.1:5077/providers/select)" = 400
 test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(cat "$NEXUS_STATE_DIR/api-token")" -H 'Content-Type: application/json' -d '{"prompt":""}' http://127.0.0.1:5077/chat)" = 400
+# Kestrel's 64 KiB request body limit (not exercised by in-process API tests).
+python3 -c 'import json; print(json.dumps({"prompt": "a" * 70000}))' > "$NEXUS_STATE_DIR/oversized.json"
+test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $(cat "$NEXUS_STATE_DIR/api-token")" -H 'Content-Type: application/json' --data-binary @"$NEXUS_STATE_DIR/oversized.json" http://127.0.0.1:5077/chat)" = 413
 echo "Nexus Core end-to-end smoke tests passed."
 
 # Guardian must generate a safe preview and reject arbitrary configuration.

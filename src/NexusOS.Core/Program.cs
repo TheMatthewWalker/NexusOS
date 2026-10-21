@@ -28,15 +28,14 @@ else
 {
     builder.WebHost.UseUrls("http://127.0.0.1:5077");
 }
+// Trace-level HttpClient logging writes request headers; redact every value so
+// provider credentials can never reach logs, whatever the configured level.
 builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSeconds(180))
+    .RedactLoggedHeaders(_ => true)
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false });
 builder.Services.AddHttpClient("cloud", client => client.Timeout = TimeSpan.FromSeconds(180))
-    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-    {
-        AllowAutoRedirect = false,
-        UseProxy = false,
-        ConnectCallback = CloudAddressPolicy.ConnectAsync
-    });
+    .RedactLoggedHeaders(_ => true)
+    .ConfigurePrimaryHttpMessageHandler(() => CloudHttp.CreateHandler(CloudConnector.Default));
 builder.Services.AddSingleton<NexusStatePaths>();
 builder.Services.AddSingleton<SqliteStateDatabase>();
 builder.Services.AddSingleton<ProviderStore>(sp => new ProviderStore(sp.GetRequiredService<SqliteStateDatabase>()));
@@ -178,3 +177,5 @@ public sealed record ChatRequest(string Prompt);
 public sealed record SelectRequest(string Name);
 public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
 public sealed record GuardianApprovalRequest(string Description, GuardianChange[] Changes, string ExpectedPlanId, string Acknowledgement, string ReviewToken);
+
+public partial class Program;

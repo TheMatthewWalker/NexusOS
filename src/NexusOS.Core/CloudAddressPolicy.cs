@@ -35,13 +35,16 @@ public static class CloudAddressPolicy
         return address;
     }
 
-    public static IPAddress SelectValidatedAddress(IReadOnlyList<IPAddress> addresses)
+    // Every answer must be safe: a mixed public/private answer fails closed
+    // rather than "choosing" the public address.
+    public static IReadOnlyList<IPAddress> ValidateAll(IReadOnlyList<IPAddress> addresses)
     {
         if (addresses.Count == 0)
             throw new InvalidOperationException("Cloud endpoint has no DNS addresses.");
-        foreach (var address in addresses) Validate(address);
-        return addresses[0];
+        return addresses.Select(Validate).ToArray();
     }
+
+    public static IPAddress SelectValidatedAddress(IReadOnlyList<IPAddress> addresses) => ValidateAll(addresses)[0];
 
     public static void RequireDnsHostname(string host)
     {
@@ -49,19 +52,60 @@ public static class CloudAddressPolicy
             throw new InvalidOperationException("Cloud endpoint must use DNS.");
     }
 
-    public static async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+    public static ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken) =>
+        CloudConnector.Default.ConnectAsync(context.DnsEndPoint.Host, context.DnsEndPoint.Port, cancellationToken);
+}
+
+// Resolves once per connection, validates every answer, then connects only to
+// those validated addresses in order. Trying each address keeps cloud access
+// working on hosts with broken IPv6 without ever re-resolving between
+// validation and connect, so DNS rebinding cannot swap in another address.
+public sealed class CloudConnector(
+    Func<string, CancellationToken, Task<IPAddress[]>> resolve,
+    Func<IPEndPoint, CancellationToken, ValueTask<Stream>> connect,
+    TimeSpan attemptTimeout)
+{
+    public static readonly CloudConnector Default = new(Dns.GetHostAddressesAsync, ConnectSocketAsync, TimeSpan.FromSeconds(10));
+
+    public async ValueTask<Stream> ConnectAsync(string host, int port, CancellationToken ct)
     {
-        var host = context.DnsEndPoint.Host;
-        RequireDnsHostname(host);
-        var addresses = await Dns.GetHostAddressesAsync(host, cancellationToken);
-        // Fail closed for mixed answers. The connected address is exactly the validated one.
-        var selected = SelectValidatedAddress(addresses);
-        var socket = new Socket(selected.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+        CloudAddressPolicy.RequireDnsHostname(host);
+        var addresses = CloudAddressPolicy.ValidateAll(await resolve(host, ct));
+        Exception? last = null;
+        foreach (var address in addresses)
+        {
+            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            attempt.CancelAfter(attemptTimeout);
+            try { return await connect(new IPEndPoint(address, port), attempt.Token); }
+            catch (Exception ex) when (ex is SocketException or IOException ||
+                                       (ex is OperationCanceledException && !ct.IsCancellationRequested))
+            {
+                last = ex;
+            }
+        }
+        throw new HttpRequestException("Could not connect to any validated cloud endpoint address.", last);
+    }
+
+    private static async ValueTask<Stream> ConnectSocketAsync(IPEndPoint endpoint, CancellationToken ct)
+    {
+        var socket = new Socket(endpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
         try
         {
-            await socket.ConnectAsync(new IPEndPoint(selected, context.DnsEndPoint.Port), cancellationToken);
+            await socket.ConnectAsync(endpoint, ct);
             return new NetworkStream(socket, ownsSocket: true);
         }
         catch { socket.Dispose(); throw; }
     }
+}
+
+public static class CloudHttp
+{
+    // No redirects (each target would bypass host allowlisting) and no proxy
+    // (a proxy would resolve and connect on our behalf, bypassing validation).
+    public static SocketsHttpHandler CreateHandler(CloudConnector connector) => new()
+    {
+        AllowAutoRedirect = false,
+        UseProxy = false,
+        ConnectCallback = (context, ct) => connector.ConnectAsync(context.DnsEndPoint.Host, context.DnsEndPoint.Port, ct)
+    };
 }

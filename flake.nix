@@ -13,6 +13,23 @@
         default = self.packages.${system}.nexus-core;
       };
 
+      # Headless Wayland harness for the SpaceUI shell spike (docs/design/spaceui-spike.md):
+      # a wlroots compositor, screenshots, both candidate shell stacks and Mesa's
+      # llvmpipe so GPU shaders run without a GPU.
+      devShells.${system}.spaceui-spike = pkgs.mkShell {
+        packages = with pkgs; [
+          sway grim jq foot glslang quickshell qt6.qtshadertools mesa
+          (python3.withPackages (ps: [ ps.pygobject3 ps.pycairo ps.pillow ps.pywayland ]))
+          wlr-protocols libxkbcommon
+          gtk4 gtk4-layer-shell webkitgtk_6_0 gobject-introspection glib-networking
+          nodejs_22 esbuild
+        ];
+        SPIKE_MESA = "${pkgs.mesa}";
+        SPIKE_WAYLAND_XML = "${pkgs.wayland-scanner.out}/share/wayland/wayland.xml";
+        SPIKE_WLR_PROTOCOLS = "${pkgs.wlr-protocols}/share/wlr-protocols";
+        SPIKE_LAYER_SHELL = "${pkgs.gtk4-layer-shell}/lib/libgtk4-layer-shell.so";
+      };
+
       nixosModules = {
         guardian = ./nix/modules/guardian.nix;
         core = ./nix/modules/core.nix;

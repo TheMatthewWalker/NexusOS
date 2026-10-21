@@ -1,0 +1,35 @@
+:root { --surface-w: 760px; --surface-h: 800px; }
+html, body { margin: 0; width: var(--surface-w); height: var(--surface-h); background: transparent; overflow: hidden;
+  font-family: Inter, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+[hidden] { display: none !important; }
+.core { position: absolute; border-radius: 50%; cursor: pointer; outline: none; }
+.core canvas, .core img { width: 100%; height: 100%; display: block; }
+.core:focus-visible { box-shadow: 0 0 0 3px var(--focus); }
+#launcher-zone { position: absolute; }
+#planets .planet { position: absolute; border-radius: 50%; background: #fff; border: 1px solid var(--window-border);
+  display: grid; place-items: center; transition: left .26s cubic-bezier(.33,1,.68,1), top .26s cubic-bezier(.33,1,.68,1), width .26s, height .26s; }
+#planets .planet img { width: 55%; height: 55%; }
+#planets .planet span { position: absolute; top: calc(100% + 4px); font-size: 13px; color: var(--shell-ink); white-space: nowrap; }
+#launcher-zone:not(.open) .planet img, #launcher-zone:not(.open) .planet span { display: none; }
+main { position: absolute; inset: 0; }
+#orbit-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#core-title { position: absolute; width: 300px; text-align: center; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+#core-title strong { font-size: 20px; font-weight: 550; letter-spacing: -0.65px; color: var(--shell-ink); }
+#core-title span { font-size: 13px; color: var(--content-secondary-ink); }
+.app { position: absolute; width: 0; height: 0; will-change: transform, opacity; }
+.app button { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; border: 1.5px solid #fff; background: #F7F8FE;
+  display: grid; place-items: center; cursor: pointer; padding: 0; }
+.app button:hover:not(:disabled), .app button:focus-visible { background: #fff; border-color: var(--focus); outline: none; }
+.app button img { width: 30px; height: 30px; }
+.app span { position: absolute; transform: translateX(-50%); font-size: 13px; font-weight: 500; color: var(--shell-ink); white-space: nowrap; }
+#chat { position: absolute; box-sizing: border-box; display: flex; align-items: center; gap: 14px; padding: 0 10px 0 22px;
+  background: #fff; border: 1px solid var(--border); }
+#chat:focus-within { border-color: var(--focus); }
+#prompt { flex: 1; border: 0; outline: none; font: inherit; font-size: 14px; color: var(--content-ink); background: transparent; }
+#prompt::placeholder { color: var(--content-secondary-ink); }
+#send { border: 0; border-radius: 50%; background: var(--primary); display: grid; place-items: center; cursor: pointer; }
+#reply { position: absolute; box-sizing: border-box; padding: 0 12px; }
+#reply p { margin: 0 0 8px; font-size: 14px; line-height: 1.5; color: var(--content-ink); }
+#reply p.error { color: var(--destructive); }
+#chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#chips span { font-size: 13px; color: var(--content-secondary-ink); background: var(--muted-surface); border-radius: 14px; padding: 5px 10px; }

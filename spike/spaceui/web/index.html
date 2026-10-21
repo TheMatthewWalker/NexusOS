@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nexus SpaceUI (web spike)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Collapsed: the bottom launcher, open apps as tiny planets. -->
+  <div id="launcher-zone">
+    <div id="planets"></div>
+    <div id="mini" class="core" role="button" tabindex="0" aria-label="Open Nexus"></div>
+  </div>
+
+  <!-- Expanded: full core, orbit and chat. -->
+  <main id="stage" hidden>
+    <svg id="orbit-lines" aria-hidden="true"></svg>
+    <div id="big" class="core" role="button" tabindex="0" aria-label="Show or hide all apps around Nexus"></div>
+    <div id="core-title"><strong>Nexus AI</strong><span id="core-status" aria-live="polite">Ready when you are</span></div>
+    <div id="apps"></div>
+    <form id="chat">
+      <img src="../shared/icons/spark.svg" alt="" width="22" height="22">
+      <input id="prompt" autocomplete="off" placeholder="Ask Nexus AI or find anything" aria-label="Ask Nexus AI">
+      <button id="send" type="submit" aria-label="Send"><img src="../shared/icons/send.svg" alt="" width="20" height="20"></button>
+    </form>
+    <section id="reply" hidden aria-live="polite">
+      <p id="reply-text"></p>
+      <div id="chips"></div>
+    </section>
+  </main>
+  <script type="module" src="app.mjs"></script>
+</body>
+</html>

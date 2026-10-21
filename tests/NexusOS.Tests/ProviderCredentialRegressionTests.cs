@@ -20,4 +20,13 @@ public sealed class ProviderCredentialRegressionTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => store.GetAsync("openai-compatible", cancelled.Token));
     }
+    [Fact]
+    public async Task MissingExecutableFailsClosed()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var store = new LinuxSecretToolStore("/nexusos-no-such-secret-tool", TimeSpan.FromSeconds(2));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.GetAsync("openai-compatible", CancellationToken.None));
+    }
+
 }

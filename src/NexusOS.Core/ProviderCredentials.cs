@@ -13,6 +13,7 @@ public sealed class LinuxSecretToolStore : IProviderCredentialStore
         if (provider != "openai-compatible") throw new ArgumentException("Unsupported provider.", nameof(provider));
         if (!OperatingSystem.IsLinux())
             throw new InvalidOperationException("OS credential lookup requires Linux Secret Service.");
+        ct.ThrowIfCancellationRequested();
         var start = new ProcessStartInfo
         {
             FileName = "secret-tool",

@@ -62,6 +62,7 @@ builder.Services.AddSingleton<InferenceTokenSettings>();
 builder.Services.AddHostedService<IdleModelEvictionService>();
 builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianBrokerClient>();
+builder.Services.AddSingleton<GuardianProposer>();
 builder.Services.AddSingleton<LocalApiToken>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -129,6 +130,26 @@ app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
     try { return Results.Ok(GuardianPlanner.Preview(request.Description, request.Changes)); }
     catch (ArgumentException) { return Results.BadRequest(new { error = "Unsupported or invalid change plan." }); }
 });
+// The model may only *propose* a typed plan; the response is a preview the
+// user must explicitly submit. Invalid model output is rejected outright.
+app.MapPost("/guardian/propose", async (GuardianProposeRequest request, GuardianProposer proposer,
+    InferenceConcurrencyGate concurrency, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Request) || request.Request.Length > GuardianProposer.MaxRequestLength)
+        return Results.BadRequest(new { error = $"Request must be 1-{GuardianProposer.MaxRequestLength} characters." });
+    using var slot = await concurrency.TryEnterAsync(ct);
+    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    try
+    {
+        var proposal = await proposer.ProposeAsync(request.Request, ct);
+        return proposal.Plan is null
+            ? Results.Ok(new { proposed = false, refusal = proposal.Refusal, provider = proposal.Provider })
+            : Results.Ok(new { proposed = true, plan = proposal.Plan, provider = proposal.Provider,
+                               submitted = false, next = "Review the plan, then POST it to /guardian/submit." });
+    }
+    catch (ProposalRejectedException ex) { return Results.Problem(ex.Message, statusCode: 422); }
+    catch (ProviderException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
+}).RequireRateLimiting("ai");
 // Guardian decisions belong to the root-owned broker (ADR-002). Core validates
 // the typed plan locally (same shared schema) and forwards it; it never
 // approves, records decisions or applies changes.
@@ -194,6 +215,7 @@ app.Run();
 public sealed record ChatRequest(string Prompt);
 public sealed record SelectRequest(string Name);
 public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
+public sealed record GuardianProposeRequest(string Request);
 public sealed record GuardianReviewRequest(string CandidateId, System.Text.Json.JsonElement Attestation);
 
 public partial class Program;

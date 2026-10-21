@@ -106,6 +106,19 @@ pass "Conversation recorded in SQLite history"
 expect_error "Prompt must be between" ask " " > /dev/null
 pass "Blank prompt rejected"
 
+# A real model either yields an exact typed plan (preview only) or a clean 422;
+# model quality varies, but a server error or an automatic submission never happens.
+code="$(curl -s -o "$LOGS/propose.json" -w '%{http_code}' --unix-socket "$STATE/nexus.sock" \
+  -H "Authorization: Bearer $(cat "$STATE/api-token")" -H 'Content-Type: application/json' \
+  -d '{"request":"Please enable printing support."}' http://nexus/guardian/propose)"
+case "$code" in
+  200) grep -q '"submitted":false' "$LOGS/propose.json" || grep -q '"proposed":false' "$LOGS/propose.json" \
+         || fail "proposal response shape: $(cat "$LOGS/propose.json")" ;;
+  422) ;;
+  *) fail "guardian propose returned HTTP $code" ;;
+esac
+pass "Real model Guardian proposal is a typed preview or a clean rejection (HTTP $code), never submitted"
+
 "${CLI[@]}" use openai-compatible > /dev/null
 expect_error "transmission is disabled" ask "hello" > /dev/null
 pass "Cloud provider refuses to send prompts without explicit egress consent"

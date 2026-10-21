@@ -14,8 +14,7 @@ if (apiMode == ApiMode.Unix)
 {
     var state = new NexusStatePaths(builder.Configuration);
     var socketPath = state.PathFor("nexus.sock");
-    if (File.Exists(socketPath))
-        throw new InvalidOperationException("Nexus socket already exists; remove a stale socket only after stopping Core.");
+    UnixSocketGuard.PrepareListenPath(socketPath);
     builder.WebHost.ConfigureKestrel(options => options.ListenUnixSocket(socketPath, listen =>
     {
         listen.Use(next => connection =>

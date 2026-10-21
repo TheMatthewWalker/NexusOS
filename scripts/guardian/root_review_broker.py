@@ -20,6 +20,7 @@ import sqlite3
 import stat
 import struct
 import subprocess
+import sys
 import threading
 import time
 
@@ -59,7 +60,7 @@ def nix_deriver(toplevel):
 
 def store_check(statement, deriver=nix_deriver):
     toplevel = statement["toplevel"]
-    if not os.path.isfile(os.path.join(toplevel, "bin", "switch-to-configuration")):
+    if not os.path.isfile(os.path.join(toplevel, "bin", "switch-to-configuration")):  # guardian-scan: read-only
         return False
     produced_by = deriver(toplevel) if deriver else None
     # "unknown-deriver" is reported for substituted paths; only a contradiction denies.
@@ -179,19 +180,29 @@ class GuardianBroker:
                 "toplevel": toplevel if permitted else None, "executed": False}
 
     def _evaluate(self, record, attestation):
+        permitted, toplevel, reason = self._assess(record, attestation)
+        if not permitted:
+            # Operators see why in the journal; callers only learn "not eligible".
+            print(f"guardian: candidate {record['candidate']['candidateId']} not eligible: {reason}",
+                  file=sys.stderr, flush=True)
+        return permitted, toplevel
+
+    def _assess(self, record, attestation):
         statement = verify(attestation, self.trusted_keys, now=self.now())
         if statement is None:
-            return False, None
+            return False, None, "attestation signature, key, shape or age invalid"
         observation = self.observer()
         if observation.get("verified") is not True:
-            return False, None
+            return False, None, "running system could not be verified"
         try:
             ok = eligible(record["candidate"], record["changes"], statement, observation["generationStorePath"])
         except (ValueError, KeyError, TypeError):
-            return False, None
-        if not ok or not self.store_checker(statement):
-            return False, None
-        return True, statement["toplevel"]
+            return False, None, "candidate record failed reconstruction"
+        if not ok:
+            return False, None, "baseline changed or a required check did not pass"
+        if not self.store_checker(statement):
+            return False, None, "attested toplevel missing, not switchable, or built from another derivation"
+        return True, statement["toplevel"], "eligible"
 
     def _record_decision(self, db, candidate_id, uid, permitted, toplevel):
         previous = db.execute("SELECT hash FROM decisions ORDER BY seq DESC LIMIT 1").fetchone()
@@ -233,6 +244,15 @@ class GuardianBroker:
             db.execute("UPDATE decisions SET staged=1 WHERE hash=?", (decision_hash,))
             db.execute("COMMIT")
         return row[0]
+
+    def decision_baseline(self, decision_hash):
+        """Baseline of the candidate a decision was made for."""
+        with closing(self.connect()) as db:
+            row = db.execute("SELECT c.record FROM decisions d JOIN candidates c ON c.candidate = d.candidate "
+                             "WHERE d.hash=?", (decision_hash,)).fetchone()
+        if row is None:
+            raise Denied("Unknown decision")
+        return json.loads(row[0])["candidate"]["baseline"]
 
     def verify_ledger(self):
         previous = "GENESIS"

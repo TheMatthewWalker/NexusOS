@@ -32,6 +32,10 @@ public sealed class GuardianBrokerClient(IConfiguration config)
         {
             await socket.ConnectAsync(new UnixDomainSocketEndPoint(SocketPath), deadline.Token);
         }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AccessDenied)
+        {
+            throw new GuardianBrokerException("This user is not permitted to use the Guardian broker.", 403);
+        }
         catch (SocketException)
         {
             throw new GuardianBrokerException("The Guardian broker is not available on this system.", 503);

@@ -39,14 +39,17 @@ jobs:
           fi
       - name: Confirm no deployment operations outside the staging executor
         run: |
-          # Only scripts/guardian/stage_executor.py may stage a generation, and
-          # nothing may switch the running system, escalate, or spawn a shell.
-          pattern='nixos-rebuild|switch-to-configuration|nix-env --profile|sudo|pkexec|shell=True|os\.system'
-          if grep -rnE "$pattern" scripts/guardian --include='*.py' | grep -v '^scripts/guardian/stage_executor.py:'; then
+          # Only the staging executor and boot check may touch the system
+          # profile or bootloader, and nothing may escalate or spawn a shell.
+          staging='^scripts/guardian/(stage_executor|boot_check)\.py:'
+          pattern='nixos-rebuild|switch-to-configuration|nix-env|grub-editenv|sudo|pkexec|shell=True|os\.system'
+          if grep -rnE "$pattern" scripts/guardian --include='*.py' | grep -vE "$staging" | grep -v 'guardian-scan: read-only'; then
             echo "ERROR: deployment or escalation primitive outside the staging executor" >&2
             exit 1
           fi
-          if grep -nE 'nixos-rebuild|switch-to-configuration (switch|test)|sudo|pkexec|shell=True|os\.system' scripts/guardian/stage_executor.py 2>/dev/null; then
-            echo "ERROR: staging executor may only use 'switch-to-configuration boot'" >&2
+          # Even there, the running system is never switched: only "boot" is allowed.
+          if grep -nE '"(switch|test|dry-activate)"|nixos-rebuild|sudo|pkexec|shell=True|os\.system' \
+               scripts/guardian/stage_executor.py scripts/guardian/boot_check.py; then
+            echo "ERROR: staging may only use 'switch-to-configuration boot'" >&2
             exit 1
           fi

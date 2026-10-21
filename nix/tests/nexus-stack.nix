@@ -41,8 +41,11 @@ pkgs.testers.runNixOSTest {
     machine.start()
     machine.succeed("nix-env --profile /nix/var/nix/profiles/system --set $(readlink -f /run/current-system)")
     machine.wait_for_unit("nexus-guardian.service")
+    machine.wait_for_unit("multi-user.target")
     for user in ("alice", "mallory"):
-        machine.wait_for_unit("nexus-core.service", user)
+        # wait_for_unit fails outright if the lingering user manager is not up
+        # yet (fast KVM boots); retry until the user unit itself is active.
+        machine.wait_until_succeeds(f"systemctl --user -M {user}@ is-active nexus-core.service", timeout=300)
         machine.wait_for_file(f"/home/{user}/.local/state/nexusos/nexus.sock")
 
     with subtest("Each user's Core is private and answers its own CLI"):

@@ -162,6 +162,8 @@ EOF
 
 # --- Install ----------------------------------------------------------------
 say "Installing NexusOS (this takes a while)"
+# Lock first: locking inside nixos-install would change the flake mid-build.
+nix --extra-experimental-features "nix-command flakes" flake lock "path:/mnt/etc/nixos"
 nixos-install --root /mnt --flake "path:/mnt/etc/nixos#nexus" --no-root-passwd --no-channel-copy
 
 say "Setting your password"

@@ -15,6 +15,14 @@ let
     env = NEXUS_CLI,${config.services.nexus-core.package}/bin/nexus
     ${lib.optionalString cfg.reducedMotion "env = NEXUS_REDUCED_MOTION,1"}
     env = NEXUS_CORE_STEPS,${toString cfg.coreDetail}
+    # Game mode: the shell unloads the model and runs
+    #   hyprctl --batch "keyword decoration:blur:enabled false ; keyword animations:enabled false"
+    # while a fullscreen game is open, then restores blur (NEXUS_BLUR) and
+    # animations (off only with reduced motion).
+    env = NEXUS_GAME_MODE,${if cfg.gameMode.enable then "1" else "0"}
+    ${lib.optionalString cfg.gameMode.anyFullscreen "env = NEXUS_GAME_ANY_FULLSCREEN,1"}
+    env = NEXUS_HYPRCTL,${config.programs.hyprland.package}/bin/hyprctl
+    env = NEXUS_BLUR,${if cfg.blur then "1" else "0"}
     # The shell logs to the journal: journalctl --user -t nexus-shell
     exec-once = ${pkgs.systemd}/bin/systemd-cat -t nexus-shell ${cfg.shellPackage}/bin/nexus-shell
 
@@ -133,6 +141,26 @@ in
       type = lib.types.bool;
       default = true;
       description = "Hyprland background blur. Turn off on machines without a capable GPU.";
+    };
+    gameMode.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Game mode: while a fullscreen game is open (Steam and Proton titles,
+        gamescope, Wine, common launchers and emulators), unload the local
+        model to free its GPU memory, stop the launcher core and turn off
+        Hyprland blur and animations. Everything comes back when the game
+        closes; the model reloads on the next question.
+      '';
+    };
+    gameMode.anyFullscreen = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Treat any fullscreen window as a game, except video players and
+        browsers. Can also be switched at run time with
+        `nexus-shell-ipc call nexus fullscreenIsGame true`.
+      '';
     };
     keyboardLayout = lib.mkOption {
       type = lib.types.str;

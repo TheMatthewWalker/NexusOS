@@ -170,6 +170,7 @@ async IAsyncEnumerable<JsonElement> ChatEvents(string prompt)
 //   {"id":1,"op":"chat","prompt":"..."}     -> delta events, then done or error
 //   {"id":2,"op":"suggest","prompt":"...","model":false}
 //   {"id":3,"op":"apps"} | {"id":4,"op":"health"}
+//   {"id":5,"op":"unload"}                  -> {"type":"unloaded","data":{"vramFreedBytes":N|null}}
 async Task<int> Bridge()
 {
     var output = Console.Out;
@@ -206,6 +207,9 @@ async Task<int> Bridge()
                 case "health":
                     Emit(id, await Call(HttpMethod.Get, "/health", null, "health"));
                     break;
+                case "unload":
+                    Emit(id, await Unload());
+                    break;
                 default:
                     Emit(id, new { type = "error", message = $"Unknown bridge op '{op}'." });
                     break;
@@ -215,6 +219,38 @@ async Task<int> Bridge()
         catch (TaskCanceledException) { Emit(id, new { type = "error", message = "Nexus Core did not answer in time." }); }
     }
     return 0;
+}
+
+// Frees the local model's memory and reports how much GPU memory came back,
+// measured by Core's telemetry. vramFreedBytes is null when the GPU cannot be
+// read or nothing measurable was freed; it is never estimated.
+async Task<object> Unload()
+{
+    var before = await FreeVram();
+    using (var response = await http.PostAsync("/inference/unload", null))
+    {
+        if (!response.IsSuccessStatusCode)
+            return new { type = "error", message = ErrorMessage(await response.Content.ReadAsStringAsync(), response) };
+    }
+    long? freed = null;
+    // The backend can take a moment to hand memory back to the driver.
+    for (var attempt = 0; before is not null && attempt < 4; attempt++)
+    {
+        if (attempt > 0) await Task.Delay(500);
+        if (await FreeVram() is { } after && after > before) { freed = after - before; break; }
+    }
+    return new { type = "unloaded", data = new { vramFreedBytes = freed } };
+}
+
+async Task<long?> FreeVram()
+{
+    try
+    {
+        var telemetry = await http.GetFromJsonAsync<JsonElement>("/inference/telemetry");
+        return telemetry.TryGetProperty("vramFreeBytes", out var free) && free.ValueKind == JsonValueKind.Number
+            ? free.GetInt64() : null;
+    }
+    catch (Exception ex) when (ex is HttpRequestException or JsonException) { return null; }
 }
 
 async Task<object> Call(HttpMethod method, string path, object? body, string type)

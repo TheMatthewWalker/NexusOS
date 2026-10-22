@@ -69,7 +69,7 @@ These cannot be completed from CI or a VM. Each has a written procedure.
 - [x] Managed llama.cpp lifecycle (start on demand, health-gated, stopped on unload or Core shutdown).
 - [x] Benchmark harness measuring cold start, latency and memory reclaim through Core; CPU profile in CI.
 - [ ] 8 GB and 24 GB GPU benchmark profiles. **Hardware gate.**
-- [ ] A game launch reclaims VRAM without killing the desktop. **Hardware gate**, and it needs foreground-app detection (M6).
+- [ ] A game launch reclaims VRAM without killing the desktop. **Hardware gate.** Game mode is built: the shell detects a fullscreen game, unloads the model through the bridge, reports the VRAM freed, and turns off Hyprland blur and animations until the game closes ([shell/README.md](../shell/README.md#game-mode)). Still needs the check on a real GPU machine ([procedure](evidence/M5.md)).
 - [x] The GUI allows normal non-AI system operation when inference is offline. With Core stopped, the shell says so and apps still open (`hyprland-desktop` VM test, [M6](evidence/M6.md)).
 - [ ] The installer produces repeatable images with a documented recovery path (M7).
 

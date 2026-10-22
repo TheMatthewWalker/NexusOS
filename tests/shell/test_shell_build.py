@@ -37,7 +37,7 @@ class ShellBuild(unittest.TestCase):
 
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
-                     "SystemPanel.qml", "lib/orbit.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
+                     "SystemPanel.qml", "lib/orbit.mjs", "lib/game.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
 
     def test_every_referenced_icon_exists(self):
@@ -96,11 +96,46 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("paused: root.launcherPaused", shell)
         self.assertIn("IdleMonitor", shell)
 
+    def test_game_mode_frees_the_gpu_and_restores_the_desktop(self):
+        """Feature 11: a fullscreen game unloads the model and drops blur and animations until it closes."""
+        shell = (self.out / "shell.qml").read_text()
+        bridge = (self.out / "CoreBridge.qml").read_text()
+        cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn('import "lib/game.mjs" as G', shell)
+        self.assertIn("G.activeGame(", shell)
+        self.assertIn("t.fullscreen", shell)
+        self.assertIn("unloadId = bridge.online ? bridge.unload() : -1", shell)
+        self.assertIn('"keyword decoration:blur:enabled false ; keyword animations:enabled false"', shell)
+        self.assertIn('"keyword decoration:blur:enabled " + blurConfigured', shell)
+        self.assertIn('" ; keyword animations:enabled " + !reduced', shell)
+        self.assertIn("G.toastText(true, freed)", shell)
+        self.assertIn("G.toastText(false, null)", shell)
+        self.assertIn("gameMode: root.gameMode", shell)                       # IPC state()
+        self.assertIn("idle.isIdle || fullscreenActive || gameMode", shell)  # launcher core pauses
+        self.assertNotIn("WlrLayer.Overlay", shell)                          # the toast is a compositor notification
+        # The model reloads lazily: game mode never asks Core to load it.
+        self.assertNotIn('send("load', bridge)
+        self.assertIn('function unload() { return send("unload") }', bridge)
+        self.assertIn('ev.type === "unloaded"', bridge)
+        self.assertIn('case "unload":', cli)
+        self.assertIn('"/inference/telemetry"', cli)
+        self.assertIn('NEXUS_GAME_MODE,${if cfg.gameMode.enable then "1" else "0"}', desktop)
+        self.assertIn("NEXUS_HYPRCTL,${config.programs.hyprland.package}/bin/hyprctl", desktop)
+        self.assertIn('NEXUS_BLUR,${if cfg.blur then "1" else "0"}', desktop)
+        self.assertRegex(desktop, r"gameMode\.enable = lib\.mkOption \{\s*type = lib\.types\.bool;\s*default = true;")
+
     def test_orbit_maths(self):
+        self.run_node_test("orbit.test.mjs")
+
+    def test_game_detection(self):
+        self.run_node_test("game.test.mjs")
+
+    def run_node_test(self, name):
         if not shutil.which("node"):
             self.skipTest("node not installed")
-        test = self.out / "lib/orbit.test.mjs"
-        shutil.copy(ROOT / "tests/shell/orbit.test.mjs", test)
+        test = self.out / "lib" / name
+        shutil.copy(ROOT / "tests/shell" / name, test)
         run = subprocess.run(["node", "--test", str(test)], capture_output=True, text=True)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 

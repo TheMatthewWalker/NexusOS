@@ -14,6 +14,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
+import "lib/game.mjs" as G
 import "lib/orbit.mjs" as O
 import "lib/tokens.mjs" as T
 
@@ -41,7 +42,20 @@ ShellRoot {
     property bool simulateBusy: false
     readonly property bool modelBusy: simulateBusy || mode === "thinking" || mode === "responding"
     readonly property bool fullscreenActive: ToplevelManager.activeToplevel ? ToplevelManager.activeToplevel.fullscreen : false
-    readonly property bool launcherPaused: idle.isIdle || fullscreenActive
+    readonly property bool launcherPaused: idle.isIdle || fullscreenActive || gameMode
+    // Game mode (docs/design/features.md, 11): while a fullscreen game is open,
+    // the model is unloaded, the launcher core stops and Hyprland drops blur and
+    // animations. The model reloads on the next question, never before.
+    readonly property bool gameModeEnabled: Quickshell.env("NEXUS_GAME_MODE") !== "0"
+    property bool fullscreenIsGame: Quickshell.env("NEXUS_GAME_ANY_FULLSCREEN") === "1"
+    readonly property string gameApp: !gameModeEnabled ? "" : G.activeGame(
+        ToplevelManager.toplevels.values.map(t => ({ appId: t.appId, fullscreen: t.fullscreen })), fullscreenIsGame)
+    readonly property bool gameMode: gameApp !== ""
+    property int unloadId: -1
+    readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
+    readonly property bool blurConfigured: Quickshell.env("NEXUS_BLUR") !== "0"
+    onGameModeChanged: gameMode ? enterGameMode() : exitGameMode()
+    Component.onCompleted: if (gameMode) enterGameMode()
     // Provisional dark theme (approved 22 Oct): deep space, light ink, glass surfaces.
     readonly property var dark: ({
         ink: "#E3EAFF", inkSecondary: "#9AA9C9", glass: Qt.rgba(0.04, 0.07, 0.15, 0.80),
@@ -67,6 +81,20 @@ ShellRoot {
     function openApp(id) {
         if (apps.open(id)) collapse();
     }
+    function enterGameMode() {
+        hypr.exec([hyprctl, "--batch", "keyword decoration:blur:enabled false ; keyword animations:enabled false"]);
+        unloadId = bridge.online ? bridge.unload() : -1;
+        if (unloadId === -1) gameToast(G.toastText(false, null));
+    }
+    function exitGameMode() {
+        unloadId = -1;
+        hypr.exec([hyprctl, "--batch", "keyword decoration:blur:enabled " + blurConfigured
+                                       + " ; keyword animations:enabled " + !reduced]);
+    }
+    // Hyprland draws fullscreen windows above the Top layer, so the toast is a
+    // compositor notification: it shows over the game without the shell
+    // putting a surface on the Overlay layer.
+    function gameToast(text) { toast.exec([hyprctl, "notify", "-1", "5000", "rgb(86a8ff)", text]) }
 
     CoreBridge {
         id: bridge
@@ -87,7 +115,18 @@ ShellRoot {
             // falling back to the rules (and saying so) if it cannot.
             root.suggestId = bridge.suggest(root.lastPrompt, true);
         }
+        onUnloaded: (id, freed) => {
+            if (id !== root.unloadId) return;
+            root.unloadId = -1;
+            root.gameToast(G.toastText(true, freed));
+        }
         onFailed: (id, message) => {
+            if (id === root.unloadId && id !== -1) {
+                // Nothing to free (a cloud provider) or Core could not unload: say only what is true.
+                root.unloadId = -1;
+                root.gameToast(G.toastText(false, null));
+                return;
+            }
             if (id !== root.chatId && id !== -1) return;
             root.error = message; root.mode = "idle"; root.voice = 0;
         }
@@ -98,6 +137,8 @@ ShellRoot {
         }
     }
     AppDirectory { id: apps }
+    Process { id: hypr }
+    Process { id: toast }
     Wallpaper {}
 
     Timer { id: voiceDecay; interval: 140; onTriggered: root.voice = 0.1 }
@@ -120,9 +161,11 @@ ShellRoot {
         function toggle(): void { root.expanded ? root.collapse() : root.open() }
         function state(): string {
             return JSON.stringify({ expanded: root.expanded, online: bridge.online, mode: root.mode, orbit: root.visibleApps(),
-                                    modelBusy: root.modelBusy, launcherPaused: root.launcherPaused })
+                                    modelBusy: root.modelBusy, launcherPaused: root.launcherPaused, gameMode: root.gameMode })
         }
         function simulateBusy(on: bool): void { root.simulateBusy = on }
+        // "Treat fullscreen as game": any fullscreen window except video players and browsers.
+        function fullscreenIsGame(on: bool): void { root.fullscreenIsGame = on }
     }
     IdleMonitor { id: idle; timeout: 60; respectInhibitors: true }
 

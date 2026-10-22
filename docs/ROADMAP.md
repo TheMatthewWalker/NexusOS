@@ -71,7 +71,7 @@ These cannot be completed from CI or a VM. Each has a written procedure.
 - [ ] 8 GB and 24 GB GPU benchmark profiles. **Hardware gate.**
 - [ ] A game launch reclaims VRAM without killing the desktop. **Hardware gate**, and it needs foreground-app detection (M6).
 - [x] The GUI allows normal non-AI system operation when inference is offline. With Core stopped, the shell says so and apps still open (`hyprland-desktop` VM test, [M6](evidence/M6.md)).
-- [ ] The installer produces repeatable images with a documented recovery path (M7).
+- [x] The installer produces repeatable images (`nix build .#iso`) and installs them, checked end to end by the `nexus-installer` VM test ([M7](evidence/M7.md)). Recovery is systemd-boot's earlier system versions ([INSTALL](INSTALL.md)); a real-hardware install is still an operator gate.
 
 ## M8 — M11 optional scope
 

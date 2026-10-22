@@ -1,7 +1,7 @@
 # ADR-003: Desktop shell technology
 
-**Status:** proposed (2026-10-21). This waits on the owner's choice. The
-evidence is in the [SpaceUI shell spike](../design/spaceui-spike.md).
+**Status:** accepted (2026-10-22, by the owner). The evidence is in the
+[SpaceUI shell spike](../design/spaceui-spike.md).
 
 ## Context
 
@@ -27,7 +27,7 @@ shell (WebKitGTK in a layer-shell window with a small host). Both were built
 with the same scope and shared drawing code, and were measured with the same
 headless scenario.
 
-## Decision (proposed)
+## Decision
 
 Build the SpaceUI shell natively with **Quickshell (QML, Qt 6)**.
 

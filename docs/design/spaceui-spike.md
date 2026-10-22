@@ -1,9 +1,9 @@
 # SpaceUI shell spike: native versus web
 
-**21 Oct 2026.** This spike answers the open "shell technology" decision in the
-[design pack](spaceui/README.md). It recommends an option, but the decision
-itself is yours: see [ADR-003](../adr/003-desktop-shell.md), which stays
-*proposed* until you choose.
+**21 Oct 2026.** This spike answered the "shell technology" decision in the
+[design pack](spaceui/README.md). **Outcome (22 Oct 2026):** the owner chose
+the recommended native option, Quickshell on Hyprland
+([ADR-003](../adr/003-desktop-shell.md), accepted).
 
 ## What was built
 

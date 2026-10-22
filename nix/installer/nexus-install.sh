@@ -115,17 +115,29 @@ wipefs -af "$disk" > /dev/null
 parted -s "$disk" -- mklabel gpt \
   mkpart ESP fat32 1MiB 1GiB set 1 esp on \
   mkpart nexusos ext4 1GiB 100%
-partprobe "$disk" 2>/dev/null || true
-udevadm settle
-mapfile -t parts < <(lsblk -lnpo NAME,TYPE "$disk" | awk '$2 == "part" { print $1 }')
+# Wait until the kernel shows exactly the two new partitions.
+parts=()
+for _ in $(seq 1 30); do
+  partprobe "$disk" 2>/dev/null || true
+  udevadm settle
+  mapfile -t parts < <(lsblk -lnpo NAME,TYPE "$disk" | awk '$2 == "part" { print $1 }')
+  [ "${#parts[@]}" -eq 2 ] && [ -b "${parts[0]}" ] && [ -b "${parts[1]}" ] && break
+  sleep 1
+done
 [ "${#parts[@]}" -eq 2 ] || fail "expected two partitions on $disk, found ${#parts[@]}"
 boot_part="${parts[0]}" root_part="${parts[1]}"
 
+# An earlier system on this disk can leave filesystem signatures inside the
+# new partitions; wipe them so nothing mistakes a partition for its old self.
+wipefs -af "$boot_part" "$root_part" > /dev/null
 mkfs.fat -F 32 -n BOOT "$boot_part" > /dev/null
 mkfs.ext4 -q -F -L nexusos "$root_part"
-mount "$root_part" /mnt
+udevadm settle
+[ "$(blkid -p -o value -s TYPE "$boot_part")" = vfat ] || fail "$boot_part did not format as FAT"
+[ "$(blkid -p -o value -s TYPE "$root_part")" = ext4 ] || fail "$root_part did not format as ext4"
+mount -t ext4 "$root_part" /mnt
 mkdir -p /mnt/boot
-mount -o umask=0077 "$boot_part" /mnt/boot
+mount -t vfat -o umask=0077 "$boot_part" /mnt/boot
 
 # --- Configuration ----------------------------------------------------------
 say "Writing the configuration"

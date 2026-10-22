@@ -110,7 +110,7 @@ ShellRoot {
     IpcHandler {
         target: "nexus"
         function toggle(): void { root.expanded ? root.collapse() : root.open() }
-        function state(): string { return JSON.stringify({ expanded: root.expanded, online: bridge.online, mode: root.mode }) }
+        function state(): string { return JSON.stringify({ expanded: root.expanded, online: bridge.online, mode: root.mode, orbit: root.visibleApps() }) }
     }
 
     // Keeps windows clear of the launcher at the bottom edge; draws nothing.

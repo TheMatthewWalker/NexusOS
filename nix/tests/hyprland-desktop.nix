@@ -85,6 +85,28 @@ pkgs.testers.runNixOSTest {
         print(machine.execute("journalctl -b --no-pager --user-unit nexus-core -M alice@ | tail -20")[1])
         print(machine.execute("ps -eo pid,user,args | grep -E 'quickshell|nexus|Hyprland' | grep -v grep")[1])
 
+    def open_from_orbit(app, clients_before):
+        """Bring every app into orbit, then open one. Software rendering can drop a
+        click that lands mid-frame, so each step is confirmed and retried."""
+        for _ in range(5):
+            if f'"{app}"' in shell_state().split('"orbit"')[1]:
+                break
+            click(*CORE)
+            time.sleep(3)
+        else:
+            diagnostics()
+            raise AssertionError(f"{app} never came into orbit: {shell_state()}")
+        count = "su - alice -c 'HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl clients' | grep -c 'class: kitty'"
+        for _ in range(4):
+            click(*TERMINAL)
+            deadline = time.time() + 45
+            while time.time() < deadline:
+                if int(machine.execute(count)[1].strip() or 0) > clients_before:
+                    return
+                time.sleep(3)
+        diagnostics()
+        raise AssertionError(f"{app} did not open: {shell_state()}")
+
     def wait(cmd, timeout):
         try:
             machine.wait_until_succeeds(cmd, timeout=timeout)
@@ -125,10 +147,7 @@ pkgs.testers.runNixOSTest {
         assert "Nexus mock response: help me organise my research notes" in history, history
 
     with subtest("an app opens from the orbit and Nexus steps back"):
-        click(*CORE)                           # bring every app into orbit
-        machine.sleep(2)
-        click(*TERMINAL)
-        wait("su - alice -c 'HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl clients' | grep -q 'class: kitty'", 120)
+        open_from_orbit("terminal", 0)
         wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"expanded\":false'", 60)
         machine.sleep(3)
         shot("04-app-open")
@@ -139,10 +158,7 @@ pkgs.testers.runNixOSTest {
         click(*LAUNCHER)
         wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"expanded\":true'", 60)
         wait_drawn("05-offline", *CORE, r=20, threshold=450)
-        click(*CORE)
-        machine.sleep(2)
-        click(*TERMINAL)
-        wait("test $(su - alice -c 'HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl clients' | grep -c 'class: kitty') -ge 2", 120)
+        open_from_orbit("terminal", 1)
         alice("XDG_RUNTIME_DIR=/run/user/1000 systemctl --user start nexus-core")
         wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":true'", 60)
 

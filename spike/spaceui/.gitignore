@@ -3,3 +3,6 @@ shared/nexus-plasma-512.png
 native/plasma.frag
 native/plasma.frag.qsb
 web/plasma-shader.mjs
+native/nova.frag
+native/nova.frag.qsb
+shared/nova-noise-atlas.png

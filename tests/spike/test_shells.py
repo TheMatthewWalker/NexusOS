@@ -43,9 +43,11 @@ class Shells(unittest.TestCase):
         # The Files slot (-125 degrees, radius 211) is empty before and filled after the core click.
         fx, fy = sx + lay["core"]["x"] - 121, sy + lay["core"]["y"] - 173
         self.assertNotEqual(before.getpixel((fx, fy)), opened.getpixel((fx, fy)))
-        # Core's answer is drawn in the reply area, as dark text on the light desktop.
+        # Core's answer is drawn in the reply area: light text on the native shell's
+        # dark desktop, dark text on the web spike's bright one.
         row = [reply.getpixel((x, sy + lay["reply"]["y"] + 10)) for x in range(sx + 90, sx + 500)]
-        self.assertTrue(any(sum(p) < 300 for p in row), "no reply text drawn")
+        drawn = (lambda p: sum(p) > 500) if kind == "native" else (lambda p: sum(p) < 300)
+        self.assertTrue(any(drawn(p) for p in row), "no reply text drawn")
         log = (out / "core.log").read_text()
         self.assertIn("POST", log)
         self.assertIn("/chat", log)

@@ -162,3 +162,15 @@ It then drives the scenario and writes screenshots and `metrics.json` to
 `out/spike/<shell>/`. The end-to-end test also includes a negative control:
 with the native input mask removed, the click-through check fails, as it
 should.
+
+## Update, 22 Oct 2026: the Nova core in the Quickshell shell
+
+After you approved the Nova core and the dark theme, the native shell was moved over to both:
+
+- `native/NovaCore.qml` draws the core with the shared shader body in `shared/nova-core.glsl`.
+- Qt shader items cannot sample 3D textures, so the study's 64³ noise field is repacked as a 2D atlas. Each slice is a tile with a wrapped one-pixel border, which keeps the noise identical to the study's. A test checks the packing.
+- **Launcher core.** It uses 24 samples through the gas instead of 56, and renders at 30 frames per second while it is idle and not hovered. Full rate returns as soon as you hover it or Nexus becomes active.
+- **Interaction.** Dragging the core turns it, tapping it sends out a ripple, and a spoken reply drives the core's voice.
+- **Dark theme.** Glass surfaces, light text and a lighter set of icons. The colours are provisional until a dark token set is agreed.
+
+The software-rendered numbers rose a lot. Idle went from 36 % to 93 % CPU. While responding, the frame rate fell from 60 to about 9 fps, because llvmpipe now draws the full 3D core on the processor. A GPU runs this shader in a few milliseconds per frame, so the real check is to run the shell on your own hardware.

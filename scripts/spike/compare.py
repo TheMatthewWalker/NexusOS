@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "out/spike"
 SHELL_FILES = {
-    "native": ["spike/spaceui/native/shell.qml", "spike/spaceui/native/PlasmaCore.qml"],
+    "native": ["spike/spaceui/native/shell.qml", "spike/spaceui/native/NovaCore.qml"],
     "web": ["spike/spaceui/web/app.mjs", "spike/spaceui/web/index.html", "spike/spaceui/web/style.css",
             "spike/spaceui/web/host.py"],
 }

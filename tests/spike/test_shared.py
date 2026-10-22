@@ -41,6 +41,33 @@ class SharedInputs(unittest.TestCase):
     def test_qt_shader_is_valid_vulkan_glsl(self):
         self.validate((SPIKE / "native/plasma.frag").read_text(), "frag", "-V", "-o", "/dev/null")
 
+    def test_nova_qt_shader_is_valid_vulkan_glsl(self):
+        text = (SPIKE / "native/nova.frag").read_text()
+        self.assertIn((SPIKE / "shared/nova-core.glsl").read_text(), text)
+        self.validate(text, "frag", "-V", "-o", "/dev/null")
+
+    def test_nova_atlas_packs_the_study_noise_field(self):
+        """Each 66x66 tile holds one z-slice of the study's 64^3 field, with a wrapped border."""
+        import importlib.util
+        from PIL import Image
+        spec = importlib.util.spec_from_file_location("build_shared", ROOT / "scripts/spike/build_shared.py")
+        build = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(build)
+        vol = build.noise_volume()
+        atlas = Image.open(SPIKE / "shared/nova-noise-atlas.png")
+        self.assertEqual(atlas.size, (528, 528))
+        self.assertEqual(atlas.mode, "L")
+        for x, y, z in [(0, 0, 0), (5, 9, 13), (63, 63, 63), (31, 2, 40)]:
+            tx, ty = (z % 8) * 66, (z // 8) * 66
+            self.assertEqual(atlas.getpixel((tx + 1 + x, ty + 1 + y)), vol[x + 64 * y + 4096 * z])
+        # The border repeats the opposite edge, so filtering wraps like a 3D REPEAT texture.
+        self.assertEqual(atlas.getpixel((0, 1)), vol[63])
+        self.assertEqual(atlas.getpixel((65, 1)), vol[0])
+        # The study's texture data comes from the same generator.
+        study = (ROOT / "docs/design/spaceui/studies/nexus-core-nova.html").read_text()
+        self.assertIn("seed = 1234567", study)
+        self.assertIn("seed * 1664525 + 1013904223", study)
+
     def test_both_wrappers_share_one_body(self):
         body = (SPIKE / "shared/plasma-core.glsl").read_text()
         self.assertIn(body, (SPIKE / "native/plasma.frag").read_text())

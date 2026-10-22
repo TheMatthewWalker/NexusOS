@@ -23,6 +23,13 @@ ShellRoot {
     property string provider: ""
     property string error: ""
     property int frames: 0
+    property real voice: 0
+    // Provisional dark theme (approved 22 Oct): deep space, light ink, glass surfaces.
+    readonly property var dark: ({
+        ink: "#E3EAFF", inkSecondary: "#9AA9C9", glass: Qt.rgba(0.04, 0.07, 0.15, 0.80),
+        glassBorder: "#2A3A66", focus: "#86A8FF", primary: "#7C6BFF", chip: "#121B33",
+        orbit: Qt.rgba(0.55, 0.62, 1.0, 0.22), error: "#FF8FA3"
+    })
 
     function visibleApps() {
         if (showAll) return S.APP_IDS;
@@ -73,7 +80,10 @@ ShellRoot {
         interval: root.reduced ? 1 : root.tk.demoOnlyTiming.characterTick; repeat: true
         onTriggered: {
             root.shownReply = root.reduced ? root.reply : root.reply.slice(0, root.shownReply.length + 2);
-            if (root.shownReply.length >= root.reply.length) { stop(); settle.start() }
+            // The core "speaks" the reply: vowels peak, consonants half, gaps rest.
+            const ch = root.shownReply.slice(-1);
+            root.voice = /[aeiouy]/i.test(ch) ? 1 : /[a-z0-9]/i.test(ch) ? 0.55 : 0.12;
+            if (root.shownReply.length >= root.reply.length) { stop(); root.voice = 0; settle.start() }
         }
     }
     Timer { id: settle; interval: 1200; onTriggered: root.mode = "idle" }
@@ -126,13 +136,21 @@ ShellRoot {
                 }
             }
 
-            PlasmaCore {
+            NovaCore {
                 id: miniCore
-                width: root.lay.launcher.diameter * 1.42; height: width
-                x: -width / 2; y: -height / 2
-                reduced: root.reduced; strands: false
-                awake: launcherHover.hovered ? 1 : 0
+                width: 300; height: 190
+                x: -150; y: -146
+                centre: Qt.point(150, 146)
+                radius: root.lay.launcher.diameter * 0.4
+                steps: 24
+                idleFps: 30
+                reduced: root.reduced
+                hovered: launcherHover.hovered
                 onFrame: root.frames++
+            }
+            Item {
+                width: root.lay.launcher.diameter; height: width
+                x: -width / 2; y: -height / 2
                 TapHandler { onTapped: root.expanded = true }
                 Accessible.role: Accessible.Button
                 Accessible.name: "Open Nexus"
@@ -149,13 +167,13 @@ ShellRoot {
                     Rectangle {
                         width: p.size; height: p.size; radius: width / 2
                         x: -width / 2; y: -height / 2
-                        color: "#FFFFFF"; border.color: root.tk.colors.windowBorder; border.width: 1
+                        color: root.dark.glass; border.color: root.dark.glassBorder; border.width: 1
                         Behavior on width { NumberAnimation { duration: root.reduced ? 0 : 260 } }
                         Image {
                             anchors.centerIn: parent
                             width: parent.width * 0.55; height: width
                             visible: launcher.hoverOpen
-                            source: "shared/icons/" + (modelData.appId.replace("nexus-spike-", "") || "files") + ".svg"
+                            source: "shared/icons-dark/" + (modelData.appId.replace("nexus-spike-", "") || "files") + ".svg"
                             sourceSize: Qt.size(48, 48)
                         }
                         TapHandler { enabled: launcher.hoverOpen; onTapped: modelData.activate() }
@@ -166,7 +184,7 @@ ShellRoot {
                         visible: launcher.hoverOpen
                         y: p.size / 2 + 4; x: -width / 2
                         text: modelData.title.replace(" (spike stand-in)", "")
-                        font.pixelSize: 13; color: root.tk.colors.shellInk
+                        font.pixelSize: 13; color: root.dark.ink
                     }
                 }
             }
@@ -184,28 +202,41 @@ ShellRoot {
                 x: root.lay.core.x; y: root.lay.core.y
                 preferredRendererType: Shape.CurveRenderer
                 ShapePath {
-                    strokeColor: Qt.rgba(0.53, 0.46, 0.9, root.tk.appOrbit.outerStrokeOpacity)
+                    strokeColor: root.dark.orbit
                     strokeWidth: 1; fillColor: "transparent"
                     PathAngleArc { radiusX: root.tk.appOrbit.radius; radiusY: radiusX; sweepAngle: 360 }
                 }
                 ShapePath {
-                    strokeColor: Qt.rgba(0.53, 0.46, 0.9, 0.3); strokeWidth: 1; fillColor: "transparent"
+                    strokeColor: Qt.rgba(0.55, 0.62, 1.0, 0.16); strokeWidth: 1; fillColor: "transparent"
                     strokeStyle: ShapePath.DashLine; dashPattern: [2, 7]
                     PathAngleArc { radiusX: root.tk.appOrbit.innerRadius; radiusY: radiusX; sweepAngle: 360 }
                 }
             }
 
-            PlasmaCore {
+            NovaCore {
                 id: bigCore
-                width: root.tk.nexus.hitDiameter * 1.42; height: width
-                x: root.lay.core.x - width / 2; y: root.lay.core.y - height / 2
+                anchors.fill: parent
+                z: -1
+                centre: Qt.point(root.lay.core.x, root.lay.core.y)
+                radius: root.tk.nexus.hitDiameter / 2
                 reduced: root.reduced
-                energy: root.mode === "responding" ? 1 : root.mode === "thinking" ? 0.55 : root.mode === "typing" ? 0.25 : 0
-                envelope: root.mode === "responding" ? S.envelope(time) : 0
-                awake: coreHover.hovered ? 1 : 0
+                mode: ({ idle: "idle", typing: "listening", thinking: "thinking", responding: "speaking" })[root.mode]
+                voice: root.voice
+                hovered: coreHover.hovered
                 onFrame: if (root.expanded) root.frames++
+            }
+            // Touching the core: hover wakes it, a tap brings every app into orbit, a drag turns it.
+            Item {
+                width: root.tk.nexus.hitDiameter; height: width
+                x: root.lay.core.x - width / 2; y: root.lay.core.y - height / 2
                 HoverHandler { id: coreHover }
-                TapHandler { onTapped: root.showAll = !root.showAll }
+                TapHandler { onTapped: { bigCore.ripple(); root.showAll = !root.showAll } }
+                DragHandler {
+                    target: null
+                    property point last: Qt.point(0, 0)
+                    onActiveChanged: last = Qt.point(0, 0)
+                    onTranslationChanged: { bigCore.turn(translation.x - last.x, translation.y - last.y); last = Qt.point(translation.x, translation.y) }
+                }
                 Accessible.role: Accessible.Button
                 Accessible.name: "Show or hide all apps around Nexus"
             }
@@ -214,10 +245,10 @@ ShellRoot {
                 spacing: 4
                 Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Nexus AI"
                        font.pixelSize: root.tk.typography.coreTitle.fontSize; font.weight: 550
-                       font.letterSpacing: root.tk.typography.coreTitle.letterSpacing; color: root.tk.colors.shellInk }
+                       font.letterSpacing: root.tk.typography.coreTitle.letterSpacing; color: root.dark.ink }
                 Text { anchors.horizontalCenter: parent.horizontalCenter
                        text: ({ idle: "Ready when you are", typing: "Listening", thinking: "Asking Nexus Core…", responding: "Responding" })[root.mode]
-                       font.pixelSize: 13; color: root.tk.colors.contentSecondaryInk }
+                       font.pixelSize: 13; color: root.dark.inkSecondary }
             }
 
             Repeater {
@@ -254,10 +285,10 @@ ShellRoot {
                     Rectangle {
                         width: root.tk.appOrbit.buttonDiameter; height: width; radius: width / 2
                         x: -width / 2; y: -height / 2
-                        color: btnHover.hovered && node.settled ? "#FFFFFF" : "#F7F8FE"
-                        border.color: btnHover.hovered && node.settled ? root.tk.colors.focus : "#FFFFFF"; border.width: 1.5
+                        color: root.dark.glass
+                        border.color: btnHover.hovered && node.settled ? root.dark.focus : root.dark.glassBorder; border.width: 1.5
                         Image { anchors.centerIn: parent; width: 30; height: 30; sourceSize: Qt.size(60, 60)
-                                source: "shared/icons/" + node.modelData + ".svg" }
+                                source: "shared/icons-dark/" + node.modelData + ".svg" }
                         HoverHandler { id: btnHover; enabled: node.settled }
                         TapHandler { enabled: node.settled; onTapped: root.openApp(node.modelData) }
                         Accessible.role: Accessible.Button
@@ -266,7 +297,7 @@ ShellRoot {
                     Text {
                         y: root.tk.appOrbit.buttonDiameter / 2 + root.tk.appOrbit.labelGap; x: -width / 2
                         text: S.APP_LABELS[node.modelData]; font.pixelSize: 13; font.weight: 500
-                        color: root.tk.colors.shellInk
+                        color: root.dark.ink
                     }
                 }
             }
@@ -276,16 +307,16 @@ ShellRoot {
                 id: chat
                 x: root.lay.chat.x; y: root.lay.chat.y
                 width: root.lay.chat.width; height: root.lay.chat.height
-                radius: root.tk.radii.chat; color: "#FFFFFF"
-                border.color: input.activeFocus ? root.tk.colors.focus : root.tk.colors.border; border.width: 1
+                radius: root.tk.radii.chat; color: root.dark.glass
+                border.color: input.activeFocus ? root.dark.focus : root.dark.glassBorder; border.width: 1
                 Image { x: 22; anchors.verticalCenter: parent.verticalCenter; width: 22; height: 22
                         source: "shared/icons/spark.svg"; sourceSize: Qt.size(44, 44) }
                 TextInput {
                     id: input
                     x: 58; width: parent.width - 130; anchors.verticalCenter: parent.verticalCenter
-                    font.pixelSize: 14; color: root.tk.colors.contentInk; clip: true
+                    font.pixelSize: 14; color: root.dark.ink; clip: true
                     Text { visible: !input.text && !input.activeFocus; text: "Ask Nexus AI or find anything"
-                           font.pixelSize: 14; color: root.tk.colors.contentSecondaryInk }
+                           font.pixelSize: 14; color: root.dark.inkSecondary }
                     onTextEdited: { root.mode = text ? "typing" : "idle"; debounce.restart() }
                     onAccepted: if (text.trim()) root.ask(text.trim())
                     Keys.onEscapePressed: root.collapse()
@@ -295,7 +326,7 @@ ShellRoot {
                 Rectangle {
                     width: root.tk.chat.sendDiameter; height: width; radius: width / 2
                     anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
-                    color: root.tk.colors.primary
+                    color: root.dark.primary
                     Image { anchors.centerIn: parent; width: 20; height: 20; source: "shared/icons/send.svg"; sourceSize: Qt.size(40, 40) }
                     TapHandler { onTapped: if (input.text.trim()) root.ask(input.text.trim()) }
                     Accessible.role: Accessible.Button
@@ -313,7 +344,7 @@ ShellRoot {
                     width: parent.width; wrapMode: Text.Wrap
                     textFormat: Text.PlainText      // model output is never rendered as rich text
                     text: root.error ? "Nexus Core could not answer: " + root.error : root.shownReply
-                    font.pixelSize: 14; lineHeight: 1.5; color: root.error ? root.tk.colors.destructive : root.tk.colors.contentInk
+                    font.pixelSize: 14; lineHeight: 1.5; color: root.error ? root.dark.error : root.dark.ink
                 }
                 Flow {
                     width: parent.width; spacing: 6
@@ -324,8 +355,8 @@ ShellRoot {
                         delegate: Rectangle {
                             required property string modelData
                             width: chip.implicitWidth + 20; height: 28; radius: 14
-                            color: root.tk.colors.mutedSurface
-                            Text { id: chip; anchors.centerIn: parent; text: modelData; font.pixelSize: 13; color: root.tk.colors.contentSecondaryInk }
+                            color: root.dark.chip
+                            Text { id: chip; anchors.centerIn: parent; text: modelData; font.pixelSize: 13; color: root.dark.inkSecondary }
                         }
                     }
                 }

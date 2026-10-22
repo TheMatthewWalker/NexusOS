@@ -42,8 +42,9 @@ def log(*a):
 class Session:
     """A headless sway, a mock model, Nexus Core, and helpers to drive them."""
 
-    def __init__(self, out):
+    def __init__(self, out, background="#F7F9FD"):
         self.out = out
+        self.background = background
         self.tmp = Path(tempfile.mkdtemp(prefix="spaceui-spike-"))
         self.procs = []
         mesa = os.environ.get("SPIKE_MESA", "")
@@ -68,7 +69,7 @@ class Session:
 
     def start(self):
         conf = self.tmp / "sway.conf"
-        conf.write_text(f"output HEADLESS-1 resolution {WIDTH}x{HEIGHT} bg #F7F9FD solid_color\n"
+        conf.write_text(f"output HEADLESS-1 resolution {WIDTH}x{HEIGHT} bg {self.background} solid_color\n"
                         "default_border none\nfocus_follows_mouse no\n")
         sway_env = dict(self.env, WLR_BACKENDS="headless", WLR_RENDERER="pixman",
                         WLR_LIBINPUT_NO_DEVICES="1", WLR_HEADLESS_OUTPUTS="1")
@@ -240,7 +241,8 @@ def run(kind, out, reduced=False):
     out.mkdir(parents=True, exist_ok=True)
     for old in out.glob("*.png"):
         old.unlink()
-    s = Session(out)
+    # The native shell carries the approved dark theme; the web spike stays on the bright baseline it was measured on.
+    s = Session(out, background="#05060D" if kind == "native" else "#F7F9FD")
     m = {"shell": kind, "reducedMotion": reduced, "renderer": "llvmpipe (software)",
          "output": f"{WIDTH}x{HEIGHT}"}
     try:
@@ -274,6 +276,7 @@ def run(kind, out, reduced=False):
         time.sleep(1.2)
 
         s.click(*CHAT)
+        time.sleep(0.8)                      # let keyboard focus arrive before typing
         s.type("help me organise my research notes")
         time.sleep(1.5)                      # intent debounce + emergence
         s.screenshot("04-intent-suggestions")

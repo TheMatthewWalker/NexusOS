@@ -38,6 +38,9 @@ On Windows or macOS, a tool such as balenaEtcher or Rufus (in "DD image" mode) d
 Boot the computer from the stick (usually F12, F11, F8 or Esc during start-up opens the boot menu). Choose **NexusOS live**.
 
 The live desktop starts by itself, with a terminal called **Install NexusOS**:
+
+![The live NexusOS desktop with the Install NexusOS terminal](evidence/img/M7-live-installer.png)
+
 - Close that terminal to look around. Nothing in the live session is kept.
 - Super+Space opens Nexus.
 - The local model is not on the stick, so Nexus answers only after installation. Everything else works.

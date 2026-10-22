@@ -132,7 +132,9 @@ ShellRoot {
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Top            // below lock and secure surfaces
         WlrLayershell.namespace: "nexus-spaceui"
-        WlrLayershell.keyboardFocus: root.expanded ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        // While Nexus is open it takes the keyboard, like a launcher: typing goes
+        // straight to the chat; Escape or a click outside gives it back.
+        WlrLayershell.keyboardFocus: root.expanded ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         // Only the drawn parts take input; the rest of the surface passes clicks through.
         mask: Region { item: root.expanded ? fullHit : launcherHit }
 

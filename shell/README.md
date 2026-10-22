@@ -12,7 +12,8 @@ The NexusOS desktop interface (SpaceUI), written in [Quickshell](https://quicksh
 | Deep-space wallpaper | `qml/Wallpaper.qml` | Background layer; painted once, so it costs nothing while idle |
 | Bottom launcher | `qml/shell.qml` | A small Nova core. Open windows orbit it as tiny planets, which spread into a labelled orbit after a 600 ms hover |
 | Full Nexus core | `qml/shell.qml`, `qml/NovaCore.qml` | The approved 3D Nova core, the app orbit, the chat bar and the streamed reply |
-| System panel | `qml/SystemPanel.qml` | Top-right orbit of system planets, with quick volume, Wi-Fi, Bluetooth and mute controls |
+| System panel | `qml/SystemPanel.qml` | Top-right orbit of system planets, with quick volume, Wi-Fi, Bluetooth and mute controls and a storage line. Hovering a planet shows a plain sentence (see below) |
+| System sentences | `qml/lib/describe.mjs` | Turns real readings into one plain sentence per planet. Tested with Node (`tests/shell/describe.test.mjs`) |
 | Core link | `qml/CoreBridge.qml` | One long-lived `nexus bridge` process (see below) |
 | App roles | `qml/AppDirectory.qml` | Maps the six orbit roles to installed desktop entries |
 
@@ -29,6 +30,35 @@ Super+Space opens and closes Nexus. You can also run
 - **Locks stay on top.** Every surface sits on the `Top` layer, never `Overlay`, so lock screens cover it. The VM test checks this.
 - **Plain text only.** Model output is rendered as plain text.
 - **No token in the shell.** The shell never holds the Core API token. It talks to Core through the `nexus bridge` command, which authenticates like any CLI call.
+
+## Plain-language system state
+
+Hover a planet in the system panel and it says what is going on in one sentence
+(feature 3 in the [feature designs](../docs/design/features.md)). `lib/describe.mjs`
+builds the sentences from the readings the panel already has. It never invents
+a figure: an unknown reading is left out of the sentence, and a missing service
+says so.
+
+| Planet | Source | Examples |
+|---|---|---|
+| Power | UPower display device: state, percentage, and UPower's own `timeToEmpty` / `timeToFull` | "About 3 h 10 min left (45%)", "Charging, full in about 40 min", "Fully charged", "Plugged in, no battery", "Power information unavailable" |
+| Sound | PipeWire default sink: description, volume, mute | "Playing through USB headset at 60%", "Muted", "No sound output found" |
+| Network | Quickshell Networking: connected Wi-Fi network, wired link, connectivity check | "Connected to Home", "Connected by cable", "Wi-Fi is off", "No network", "Network status unavailable" |
+| Bluetooth | Default adapter and its connected devices | "On, 2 devices connected", "Off", "No Bluetooth adapter" |
+| Date & time | `SystemClock`, `TZ` if set, and the UTC offset | "Thursday 22 October, 14:05 (UTC+1)" |
+| Display | `Quickshell.screens` | "1 screen connected" |
+
+The quick-controls card also shows storage: free space on `/` and `/home`, read by
+running `df -P -B1 / /home` every 60 seconds (there is no Quickshell disk service).
+When the two share a filesystem it is shown once. "Storage information unavailable"
+means `df` printed nothing usable.
+
+Actions appear only where they make sense, and use existing mechanisms:
+
+- **Show biggest files** appears only when a volume has under 10% free. It opens the
+  `files` role's app from `AppDirectory` in the home folder.
+- **Sound settings** (on the Sound planet) points to this panel's own sound controls
+  by outlining the quick-controls card.
 
 ## The bridge
 

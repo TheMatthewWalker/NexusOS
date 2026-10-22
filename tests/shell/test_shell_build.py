@@ -37,7 +37,7 @@ class ShellBuild(unittest.TestCase):
 
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
-                     "SystemPanel.qml", "lib/orbit.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
+                     "SystemPanel.qml", "lib/orbit.mjs", "lib/describe.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
 
     def test_every_referenced_icon_exists(self):
@@ -92,6 +92,22 @@ class ShellBuild(unittest.TestCase):
         shutil.copy(ROOT / "tests/shell/orbit.test.mjs", test)
         run = subprocess.run(["node", "--test", str(test)], capture_output=True, text=True)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
+    def test_system_state_sentences(self):
+        if not shutil.which("node"):
+            self.skipTest("node not installed")
+        test = self.out / "lib/describe.test.mjs"
+        shutil.copy(ROOT / "tests/shell/describe.test.mjs", test)
+        run = subprocess.run(["node", "--test", str(test)], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
+    def test_system_panel_reads_real_state(self):
+        """Plain-language state comes from the formatter, and disk usage from df."""
+        panel = (self.out / "SystemPanel.qml").read_text()
+        self.assertIn('import "lib/describe.mjs" as D', panel)
+        self.assertIn('"df", "-P", "-B1", "/", "/home"', panel)
+        self.assertIn("WlrLayer.Top", panel)
+        self.assertNotIn("WlrLayer.Overlay", panel)
 
 
 if __name__ == "__main__":

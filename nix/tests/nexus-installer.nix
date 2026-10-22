@@ -72,9 +72,17 @@ pkgs.testers.runNixOSTest {
 
     with subtest("nexus-install puts NexusOS on the blank disk"):
         installer.succeed("echo 'nexus-test-pw' > /tmp/pw")
+        # The test talks to the installed system through the test backdoor,
+        # as nixpkgs' installer tests do.
+        installer.succeed("""cat > /tmp/test.nix <<'EOF'
+    { modulesPath, ... }: {
+      imports = [ "''${modulesPath}/testing/test-instrumentation.nix" "''${modulesPath}/profiles/qemu-guest.nix" ];
+    }
+    EOF""")
         installer.succeed(
             "nexus-install --disk /dev/vda --user alice --full-name 'Alice Test'"
-            " --password-file /tmp/pw --hostname nexus-test --timezone Europe/London --yes >&2",
+            " --password-file /tmp/pw --hostname nexus-test --timezone Europe/London"
+            " --extra-module /tmp/test.nix --yes >&2",
             timeout=7200)
         installer.succeed("test -f /mnt/etc/nixos/flake.lock && test -f /mnt/etc/nixos/nexusos/flake.nix")
         installer.succeed("grep -q 'nexusos.user = \"alice\"' /mnt/etc/nixos/local.nix")

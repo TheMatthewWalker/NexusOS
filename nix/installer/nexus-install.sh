@@ -10,7 +10,7 @@
 set -euo pipefail
 
 source_dir=/etc/nexusos
-disk="" user="" full_name="" password_file="" host="nexus" timezone="" assume_yes=0
+disk="" user="" full_name="" password_file="" host="nexus" timezone="" assume_yes=0 extra_module=""
 
 usage() {
   cat <<'EOF'
@@ -22,6 +22,7 @@ Usage: nexus-install [options]
   --hostname NAME       computer name (default: nexus)
   --timezone ZONE       for example Europe/London (default: detected, else UTC)
   --source DIR          NexusOS source to install (default: /etc/nexusos)
+  --extra-module FILE   also include this NixOS module (used by the VM test)
   --yes                 do not ask for confirmation before erasing the disk
 EOF
 }
@@ -35,6 +36,7 @@ while [ $# -gt 0 ]; do
     --hostname) host="$2"; shift 2 ;;
     --timezone) timezone="$2"; shift 2 ;;
     --source) source_dir="$2"; shift 2 ;;
+    --extra-module) extra_module="$2"; shift 2 ;;
     --yes) assume_yes=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -137,14 +139,20 @@ chmod -R u+w /mnt/etc/nixos/nexusos
 
 nix_string() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g')"; }
 
-cat > /mnt/etc/nixos/flake.nix <<'EOF'
+modules="./hardware-configuration.nix ./local.nix"
+if [ -n "$extra_module" ]; then
+  [ -f "$extra_module" ] || fail "no module at $extra_module"
+  cp "$extra_module" /mnt/etc/nixos/extra.nix
+  modules="$modules ./extra.nix"
+fi
+cat > /mnt/etc/nixos/flake.nix <<EOF
 # This computer's NexusOS configuration. Change local.nix, then run:
 #   sudo nixos-rebuild switch --flake /etc/nixos#nexus
 {
   inputs.nexusos.url = "path:./nexusos";
   outputs = { self, nexusos }: {
     nixosConfigurations.nexus = nexusos.lib.mkSystem {
-      modules = [ ./hardware-configuration.nix ./local.nix ];
+      modules = [ $modules ];
     };
   };
 }

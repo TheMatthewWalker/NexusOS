@@ -133,13 +133,26 @@ pkgs.testers.runNixOSTest {
         machine.sleep(3)
         shot("04-app-open")
 
+    with subtest("with Core stopped the shell says so and apps still open"):
+        alice("XDG_RUNTIME_DIR=/run/user/1000 systemctl --user stop nexus-core")
+        wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":false'", 60)
+        click(*LAUNCHER)
+        wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"expanded\":true'", 60)
+        wait_drawn("05-offline", *CORE, r=20, threshold=450)
+        click(*CORE)
+        machine.sleep(2)
+        click(*TERMINAL)
+        wait("test $(su - alice -c 'HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl clients' | grep -c 'class: kitty') -ge 2", 120)
+        alice("XDG_RUNTIME_DIR=/run/user/1000 systemctl --user start nexus-core")
+        wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":true'", 60)
+
     with subtest("the lock screen covers the shell"):
-        before = shot("05-before-lock")
+        before = shot("06-before-lock")
         hypr("dispatch exec 'hyprlock --config /etc/nexus/hyprlock.conf'")
         machine.wait_until_succeeds("pgrep -x hyprlock", timeout=60)
         assert bright(before, *LAUNCHER) > 300
         deadline = time.time() + 120
-        while bright(locked := shot("06-locked"), *LAUNCHER) >= 120:
+        while bright(locked := shot("07-locked"), *LAUNCHER) >= 120:
             assert time.time() < deadline, "the Nexus launcher shows through the lock screen"
             time.sleep(5)
   '';

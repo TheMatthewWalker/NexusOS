@@ -34,7 +34,8 @@ Item {
     function handle(line) {
         let ev;
         try { ev = JSON.parse(line) } catch (e) { return }
-        if (ev.type === "ready") { online = true; offlineReason = ""; restartDelay = 1000; health.restart(); return }
+        // "ready" means only that the bridge started; Core is online once it answers.
+        if (ev.type === "ready") { restartDelay = 1000; health.restart(); send("health"); return }
         const id = typeof ev.id === "number" ? ev.id : -1;
         if (ev.type === "delta") { delta(id, ev.text); return }
         delete pending[id];

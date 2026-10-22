@@ -49,4 +49,35 @@ own privileged actions.
 `POST /inference/unload`, `GET /inference/telemetry`,
 `POST /guardian/preview`, `POST /guardian/propose`,
 `POST /guardian/submit`, `GET /guardian/candidates/{id}`,
-`POST /guardian/review`.
+`POST /guardian/review`, `POST|GET|DELETE /journal`,
+`GET /journal/today/summary`, `POST /journal/{id}/undo`.
+
+## Activity journal
+
+One per-user, append-only log of what happened, in the `journal` table of
+Core's `state.sqlite3` (added by the `schema_journal_v1` migration, which
+commits with its marker in one transaction). Each entry has a UTC time, a
+kind (`setting`, `app`, `system`, `ai-read`, `egress`, `device`), an actor
+(`user`, `nexus` or an app name), a one-line summary, and optional
+`before`/`after` JSON, `reversible` flag and `ref`.
+
+- **Core records what it observes.** Every cloud request is journalled as
+  `egress` just before it is sent, with the provider, host and consent time
+  (when the person selected the cloud provider; the operator's
+  `NEXUS_CLOUD_EGRESS_ALLOWED` is the precondition). It never holds prompt or
+  answer text. Guardian proposals, submissions and the broker's decisions are
+  `system` entries. Core reads no files or context to answer today, so it
+  writes no `ai-read` entries yet.
+- **The shell records the rest.** `POST /journal` accepts only `setting` and
+  `device` entries, never as actor `nexus`; summaries are at most 200
+  characters, `before`/`after` at most 4 KB each, 60 writes a minute.
+- **Undo** (`POST /journal/{id}/undo`) applies to reversible `setting` entries
+  with a `before` value. Core cannot change shell settings, so it returns the
+  value to restore, marks the entry undone, and refuses a second undo.
+- **Retention and erasure follow history.** Entries older than
+  `NEXUS_HISTORY_MAX_DAYS` are hidden and pruned by both history and journal
+  writes, with a hard cap of 10,000 rows. `DELETE /journal?day=YYYY-MM-DD`
+  ("forget today") deletes that local day's entries with `secure_delete`, and
+  checks none remain before committing. `GET /journal/today/summary` gives the
+  privacy dashboard's counts: left the computer, AI reads, device uses.
+- **CLI:** `nexus journal [--today] [--kind K]`, `nexus journal forget-today`.

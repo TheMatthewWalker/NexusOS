@@ -174,16 +174,21 @@ public sealed class OpenAiCompatibleProvider : IModelProvider
     private readonly IHttpClientFactory _factory;
     private readonly IConfiguration _config;
     private readonly IProviderCredentialStore _credentials;
+    private readonly ActivityJournal? _journal;
+    private readonly ProviderStore? _store;
     public string Endpoint { get; }
     public string Model { get; }
     public string Name => ProviderNames.OpenAiCompatible;
     public bool SupportsUnload => false;
 
-    public OpenAiCompatibleProvider(IHttpClientFactory factory, IConfiguration config, IProviderCredentialStore credentials)
+    public OpenAiCompatibleProvider(IHttpClientFactory factory, IConfiguration config, IProviderCredentialStore credentials,
+        ActivityJournal? journal = null, ProviderStore? store = null)
     {
         _factory = factory;
         _config = config;
         _credentials = credentials;
+        _journal = journal;
+        _store = store;
         var endpoint = config["NEXUS_OPENAI_ENDPOINT"] ?? "https://api.openai.com/v1";
         ProviderEndpointGuard.RequireCloudEndpoint(endpoint, config["NEXUS_CLOUD_HOSTS"]);
         Endpoint = endpoint.TrimEnd('/');
@@ -208,6 +213,9 @@ public sealed class OpenAiCompatibleProvider : IModelProvider
                     model = Model, messages = new[] { new { role = "user", content = prompt } },
                     max_tokens = budget.ReservedOutputTokens
                 }), Encoding.UTF8, "application/json");
+                // Journal before sending, so a request is never sent unrecorded.
+                if (_journal is not null)
+                    await _journal.RecordEgressAsync(Name, message.RequestUri!.Host, _store?.SelectedAt, innerCt);
                 return await _factory.CreateClient("cloud").SendAsync(message, innerCt);
             },
             root => root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString(), ct);

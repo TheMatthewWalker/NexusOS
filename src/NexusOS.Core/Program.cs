@@ -47,6 +47,7 @@ builder.Services.AddSingleton<SqliteStateDatabase>();
 builder.Services.AddSingleton<ProviderStore>(sp => new ProviderStore(sp.GetRequiredService<SqliteStateDatabase>()));
 builder.Services.AddSingleton<ConversationStore>(sp => new ConversationStore(
     sp.GetRequiredService<SqliteStateDatabase>(), sp.GetRequiredService<IConfiguration>()));
+builder.Services.AddSingleton<ActivityJournal>();
 builder.Services.AddSingleton<IProviderCredentialStore, LinuxSecretToolStore>();
 builder.Services.AddSingleton<LlamaServerProcess>();
 builder.Services.AddSingleton<IModelProvider, OllamaProvider>();
@@ -69,6 +70,10 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("ai", _ => RateLimitPartition.GetFixedWindowLimiter("single-user", __ => new FixedWindowRateLimiterOptions
     {
         PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+    }));
+    options.AddPolicy("journal", _ => RateLimitPartition.GetFixedWindowLimiter("single-user", __ => new FixedWindowRateLimiterOptions
+    {
+        PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
     }));
 });
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65536);
@@ -132,7 +137,7 @@ app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
 // The model may only *propose* a typed plan; the response is a preview the
 // user must explicitly submit. Invalid model output is rejected outright.
 app.MapPost("/guardian/propose", async (GuardianProposeRequest request, GuardianProposer proposer,
-    InferenceConcurrencyGate concurrency, CancellationToken ct) =>
+    InferenceConcurrencyGate concurrency, ActivityJournal journal, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Request) || request.Request.Length > GuardianProposer.MaxRequestLength)
         return Results.BadRequest(new { error = $"Request must be 1-{GuardianProposer.MaxRequestLength} characters." });
@@ -141,6 +146,9 @@ app.MapPost("/guardian/propose", async (GuardianProposeRequest request, Guardian
     try
     {
         var proposal = await proposer.ProposeAsync(request.Request, ct);
+        if (proposal.Plan is { } proposed)
+            await journal.AppendAsync(new JournalRecord(JournalKinds.System, "nexus",
+                Summary("Nexus proposed a system change: ", proposed.Description), Ref: "plan:" + proposed.Id), ct);
         return proposal.Plan is null
             ? Results.Ok(new { proposed = false, refusal = proposal.Refusal, provider = proposal.Provider })
             : Results.Ok(new { proposed = true, plan = proposal.Plan, provider = proposal.Provider,
@@ -151,8 +159,9 @@ app.MapPost("/guardian/propose", async (GuardianProposeRequest request, Guardian
 }).RequireRateLimiting("ai");
 // Guardian decisions belong to the root-owned broker (ADR-002). Core validates
 // the typed plan locally (same shared schema) and forwards it; it never
-// approves, records decisions or applies changes.
-app.MapPost("/guardian/submit", async (GuardianPreviewRequest request, GuardianBrokerClient broker, CancellationToken ct) =>
+// approves or applies changes, and only journals what the broker reports.
+app.MapPost("/guardian/submit", async (GuardianPreviewRequest request, GuardianBrokerClient broker, ActivityJournal journal,
+    CancellationToken ct) =>
 {
     GuardianPlan plan;
     try { plan = GuardianPlanner.Preview(request.Description, request.Changes); }
@@ -164,9 +173,21 @@ app.MapPost("/guardian/submit", async (GuardianPreviewRequest request, GuardianB
             description = plan.Description,
             changes = plan.Changes.Select(x => new { option = x.Option, enabled = x.Enabled })
         }, ct);
+        var candidate = response.TryGetProperty("candidate", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            c.TryGetProperty("candidateId", out var cid) && cid.ValueKind == System.Text.Json.JsonValueKind.String &&
+            cid.GetString() is { Length: 24 } id && id.All(Uri.IsHexDigit) ? id : null;
+        await journal.AppendAsync(new JournalRecord(JournalKinds.System, "user",
+            Summary("Sent to Guardian for approval: ", plan.Description),
+            Ref: candidate is null ? "plan:" + plan.Id : "candidate:" + candidate), ct);
         return Results.Ok(new { planId = plan.Id, broker = response });
     }
-    catch (GuardianBrokerException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
+    catch (GuardianBrokerException ex)
+    {
+        if (ex.StatusCode == 422)
+            await journal.AppendAsync(new JournalRecord(JournalKinds.System, "guardian",
+                Summary("Guardian refused a change: ", plan.Description), Ref: "plan:" + plan.Id), ct);
+        return Results.Problem(ex.Message, statusCode: ex.StatusCode);
+    }
 });
 app.MapGet("/guardian/candidates/{candidateId}", async (string candidateId, GuardianBrokerClient broker, CancellationToken ct) =>
 {
@@ -175,18 +196,76 @@ app.MapGet("/guardian/candidates/{candidateId}", async (string candidateId, Guar
     try { return Results.Ok(await broker.SendAsync("status", new { candidateId }, ct)); }
     catch (GuardianBrokerException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
 });
-app.MapPost("/guardian/review", async (GuardianReviewRequest request, GuardianBrokerClient broker, CancellationToken ct) =>
+app.MapPost("/guardian/review", async (GuardianReviewRequest request, GuardianBrokerClient broker, ActivityJournal journal,
+    CancellationToken ct) =>
 {
     if (request.CandidateId is not { Length: 24 } || !request.CandidateId.All(Uri.IsHexDigit) ||
         request.Attestation.ValueKind != System.Text.Json.JsonValueKind.Object)
         return Results.BadRequest(new { error = "A candidate ID and attestation object are required." });
+    // Guardian's decision is recorded as reported; Core does not judge it.
     try
     {
-        return Results.Ok(await broker.SendAsync("review",
-            new { candidateId = request.CandidateId, attestation = request.Attestation }, ct));
+        var decision = await broker.SendAsync("review",
+            new { candidateId = request.CandidateId, attestation = request.Attestation }, ct);
+        var eligible = decision.TryGetProperty("eligible", out var e) && e.ValueKind == System.Text.Json.JsonValueKind.True;
+        await journal.AppendAsync(new JournalRecord(JournalKinds.System, "guardian",
+            eligible ? "Guardian approved a change for staging" : "Guardian found a change not eligible for staging",
+            Ref: "candidate:" + request.CandidateId), ct);
+        return Results.Ok(decision);
     }
-    catch (GuardianBrokerException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
+    catch (GuardianBrokerException ex)
+    {
+        if (ex.StatusCode == 422)
+            await journal.AppendAsync(new JournalRecord(JournalKinds.System, "guardian", "Guardian refused a review",
+                Ref: "candidate:" + request.CandidateId), ct);
+        return Results.Problem(ex.Message, statusCode: ex.StatusCode);
+    }
 });
+// Activity journal. The shell records the setting and device events only it
+// can observe; Core records egress and Guardian events itself. Writes are
+// rate limited; bounded reads are not, so a dashboard can poll.
+app.MapPost("/journal", async (JournalPostRequest request, ActivityJournal journal, CancellationToken ct) =>
+{
+    if (request.Kind is null || !JournalKinds.FromShell.Contains(request.Kind))
+        return Results.BadRequest(new { error = "Only setting and device entries can be recorded." });
+    var record = new JournalRecord(request.Kind, request.Actor ?? "user", request.Summary ?? "",
+        request.Before, request.After, request.Reversible, request.Ref);
+    if (record.Actor == "nexus") return Results.BadRequest(new { error = "Only Core records entries as 'nexus'." });
+    if (ActivityJournal.Validate(record) is { } error) return Results.BadRequest(new { error });
+    return Results.Ok(new { id = await journal.AppendAsync(record, ct) });
+}).RequireRateLimiting("journal");
+app.MapGet("/journal", async (string? since, string? kind, int? limit, ActivityJournal journal, CancellationToken ct) =>
+{
+    DateTimeOffset? from = null;
+    if (since is not null)
+    {
+        if (!DateTimeOffset.TryParse(since, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed))
+            return Results.BadRequest(new { error = "since must be an ISO 8601 time." });
+        from = parsed;
+    }
+    if (kind is not null && !JournalKinds.All.Contains(kind)) return Results.BadRequest(new { error = "Unknown journal kind." });
+    if (limit is < 1 or > ActivityJournal.MaxPage)
+        return Results.BadRequest(new { error = $"limit must be 1-{ActivityJournal.MaxPage}." });
+    return Results.Ok(await journal.QueryAsync(from, kind, limit ?? 100, ct));
+});
+app.MapGet("/journal/today/summary", async (ActivityJournal journal, CancellationToken ct) =>
+    Results.Ok(await journal.SummaryAsync(ActivityJournal.Today, ct)));
+app.MapPost("/journal/{id:long}/undo", async (long id, ActivityJournal journal, CancellationToken ct) =>
+{
+    var (entry, conflict) = await journal.UndoAsync(id, ct);
+    if (entry is null) return Results.NotFound(new { error = "No such journal entry." });
+    if (conflict is not null) return Results.Conflict(new { error = conflict });
+    return Results.Ok(new { id, undone = true, restore = entry.Before, @ref = entry.Ref,
+                            instruction = "Write 'restore' back to the setting named by 'ref'. Core does not change shell settings." });
+}).RequireRateLimiting("journal");
+app.MapDelete("/journal", async (string? day, ActivityJournal journal, CancellationToken ct) =>
+{
+    if (!DateOnly.TryParseExact(day, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var date))
+        return Results.BadRequest(new { error = "day must be YYYY-MM-DD." });
+    return Results.Ok(new { day, erased = await journal.ForgetDayAsync(date, ct) });
+}).RequireRateLimiting("journal");
 app.MapGet("/inference/telemetry", async (MemoryTelemetry telemetry, CancellationToken ct) =>
     Results.Ok(await telemetry.ReadAsync(ct)));
 app.MapGet("/inference/status", async (ModelRouter router, CancellationToken ct) =>
@@ -211,10 +290,19 @@ app.MapGet("/system", () => Results.Ok(new
 })); // Deliberately read-only, limited metadata.
 app.Run();
 
+// Journal summaries are one short line: drop control characters and truncate.
+static string Summary(string prefix, string detail)
+{
+    var text = prefix + new string(detail.Where(ch => !char.IsControl(ch)).ToArray());
+    return text.Length <= ActivityJournal.MaxSummaryLength ? text : text[..(ActivityJournal.MaxSummaryLength - 1)] + "…";
+}
+
 public sealed record ChatRequest(string Prompt);
 public sealed record SelectRequest(string Name);
 public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
 public sealed record GuardianProposeRequest(string Request);
+public sealed record JournalPostRequest(string? Kind, string? Actor, string? Summary, System.Text.Json.JsonElement? Before,
+    System.Text.Json.JsonElement? After, bool? Reversible, string? Ref);
 public sealed record GuardianReviewRequest(string CandidateId, System.Text.Json.JsonElement Attestation);
 
 public partial class Program;

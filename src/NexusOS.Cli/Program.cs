@@ -72,6 +72,20 @@ try
         case "clear-history":
             using (var res = await http.DeleteAsync("/history"))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
+        case "journal" when args.Length == 2 && args[1] == "forget-today":
+            using (var res = await http.DeleteAsync($"/journal?day={DateTime.Now:yyyy-MM-dd}"))
+            { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
+        case "journal":
+            var query = new List<string>();
+            for (var i = 1; i < args.Length; i++)
+            {
+                if (args[i] == "--today")
+                    query.Add("since=" + Uri.EscapeDataString(new DateTimeOffset(DateTime.Today).ToUniversalTime().ToString("O")));
+                else if (args[i] == "--kind" && i + 1 < args.Length)
+                    query.Add("kind=" + Uri.EscapeDataString(args[++i]));
+                else { Usage(); return 2; }
+            }
+            return await PrintGet("/journal" + (query.Count > 0 ? "?" + string.Join('&', query) : ""));
         case "use" when args.Length == 2:
             using (var res = await http.PostAsJsonAsync("/providers/select", new { name = args[1] }))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
@@ -123,4 +137,4 @@ static string ErrorMessage(string raw, HttpResponseMessage response)
         _ => "Request failed."
     };
 }
-static void Usage() => Console.WriteLine("nexus [health|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask <prompt>]");
+static void Usage() => Console.WriteLine("nexus [health|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask <prompt>|journal [--today] [--kind K]|journal forget-today]");

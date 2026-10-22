@@ -51,7 +51,15 @@ pkgs.testers.runNixOSTest {
         return machine.succeed("su - alice -c " + repr(cmd))
 
     def hypr(args):
-        return alice("HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl " + args)
+        # Under software rendering Hyprland can be too busy to answer its IPC
+        # in time ("didn't respond in time"); that is load, so retry.
+        cmd = "su - alice -c " + repr("HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl " + args)
+        for _ in range(5):
+            status, out = machine.execute(cmd)
+            if status == 0:
+                return out
+            time.sleep(3)
+        raise AssertionError(f"hyprctl {args} failed: {out}")
 
     def click(x, y):
         hypr(f"dispatch movecursor {x} {y}")

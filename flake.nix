@@ -10,6 +10,7 @@
       packages.${system} = {
         nexus-guardian = pkgs.callPackage ./nix/packages/nexus-guardian.nix { };
         nexus-core = pkgs.callPackage ./nix/packages/nexus-core.nix { };
+        nexus-try = pkgs.callPackage ./nix/packages/nexus-try.nix { };
         default = self.packages.${system}.nexus-core;
       };
 
@@ -33,6 +34,7 @@
       nixosModules = {
         guardian = ./nix/modules/guardian.nix;
         core = ./nix/modules/core.nix;
+        try-apps = ./nix/modules/try-apps.nix;
       };
 
       checks.${system} = {
@@ -50,6 +52,11 @@
         guardian-trial-boot = import ./nix/tests/guardian-trial-boot.nix {
           inherit pkgs;
           guardianModule = self.nixosModules.guardian;
+        };
+        nexus-try = self.packages.${system}.nexus-try;
+        try-apps = import ./nix/tests/try-apps.nix {
+          inherit pkgs;
+          tryAppsModule = self.nixosModules.try-apps;
         };
       };
     };

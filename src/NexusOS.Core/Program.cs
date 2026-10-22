@@ -126,7 +126,7 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
 }).RequireRateLimiting("ai");
 app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
 {
-    try { return Results.Ok(GuardianPlanner.Preview(request.Description, request.Changes)); }
+    try { return Results.Ok(GuardianPlanner.Preview(request.Description, request.Changes, request.Packages)); }
     catch (ArgumentException) { return Results.BadRequest(new { error = "Unsupported or invalid change plan." }); }
 });
 // The model may only *propose* a typed plan; the response is a preview the
@@ -155,14 +155,14 @@ app.MapPost("/guardian/propose", async (GuardianProposeRequest request, Guardian
 app.MapPost("/guardian/submit", async (GuardianPreviewRequest request, GuardianBrokerClient broker, CancellationToken ct) =>
 {
     GuardianPlan plan;
-    try { plan = GuardianPlanner.Preview(request.Description, request.Changes); }
+    try { plan = GuardianPlanner.Preview(request.Description, request.Changes, request.Packages); }
     catch (ArgumentException) { return Results.BadRequest(new { error = "Unsupported or invalid change plan." }); }
     try
     {
         var response = await broker.SendAsync("submit", new
         {
             description = plan.Description,
-            changes = plan.Changes.Select(x => new { option = x.Option, enabled = x.Enabled })
+            changes = GuardianPlanner.WireChanges(plan)
         }, ct);
         return Results.Ok(new { planId = plan.Id, broker = response });
     }
@@ -187,6 +187,7 @@ app.MapPost("/guardian/review", async (GuardianReviewRequest request, GuardianBr
     }
     catch (GuardianBrokerException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
 });
+app.MapTryApps();
 app.MapGet("/inference/telemetry", async (MemoryTelemetry telemetry, CancellationToken ct) =>
     Results.Ok(await telemetry.ReadAsync(ct)));
 app.MapGet("/inference/status", async (ModelRouter router, CancellationToken ct) =>
@@ -213,7 +214,7 @@ app.Run();
 
 public sealed record ChatRequest(string Prompt);
 public sealed record SelectRequest(string Name);
-public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
+public sealed record GuardianPreviewRequest(string Description, GuardianChange[]? Changes, string[]? Packages = null);
 public sealed record GuardianProposeRequest(string Request);
 public sealed record GuardianReviewRequest(string CandidateId, System.Text.Json.JsonElement Attestation);
 

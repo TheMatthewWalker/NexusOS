@@ -12,7 +12,7 @@ public sealed class InferenceActivity
 }
 
 public sealed class IdleModelEvictionService(
-    InferenceLifecycle lifecycle,
+    ModelRouter router,
     InferenceActivity activity,
     IConfiguration config,
     ILogger<IdleModelEvictionService> logger) : BackgroundService
@@ -33,13 +33,15 @@ public sealed class IdleModelEvictionService(
             if (activity.HasActiveRequests || idle < idleSeconds * 1000L || activity.Generation == lastUnloadedGeneration)
                 continue;
 
+            var provider = router.Current;
+            if (!provider.SupportsUnload) continue;
             try
             {
-                await lifecycle.UnloadAsync(stoppingToken);
+                await provider.UnloadAsync(stoppingToken);
                 lastUnloadedGeneration = activity.Generation;
                 logger.LogInformation("Requested idle model unload.");
             }
-            catch (HttpRequestException ex)
+            catch (Exception ex) when (ex is HttpRequestException or ProviderException)
             {
                 logger.LogWarning("Idle unload failed ({Type}).", ex.GetType().Name);
             }

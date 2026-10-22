@@ -1,6 +1,8 @@
 using System.Buffers;
 using System.Text.Json;
 
+public sealed class ResponseTooLargeException() : Exception("AI provider response exceeded the allowed size.");
+
 public static class ModelResponseGuard
 {
     public const long MaxResponseBytes = 4 * 1024 * 1024;
@@ -16,7 +18,7 @@ public static class ModelResponseGuard
             while ((count = await source.ReadAsync(chunk.AsMemory(), ct)) > 0)
             {
                 if (buffer.Length + count > MaxResponseBytes)
-                    throw new HttpRequestException("AI provider response exceeded the allowed size.");
+                    throw new ResponseTooLargeException();
                 await buffer.WriteAsync(chunk.AsMemory(0, count), ct);
             }
             buffer.Position = 0;

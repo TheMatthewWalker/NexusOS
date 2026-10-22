@@ -4,9 +4,13 @@ using System.Text.Json;
 public sealed class SqliteStateDatabase
 {
     private readonly string _path;
+    // Test-only fault injection: returns true to abort the legacy import after N rows.
+    internal static Func<int, bool>? ImportFault;
+
     public SqliteStateDatabase(NexusStatePaths paths)
     {
         _path = paths.PathFor("state.sqlite3");
+        NexusStatePaths.RejectSymbolicLinkFile(_path);
         using var connection = Open();
         using var schema = connection.CreateCommand();
         schema.CommandText = """
@@ -50,8 +54,8 @@ public sealed class SqliteStateDatabase
             try
             {
                 using var doc = JsonDocument.Parse(File.ReadAllText(providerPath));
-                var name = doc.RootElement.GetProperty("Selected").GetString();
-                if (name is "local" or "llama-cpp" or "openai-compatible")
+                var name = ProviderNames.Normalise(doc.RootElement.GetProperty("Selected").GetString());
+                if (name is not null)
                 {
                     using var put = connection.CreateCommand();
                     put.Transaction = transaction;
@@ -62,17 +66,21 @@ public sealed class SqliteStateDatabase
             }
             catch (JsonException) { /* Ignore corrupt legacy preferences. */ }
             catch (KeyNotFoundException) { }
+            catch (InvalidOperationException) { /* "Selected" was not a string, or the root was not an object. */ }
         }
 
         var historyPath = paths.PathFor("history.jsonl");
         if (File.Exists(historyPath))
         {
+            var imported = 0;
             foreach (var line in File.ReadLines(historyPath))
             {
                 try
                 {
                     var entry = JsonSerializer.Deserialize<ConversationEntry>(line);
-                    if (entry is null) continue;
+                    // Valid JSON with missing fields would violate NOT NULL and
+                    // abort the whole import on every startup; treat it as malformed.
+                    if (entry is null || entry.Provider is null || entry.Prompt is null || entry.Answer is null) continue;
                     using var put = connection.CreateCommand();
                     put.Transaction = transaction;
                     put.CommandText = """
@@ -84,6 +92,8 @@ public sealed class SqliteStateDatabase
                     put.Parameters.AddWithValue("$prompt", entry.Prompt);
                     put.Parameters.AddWithValue("$answer", entry.Answer);
                     put.ExecuteNonQuery();
+                    if (ImportFault?.Invoke(++imported) == true)
+                        throw new IOException("Injected legacy import fault.");
                 }
                 catch (JsonException) { /* Skip malformed lines only. */ }
             }
@@ -99,11 +109,10 @@ public sealed class SqliteStateDatabase
 
 public sealed class ProviderStore
 {
-    private readonly SqliteStateDatabase? _database;
-    private readonly string? _legacyPath;
+    private readonly SqliteStateDatabase _database;
     private readonly object _gate = new();
-    private string _selected = "local";
-    public string[] Names => ["local", "llama-cpp", "openai-compatible"];
+    private string _selected = ProviderNames.Local;
+    public string[] Names => ProviderNames.All;
 
     public ProviderStore(SqliteStateDatabase database)
     {
@@ -111,65 +120,29 @@ public sealed class ProviderStore
         using var db = database.Open();
         using var query = db.CreateCommand();
         query.CommandText = "SELECT value FROM settings WHERE key='provider'";
-        var selected = query.ExecuteScalar() as string;
-        if (IsValid(selected)) _selected = selected!.ToLowerInvariant();
+        _selected = ProviderNames.Normalise(query.ExecuteScalar() as string) ?? ProviderNames.Local;
     }
     public ProviderStore(NexusStatePaths paths) : this(new SqliteStateDatabase(paths)) { }
-    public ProviderStore() : this(Path.Combine(Path.GetTempPath(), "nexusos-provider-" + Guid.NewGuid().ToString("N"))) { }
-    // Backwards-compatible file constructor retained for old tests.
-    public ProviderStore(string legacyPath)
-    {
-        _legacyPath = legacyPath;
-        if (!File.Exists(legacyPath)) return;
-        try
-        {
-            var selected = JsonSerializer.Deserialize<ProviderSelection>(File.ReadAllText(legacyPath))?.Selected;
-            if (IsValid(selected)) _selected = selected!.ToLowerInvariant();
-        }
-        catch (JsonException) { }
-    }
 
     public string Selected { get { lock (_gate) return _selected; } }
     public bool Select(string? name)
     {
-        if (!IsValid(name)) return false;
-        var next = name!.ToLowerInvariant();
+        var next = ProviderNames.Normalise(name);
+        if (next is null) return false;
         lock (_gate)
         {
-            if (_database is not null)
-            {
-                using var db = _database.Open();
-                using var cmd = db.CreateCommand();
-                cmd.CommandText = """
-                    INSERT INTO settings(key,value) VALUES('provider',$value)
-                    ON CONFLICT(key) DO UPDATE SET value=excluded.value
-                    """;
-                cmd.Parameters.AddWithValue("$value", next);
-                cmd.ExecuteNonQuery();
-            }
-            else
-            {
-                var path = _legacyPath!;
-                var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
-                Directory.CreateDirectory(directory);
-                var temp = Path.Combine(directory, ".provider-" + Guid.NewGuid().ToString("N"));
-                try
-                {
-                    File.WriteAllText(temp, JsonSerializer.Serialize(new ProviderSelection(next)));
-                    NexusStatePaths.RestrictPermissions(temp, false);
-                    File.Move(temp, path, true);
-                }
-                finally { if (File.Exists(temp)) File.Delete(temp); }
-            }
+            using var db = _database.Open();
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO settings(key,value) VALUES('provider',$value)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                """;
+            cmd.Parameters.AddWithValue("$value", next);
+            cmd.ExecuteNonQuery();
             _selected = next;
         }
         return true;
     }
-    private static bool IsValid(string? value) => value is not null &&
-        (value.Equals("local", StringComparison.OrdinalIgnoreCase) ||
-         value.Equals("llama-cpp", StringComparison.OrdinalIgnoreCase) ||
-         value.Equals("openai-compatible", StringComparison.OrdinalIgnoreCase));
-    private sealed record ProviderSelection(string Selected);
 }
 
 public sealed record ConversationEntry(DateTimeOffset Timestamp, string Provider, string Prompt, string Answer);
@@ -179,6 +152,7 @@ public sealed class ConversationStore
     private readonly SqliteStateDatabase _database;
     private readonly int _maxEntries;
     private readonly TimeSpan _maxAge;
+    public int MaxEntries => _maxEntries;
 
     public ConversationStore(SqliteStateDatabase database, IConfiguration config)
     {

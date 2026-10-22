@@ -57,6 +57,9 @@ jobs:
       - name: Verify protected Unix-domain IPC
         run: bash scripts/ci-unix.sh
 
+      - name: Cross-user isolation between two real Linux accounts (#51)
+        run: bash scripts/ci/cross-user.sh
+
       - name: Validate benchmark parser
         run: python3 -m unittest discover -s tests/bench -v
 

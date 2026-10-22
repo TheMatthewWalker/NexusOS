@@ -9,6 +9,7 @@ public sealed class LocalApiToken
     public LocalApiToken(NexusStatePaths paths)
     {
         TokenPath = paths.PathFor("api-token");
+        NexusStatePaths.RejectSymbolicLinkFile(TokenPath);
         if (!File.Exists(TokenPath))
         {
             var candidate = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));

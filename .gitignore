@@ -8,3 +8,7 @@
 *.db
 *.sqlite
 secrets.json
+out/
+__pycache__/
+*.pyc
+TestResults/

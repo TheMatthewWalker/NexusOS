@@ -44,6 +44,16 @@ jobs:
             echo "ERROR: failed candidate was eligible for review" >&2
             exit 1
           fi
-      - name: Confirm no deployment operations
+      - name: Confirm no deployment operations outside the staging executor
         run: |
-          ! grep -E 'nixos-rebuild.*(switch|boot)|sudo|pkexec' scripts/guardian/validate.py
+          # Only scripts/guardian/stage_executor.py may stage a generation, and
+          # nothing may switch the running system, escalate, or spawn a shell.
+          pattern='nixos-rebuild|switch-to-configuration|nix-env --profile|sudo|pkexec|shell=True|os\.system'
+          if grep -rnE "$pattern" scripts/guardian --include='*.py' | grep -v '^scripts/guardian/stage_executor.py:'; then
+            echo "ERROR: deployment or escalation primitive outside the staging executor" >&2
+            exit 1
+          fi
+          if grep -nE 'nixos-rebuild|switch-to-configuration (switch|test)|sudo|pkexec|shell=True|os\.system' scripts/guardian/stage_executor.py 2>/dev/null; then
+            echo "ERROR: staging executor may only use 'switch-to-configuration boot'" >&2
+            exit 1
+          fi

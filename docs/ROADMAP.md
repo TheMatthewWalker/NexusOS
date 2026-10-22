@@ -17,7 +17,7 @@ Older dated progress notes are kept in [history](evidence/history.md).
 | M3 | Guardian preview and approval | **DONE in VM (pending review)** | Shared schema, Ed25519 attestations, root broker as a hardened NixOS service, root-console approval, AI-proposed typed plans with injection tests ([M3](evidence/M3.md), [ADR-002](adr/002-guardian-candidate-model.md)) |
 | M4 | Guardian rollback | **VM DONE; hardware open** | One-time trial boots on a real GRUB disk. A healthy trial is confirmed; a broken trial panics and falls back unattended. User-data snapshots are separate from OS generations ([M4](evidence/M4.md)). Physical-hardware drill outstanding |
 | M5 | Inference manager | **IN PROGRESS: tooling done, hardware open** | Provider registry, managed llama.cpp (start on demand, stop on unload), token budgets, RAM/VRAM telemetry, benchmark through Core, CI CPU run ([M5](evidence/M5.md)). 8 GB and 24 GB GPU runs and the gaming-reclaim test outstanding |
-| M6 | Desktop alpha | **TODO: needs your design input** | Not started, deliberately |
+| M6 | Desktop alpha | **IN PROGRESS: design approved, shell chosen** | SpaceUI design pack archived ([docs/design/spaceui](design/spaceui/README.md)). Shell: Quickshell on Hyprland ([ADR-003](adr/003-desktop-shell.md), [spike](design/spaceui-spike.md)). The 3D core look is being iterated with you |
 | M7 | OS alpha image | TODO | Flake packages and NixOS modules for Core and Guardian exist (`flake.nix`); ISO, onboarding and hardware matrix not started |
 | M8 | Context and search | TODO | |
 | M9 | Automation and skills | TODO | |

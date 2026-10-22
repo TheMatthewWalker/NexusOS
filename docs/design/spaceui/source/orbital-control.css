@@ -1,0 +1,245 @@
+.orbital-control {
+  position: fixed;
+  right: 23px;
+  top: 10px;
+  width: 34px;
+  height: 34px;
+  z-index: 10000;
+  isolation: isolate;
+}
+.orbital-trigger {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #fff9;
+  border: 1px solid #e1d9f5;
+  color: #9580d7;
+  box-shadow: 0 2px 14px #d6c8f640;
+}
+.orbital-control.expanded {
+  width: 365px;
+  height: 402px;
+  top: 7px;
+  right: 16px;
+}
+.orbital-control.expanded > .orbital-trigger {
+  position: absolute;
+  right: 7px;
+  top: 3px;
+  opacity: 0;
+  pointer-events: none;
+}
+.control-solar-system {
+  position: absolute;
+  inset: 0;
+  animation: control-reveal 0.22s ease-out;
+}
+.control-orbits {
+  position: absolute;
+  top: 28px;
+  width: 360px;
+  height: 242px;
+  pointer-events: none;
+  filter: drop-shadow(0 0 4px #fff);
+}
+.control-orbits ellipse {
+  fill: none;
+  stroke: #baa6e5;
+  stroke-width: 0.8;
+  stroke-dasharray: 6 5;
+  opacity: 0.62;
+}
+.control-nexus {
+  position: absolute;
+  left: 141px;
+  top: 104px;
+  width: 81px;
+  height: 81px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #9a7ce5;
+  background: radial-gradient(
+    circle at 70% 35%,
+    #e1fafff0,
+    #faf5fff0 45%,
+    #e7d9fff0 70%,
+    #fff
+  );
+  box-shadow:
+    0 0 30px #dcc6f882,
+    inset 0 0 0 7px #fff8;
+  border: 1px solid #fff;
+}
+.control-planet {
+  position: absolute;
+  width: 51px;
+  height: 51px;
+  border: 1px solid #fffffff0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 70% 70%, #dce6ffde, #ffffffde);
+  backdrop-filter: blur(18px);
+  color: #6d85d9;
+  box-shadow:
+    0 4px 20px #8c80c423,
+    inset 0 0 0 5px #ffffff87;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s;
+}
+.control-planet:hover,
+.control-planet:focus-visible {
+  box-shadow:
+    0 0 0 5px #c7b3f450,
+    0 4px 20px #8c80c445;
+  transform: scale(1.06);
+}
+.control-planet.sound {
+  color: #ac76df;
+  background: radial-gradient(circle at 70% 70%, #f2d8fff0, #ffffffde);
+}
+.control-planet.display,
+.control-planet.time {
+  color: #8e7cb7;
+}
+.control-planet.power {
+  color: #6daeb6;
+}
+.control-planet.privacy {
+  color: #a077d7;
+}
+.control-planet.inactive {
+  color: #aaaec0;
+}
+.panel-collapse {
+  position: absolute;
+  right: 1px;
+  top: 8px;
+  width: 24px;
+  height: 24px;
+  background: #fff9;
+  border: 1px solid #e5dff3;
+  border-radius: 50%;
+  color: #a598bd;
+  display: grid;
+  place-items: center;
+}
+.control-description {
+  position: absolute;
+  right: 52px;
+  top: 0;
+  max-width: 285px;
+  padding: 8px 11px;
+  background: #fffffff0;
+  border: 1px solid #d8c8f0;
+  box-shadow: 0 4px 16px #ab95c621;
+  border-radius: 13px;
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+.control-description strong {
+  font-size: 11px;
+  font-weight: 550;
+  color: #685585;
+}
+.control-description span {
+  font-size: 9px;
+  color: #8e829d;
+}
+.control-quick-actions {
+  position: absolute;
+  right: 13px;
+  left: 13px;
+  top: 277px;
+  padding: 13px 15px;
+  background: #ffffffdf;
+  border: 1px solid #e9dff6;
+  border-radius: 18px;
+  box-shadow: 0 7px 24px #9e8bb31c;
+  backdrop-filter: blur(20px);
+}
+.control-quick-actions label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #9a82ba;
+  font-size: 10px;
+}
+.control-quick-actions input {
+  width: 100%;
+  accent-color: #a188dc;
+  height: 4px;
+}
+.control-quick-actions label > span:last-child {
+  min-width: 30px;
+}
+.control-quick-actions > div {
+  display: flex;
+  gap: 7px;
+  margin-top: 13px;
+}
+.control-quick-actions button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #e7def2;
+  padding: 7px 9px;
+  border-radius: 10px;
+  font-size: 9px;
+  color: #9a8bab;
+  background: #fff8;
+}
+.control-quick-actions button[aria-checked="true"] {
+  color: #8b6aca;
+  background: #f2ecfc;
+  border-color: #d7c5f0;
+}
+.control-quick-actions button > span {
+  font-size: 8px;
+  opacity: 0.65;
+}
+.control-quick-actions small {
+  display: block;
+  margin-top: 9px;
+  font-size: 8px;
+  color: #b0a5bd;
+  text-align: center;
+  letter-spacing: 0.2px;
+}
+@keyframes control-reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+    transform-origin: top right;
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@media (max-width: 500px) {
+  .orbital-control {
+    right: 14px;
+    top: 5px;
+  }
+  .orbital-control.expanded {
+    right: 10px;
+    transform: scale(0.9);
+    transform-origin: top right;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .control-solar-system {
+    animation: none;
+  }
+  .control-planet {
+    transition: none;
+  }
+}

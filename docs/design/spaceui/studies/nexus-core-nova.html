@@ -1,0 +1,611 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0">
+<title>Nexus Core Study</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+/* Layout: one full-screen live core; readouts top-left, study controls top-right, chat at the bottom. */
+:root {
+  --bg: #04070f;
+  --ink: #dfeaff;
+  --ink-dim: #8fa3c4;
+  --line: rgba(120, 170, 255, 0.22);
+  --panel: rgba(10, 18, 36, 0.62);
+  --accent: #5fd4ff;
+  --accent-ink: #04121f;
+  --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+:root[data-backdrop="pearl"] {
+  --bg: #f4f6fc;
+  --ink: #26304a;
+  --ink-dim: #5d6a85;
+  --line: rgba(110, 100, 200, 0.25);
+  --panel: rgba(255, 255, 255, 0.7);
+  --accent: #6d5fe0;
+  --accent-ink: #ffffff;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); overflow: hidden; }
+#stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; outline: none; }
+#stage:active { cursor: grabbing; }
+#stage:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.ui {
+  position: fixed; inset: 0; pointer-events: none;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-bottom, 0px));
+}
+.ui > * { pointer-events: auto; }
+.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; pointer-events: none; }
+.top > * { pointer-events: auto; }
+.readout { display: grid; gap: 6px; min-width: 0; }
+.name { font-family: var(--display); font-weight: 600; font-size: 15px; letter-spacing: 0.32em; text-transform: uppercase; }
+.sub { font-size: 13px; color: var(--ink-dim); max-width: 34ch; line-height: 1.45; }
+.meters { display: flex; gap: 18px; font-family: var(--display); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+.meters b { color: var(--ink); font-weight: 600; }
+.controls { display: grid; gap: 8px; justify-items: end; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); padding: 3px; }
+.seg button { font: 600 12px/1 var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); background: none; border: 0; border-radius: 999px; padding: 8px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.seg-label { font: 600 11px/1 var(--display); letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-dim); align-self: center; padding: 0 8px 0 10px; }
+.bottom { display: grid; gap: 10px; justify-items: center; }
+.reply { max-width: 560px; width: 100%; min-height: 1.5em; text-align: center; font-size: 15px; line-height: 1.55; text-wrap: balance; text-shadow: 0 1px 8px var(--bg); }
+.note { font-size: 12px; color: var(--ink-dim); }
+form { display: flex; gap: 8px; width: 100%; max-width: 560px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 6px 6px 20px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-sizing: border-box; }
+form:focus-within { border-color: var(--accent); }
+#ask { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: 15px var(--body); outline: none; }
+#ask::placeholder { color: var(--ink-dim); }
+#send { border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font: 600 12px/1 var(--display); letter-spacing: 0.14em; text-transform: uppercase; padding: 0 18px; cursor: pointer; min-height: 40px; }
+#send:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.fallback { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; }
+@media (max-width: 640px) {
+  .controls { justify-items: start; width: 100%; }
+  .seg button { padding: 8px 9px; font-size: 11px; }
+  .sub { display: none; }
+}
+</style>
+
+<canvas id="stage" tabindex="0" role="button" aria-label="Nexus core. Drag to turn it, press Enter to make it listen."></canvas>
+
+<div class="ui">
+  <div class="top">
+    <div class="readout">
+      <div class="name">Nexus Core</div>
+      <div class="sub">Study 4 · nova. Drag to turn it, tap it to make it listen, or ask something below.</div>
+      <div class="meters" aria-live="polite">
+        <span>State <b id="m-state">Idle</b></span>
+        <span>Pulse <b id="m-bpm">54</b> bpm</span>
+        <span>Render <b id="m-render">1.00×</b></span>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="State">
+        <button type="button" data-state="idle" aria-pressed="true">Idle</button>
+        <button type="button" data-state="listening" aria-pressed="false">Listen</button>
+        <button type="button" data-state="thinking" aria-pressed="false">Think</button>
+        <button type="button" data-state="speaking" aria-pressed="false">Speak</button>
+      </div>
+      <div class="seg" role="group" aria-label="Colour">
+        <span class="seg-label">Colour</span>
+        <button type="button" data-palette="0" aria-pressed="true">Nova</button>
+        <button type="button" data-palette="1" aria-pressed="false">Plasma</button>
+        <button type="button" data-palette="2" aria-pressed="false">Arc blue</button>
+      </div>
+      <div class="seg" role="group" aria-label="Backdrop">
+        <span class="seg-label">Backdrop</span>
+        <button type="button" data-backdrop="night" aria-pressed="true">Night</button>
+        <button type="button" data-backdrop="pearl" aria-pressed="false">Pearl</button>
+      </div>
+      <div class="seg" role="group" aria-label="Readouts">
+        <span class="seg-label">Readouts</span>
+        <button type="button" data-readouts="1" aria-pressed="true">On</button>
+        <button type="button" data-readouts="0" aria-pressed="false">Off</button>
+      </div>
+      <div class="seg" role="group" aria-label="Motion">
+        <span class="seg-label">Motion</span>
+        <button type="button" data-motion="full" aria-pressed="true">Full</button>
+        <button type="button" data-motion="reduced" aria-pressed="false">Reduced</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="reply" id="reply" aria-live="polite"></div>
+    <form id="chat" autocomplete="off">
+      <input id="ask" name="ask" placeholder="Ask Nexus something" aria-label="Ask Nexus something">
+      <button id="send" type="submit">Ask</button>
+    </form>
+    <div class="note">Demo replies. No AI is connected to this study.</div>
+  </div>
+</div>
+
+<script>
+(() => {
+const canvas = document.getElementById("stage");
+const gl = canvas.getContext("webgl2", { antialias: false, alpha: false, powerPreference: "high-performance" });
+if (!gl) {
+  document.body.insertAdjacentHTML("beforeend", '<div class="fallback"><p>This study needs WebGL2, which this browser has turned off.</p></div>');
+  return;
+}
+
+const VERT = `#version 300 es
+in vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
+
+const FRAG = `#version 300 es
+precision highp float;
+precision highp sampler3D;
+uniform vec2 uRes, uCenter;
+uniform float uCoreR, uTime, uEnergy, uBeat, uVoice, uListen, uThink, uSpeak, uPearl, uRipple, uAwake, uHud;
+uniform vec3 uPal;   // colour weights: nova, plasma, arc blue
+uniform mat3 uRot;
+uniform sampler3D uNoise;
+out vec4 fragColor;
+
+const float TAU = 6.2831853;
+const mat3 OCT = mat3(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64);
+
+// Smooth value noise from a 64^3 random texture: cubic-weighted coordinates
+// turn trilinear filtering into a smooth field at one fetch per octave.
+float n3(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return texture(uNoise, (i + f + 0.5) / 64.0).r;
+}
+float fbm(vec3 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { s += a * n3(p); p = OCT * p * 2.03; a *= 0.5; }
+  return s / 0.9375;
+}
+float hash12(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+
+vec3 pal(vec3 nova, vec3 plasma, vec3 arc) { return nova * uPal.x + plasma * uPal.y + arc * uPal.z; }
+
+// Colour roles. Nova follows the references: white-blue heart, amber tendrils,
+// a fiery shell, blue-violet outer gas.
+vec3 heartC() { return pal(vec3(0.82, 0.90, 1.00), vec3(1.00, 0.86, 0.68), vec3(0.82, 0.96, 1.00)); }
+vec3 tendrilC(float k) {
+  return mix(pal(vec3(1.00, 0.45, 0.12), vec3(1.00, 0.32, 0.70), vec3(0.25, 0.65, 1.00)),
+             pal(vec3(1.00, 0.86, 0.62), vec3(1.00, 0.82, 0.92), vec3(0.86, 0.97, 1.00)), k);
+}
+vec3 fireC(float k) {
+  return mix(pal(vec3(0.90, 0.20, 0.05), vec3(0.80, 0.18, 0.75), vec3(0.08, 0.40, 1.00)),
+             pal(vec3(1.00, 0.62, 0.30), vec3(1.00, 0.55, 0.88), vec3(0.55, 0.88, 1.00)), k);
+}
+vec3 gasC(float n) {
+  return mix(pal(vec3(0.16, 0.24, 0.95), vec3(0.10, 0.42, 1.00), vec3(0.04, 0.18, 0.72)),
+             pal(vec3(0.56, 0.24, 0.95), vec3(0.55, 0.24, 1.00), vec3(0.18, 0.62, 1.00)), smoothstep(0.45, 0.75, n));
+}
+vec3 ringTint(int k) {
+  return k == 0 ? pal(vec3(0.72, 0.64, 1.00), vec3(0.30, 0.85, 1.00), vec3(0.40, 0.86, 1.00))
+                : pal(vec3(0.48, 0.62, 1.00), vec3(0.72, 0.45, 1.00), vec3(0.30, 0.78, 1.00));
+}
+
+vec3 ringNormal(int k, float t) {
+  float fk = float(k);
+  float a = 1.15 + fk * 1.1 + 0.25 * sin(t * 0.07 + fk * 2.0);
+  float b = fk * 2.4 + t * (0.05 + 0.02 * fk);
+  return normalize(vec3(sin(a) * cos(b), cos(a), sin(a) * sin(b)));
+}
+
+// Holographic readouts.
+float band(float x, float c, float w, float aa) { return 1.0 - smoothstep(w, w + aa, abs(x - c)); }
+
+// Holographic readout rings, drawn flat in screen space around the core.
+float hud(vec2 p, float t, float px) {
+  float r = length(p);
+  if (r < 1.45 || r > 2.6) return 0.0;
+  float A = atan(p.y, p.x) / TAU + 0.5;
+  float s = 0.0;
+  s += band(r, 1.62, px * 0.5, px) * (0.30 + 0.35 * step(0.5, fract(A * 90.0 - t * 0.04)));
+  float tk = A * 72.0;
+  float ft = fract(tk);
+  float d = min(ft, 1.0 - ft) * TAU * r / 72.0;
+  float major = 1.0 - step(0.5, mod(round(tk), 6.0));
+  float tick = (1.0 - smoothstep(px * 0.4, px * 1.2, d)) * step(1.72, r) * step(r, mix(1.77, 1.86, major));
+  s += tick * (0.45 + 0.4 * major);
+  for (int k = 0; k < 3; k++) {
+    float fk = float(k);
+    float c = fract(t * (0.020 + 0.013 * fk) * (k == 1 ? -1.0 : 1.0) + fk * 0.37);
+    float len = 0.09 + 0.07 * fk;
+    float da = abs(fract(A - c + 0.5) - 0.5);
+    s += step(da, len) * band(r, 1.97 + 0.045 * fk, px * (1.4 - 0.4 * fk), px) * (0.75 - 0.15 * fk);
+  }
+  float bi = floor(A * 120.0), bf = fract(A * 120.0);
+  float level = n3(vec3(bi * 0.23, t * 5.0, 3.0));
+  float h = 0.008 + uSpeak * uVoice * 0.16 * (0.25 + level) + uListen * 0.06 * level;
+  s += step(0.2, bf) * step(bf, 0.8) * step(1.49, r) * step(r, 1.49 + h) * 0.9;
+  float sweep = exp(-fract(A + t * 0.55) * 22.0);
+  s += uThink * sweep * (0.45 - 0.25 * uPearl) * step(1.62, r) * step(r, 2.08);
+  if (uRipple < 2.5) s += band(r, 1.0 + uRipple * 1.4, px * 1.2, px * 2.5) * exp(-uRipple * 1.6) * 1.4;
+  return s * (0.45 + 0.30 * uAwake + 0.35 * uEnergy);
+}
+
+void main() {
+  vec2 frag = gl_FragCoord.xy;
+  vec2 p = (frag - uCenter) / uCoreR;
+  float px = 1.0 / uCoreR;
+  float rp = length(p);
+
+  // Deep space, with two layers of faint stars.
+  vec2 q = (frag - 0.5 * uRes) / min(uRes.x, uRes.y);
+  vec3 night = mix(vec3(0.020, 0.022, 0.058), vec3(0.003, 0.004, 0.011), smoothstep(0.0, 1.2, length(q)));
+  float twk = 0.55 + 0.45 * sin(uTime * 1.7 + hash12(floor(frag / 2.5)) * TAU);
+  night += vec3(0.75, 0.82, 1.0) * (step(0.9988, hash12(floor(frag / 1.5))) * 0.30 + step(0.9994, hash12(floor(frag / 2.5) + 17.0)) * 0.55 * twk);
+  vec3 pearl = mix(vec3(0.985, 0.988, 1.000), vec3(0.925, 0.935, 0.980), smoothstep(0.0, 1.1, length(q)));
+  vec3 bg = mix(night, pearl, uPearl);
+
+  vec3 acc = vec3(0.0);
+  float T = 1.0;
+
+  if (rp < 1.75) {
+    vec3 ro = vec3(0.0, 0.0, 4.0) * uRot;
+    vec3 rd = normalize(vec3(p * 0.258, -1.0)) * uRot;
+
+    // Two thin luminous rings, composited at their true depth inside the march.
+    vec3 ringCol[2]; float ringT[2]; float pending[2];
+    for (int k = 0; k < 2; k++) {
+      vec3 n = ringNormal(k, uTime);
+      float dn = dot(rd, n);
+      float tp = abs(dn) > 1e-4 ? -dot(ro, n) / dn : -1.0;
+      vec3 x = ro + rd * tp;
+      float R = 1.10 + 0.22 * float(k);
+      float d = abs(length(x) - R);
+      vec3 u = normalize(cross(n, abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+      float a = atan(dot(x, cross(n, u)), dot(x, u));
+      float spin = uTime * (0.30 + 0.15 * float(k)) * (k == 1 ? -1.0 : 1.0) * (1.0 + 1.2 * uEnergy);
+      float arc = smoothstep(-0.2, 0.9, sin(a + spin));          // a long arc that fades out, as in a lit ring
+      float pkt = exp(-pow(mod(a - uTime * (1.2 + 0.5 * float(k)), TAU) - 3.14159, 2.0) * 30.0);
+      float w = 0.007 + 0.005 * uListen + 0.003 * uEnergy;
+      float g = exp(-d * d / (w * w)) * arc * (0.45 + 1.0 * uListen + 0.6 * uEnergy + 0.3 * uAwake)
+              + exp(-d * d / (w * w * 0.5)) * pkt * 1.6 * arc
+              + exp(-d * d / (w * w * 40.0)) * 0.035;
+      ringCol[k] = ringTint(k) * g;
+      ringT[k] = tp;
+      pending[k] = tp > 0.0 ? 1.0 : 0.0;
+    }
+
+    float b = dot(ro, rd);
+    float h = b * b - (dot(ro, ro) - 1.55 * 1.55);
+    if (h > 0.0) {
+      h = sqrt(h);
+      float t0 = max(-b - h, 0.0), t1 = -b + h;
+      const int STEPS = 56;
+      float dt = (t1 - t0) / float(STEPS);
+      float t = t0 + dt * hash12(frag + fract(uTime) * 61.0);
+      float breathe = 1.0 + 0.03 * uBeat + 0.06 * uVoice;
+      for (int i = 0; i < STEPS; i++) {
+        for (int k = 0; k < 2; k++) {
+          if (pending[k] > 0.5 && ringT[k] < t) { acc += T * ringCol[k]; pending[k] = 0.0; }
+        }
+        vec3 s = ro + rd * t;
+        float len = length(s);
+        float r = len / breathe;
+        if (r < 1.34) {
+          // Slow differential swirl: inner gas turns faster than outer gas.
+          float ang = uTime * (0.06 + 0.22 * uEnergy) * (1.6 - r);
+          float ca = cos(ang), sa = sin(ang);
+          vec3 w3 = vec3(ca * s.x - sa * s.z, s.y, sa * s.x + ca * s.z) / breathe;
+          vec3 wd = w3 / max(length(w3), 1e-4);
+          float tw = uTime * (0.05 + 0.08 * uEnergy);
+          vec2 warp = vec2(fbm(w3 * 1.5 + vec3(0.0, tw, 0.0)), fbm(w3 * 1.5 + vec3(5.2, -tw, 1.3)));
+          float n = fbm(w3 * 2.0 + vec3(warp, warp.x) * 1.5);
+
+          // 1. Tendrils streaming out of the heart: noise over direction, stretched along the radius.
+          float sr = fbm(wd * 5.5 + vec3(warp * 0.6, 0.0) + vec3(0.0, 0.0, -r * 0.9 + uTime * (0.04 + 0.12 * uEnergy)));
+          float tendril = pow(smoothstep(0.48, 0.84, sr), 2.0) * (1.0 - smoothstep(0.12, 0.84, r));
+          vec3 em = tendrilC(1.0 - smoothstep(0.0, 0.55, r)) * tendril * (2.0 + 2.5 * uEnergy + 2.0 * uVoice) * (0.45 / (r + 0.16));
+
+          // 2. The fiery shell: lacy ridges on a wobbling sphere, dark between the filaments.
+          float shellR = 0.86 + (n - 0.5) * 0.16 + 0.04 * uVoice;
+          float band = exp(-pow((r - shellR) / 0.065, 2.0));
+          float ridge = 1.0 - abs(2.0 * fbm(wd * 4.2 + vec3(warp, 0.3) * 0.9) - 1.0);
+          float lace = pow(ridge, 16.0) + 0.35 * pow(1.0 - abs(2.0 * n3(wd * 11.0 + warp.x * 3.0) - 1.0), 12.0);
+          float fil = band * lace;
+          em += fireC(clamp(lace, 0.0, 1.0)) * fil * (4.5 + 4.0 * uEnergy + 3.5 * uVoice + 1.2 * uAwake);
+
+          // 3. Faint pink-white smoke inside the shell.
+          float smoke = smoothstep(0.58, 0.86, n) * (1.0 - smoothstep(0.55, 0.95, r));
+          em += pal(vec3(0.85, 0.68, 0.85), vec3(0.75, 0.55, 0.95), vec3(0.55, 0.78, 1.0)) * smoke * 0.10;
+
+          // 4. Blue-violet gas drifting outside the shell.
+          float wisp = smoothstep(0.46, 0.78, n) * smoothstep(0.55, 0.92, r) * (1.0 - smoothstep(1.05, 1.34, r));
+          em += gasC(n) * wisp * (1.1 + 0.9 * uEnergy + 0.4 * uAwake);
+
+          // 5. The heart.
+          em += heartC() * exp(-r * r * 55.0) * (2.4 + 3.0 * uBeat + 2.0 * uVoice + 1.0 * uThink);
+
+          if (uRipple < 2.5) em += fireC(0.8) * exp(-pow((r - uRipple * 1.6) * 7.0, 2.0)) * exp(-uRipple * 2.2) * 2.5;
+
+          acc += T * em * dt;
+          T *= exp(-(wisp * 0.9 + fil * 0.6 + smoke * 0.3 + 0.01) * dt * 3.0);
+        }
+        t += dt;
+        if (T < 0.015) break;
+      }
+    }
+    for (int k = 0; k < 2; k++) acc += T * ringCol[k] * pending[k];
+  }
+
+  vec3 lit = 1.0 - exp(-acc * 1.05);
+  vec3 col = mix(bg * T + lit, bg * T + lit * (1.0 - 0.35 * dot(bg, vec3(0.33))), uPearl);
+
+  // Lens: bloom, an anamorphic streak and soft rays around the heart, like a
+  // camera looking into a star. It pulses with the heartbeat and the voice.
+  float fl = 0.55 + 0.9 * uBeat + 0.7 * uVoice + 0.4 * uThink + 0.2 * uAwake;
+  vec3 flareC = pal(vec3(0.55, 0.70, 1.00), vec3(1.00, 0.75, 0.62), vec3(0.50, 0.85, 1.00));
+  float bloom = 0.45 * exp(-rp * 8.0) + 0.10 * exp(-rp * 2.4);
+  float streak = exp(-abs(p.y) * 55.0) * exp(-abs(p.x) * 0.55) * 0.45 + exp(-abs(p.y) * 170.0) * exp(-abs(p.x) * 1.8) * 0.8;
+  float ang = atan(p.y, p.x);
+  float rays = pow(n3(vec3(cos(ang) * 7.0, sin(ang) * 7.0, uTime * 0.15)), 5.0) * 3.0 * exp(-rp * 1.8) * smoothstep(0.02, 0.2, rp);
+  col += (flareC * (bloom + streak + rays * 0.22) + vec3(1.0) * exp(-rp * 28.0) * 0.8) * fl * (1.0 - 0.6 * uPearl);
+
+  // Star dust gathered around the core.
+  vec2 cell = floor(frag / 4.0);
+  vec2 cp = (cell + vec2(hash12(cell + 1.1), hash12(cell + 2.3))) * 4.0;
+  float near = exp(-max(rp - 0.9, 0.0) * 1.5) * smoothstep(0.55, 1.0, rp);
+  float spark = step(1.0 - 0.07 * near, hash12(cell + 7.3)) * exp(-dot(frag - cp, frag - cp) * 0.6);
+  col += pal(vec3(0.72, 0.76, 1.0), vec3(0.85, 0.72, 1.0), vec3(0.60, 0.86, 1.0)) * spark * (0.45 + 0.35 * sin(uTime * 3.0 + hash12(cell) * 40.0)) * (1.0 - uPearl);
+
+  float hs = hud(p, uTime, px) * uHud * 0.75;
+  vec3 hudNight = pal(vec3(0.55, 0.70, 1.00), vec3(0.50, 0.82, 1.00), vec3(0.45, 0.86, 1.00));
+  vec3 hudPearl = pal(vec3(0.35, 0.30, 0.80), vec3(0.40, 0.33, 0.85), vec3(0.15, 0.40, 0.80));
+  col = mix(col + hudNight * hs, mix(col, hudPearl, clamp(hs, 0.0, 1.0)), uPearl);
+  fragColor = vec4(col, 1.0);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+try {
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+} catch (err) {
+  console.error(err);
+  document.body.insertAdjacentHTML("beforeend", '<div class="fallback"><p>The core shader could not start on this device.</p></div>');
+  return;
+}
+gl.useProgram(prog);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, "p");
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+const U = {};
+for (const n of ["uRes", "uCenter", "uCoreR", "uTime", "uEnergy", "uBeat", "uVoice", "uListen", "uThink", "uSpeak",
+                 "uPal", "uHud", "uPearl", "uRipple", "uAwake", "uRot", "uNoise"]) U[n] = gl.getUniformLocation(prog, n);
+
+// 64^3 random field, sampled as smooth noise in the shader.
+const N = 64, noise = new Uint8Array(N * N * N);
+let seed = 1234567;
+for (let i = 0; i < noise.length; i++) { seed = (seed * 1664525 + 1013904223) >>> 0; noise[i] = seed >>> 24; }
+gl.bindTexture(gl.TEXTURE_3D, gl.createTexture());
+gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+gl.texImage3D(gl.TEXTURE_3D, 0, gl.R8, N, N, N, 0, gl.RED, gl.UNSIGNED_BYTE, noise);
+for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
+  [gl.TEXTURE_WRAP_S, gl.REPEAT], [gl.TEXTURE_WRAP_T, gl.REPEAT], [gl.TEXTURE_WRAP_R, gl.REPEAT]]) gl.texParameteri(gl.TEXTURE_3D, k, v);
+gl.uniform1i(U.uNoise, 0);
+
+// ---- state ----
+const STATES = {
+  idle:      { energy: 0.22, listen: 0, think: 0, speak: 0, bpm: 54, label: "Idle" },
+  listening: { energy: 0.45, listen: 1, think: 0, speak: 0, bpm: 72, label: "Listening" },
+  thinking:  { energy: 0.80, listen: 0, think: 1, speak: 0, bpm: 92, label: "Thinking" },
+  speaking:  { energy: 0.55, listen: 0, think: 0, speak: 1, bpm: 66, label: "Speaking" },
+};
+const live = { energy: 0.1, listen: 0, think: 0, speak: 0, bpm: 54, voice: 0, awake: 0, pal: [1, 0, 0], hud: 1, pearl: 0 };
+const view = { yaw: 0.4, pitch: -0.25, vyaw: 0, vpitch: 0, tiltX: 0, tiltY: 0 };
+let state = "idle", palette = 0, pearl = 0, readouts = 1;
+let reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let time = 0, beatPhase = 0, ripple = 9, voiceTarget = 0;
+let pointer = { x: -1e4, y: -1e4, inside: false };
+
+const $ = id => document.getElementById(id);
+function press(group, attr, value) {
+  document.querySelectorAll(`[data-${attr}]`).forEach(b => b.setAttribute("aria-pressed", String(b.dataset[attr] === String(value))));
+}
+function setState(s) {
+  state = s;
+  press("state", "state", s);
+  $("m-state").textContent = STATES[s].label;
+}
+document.querySelectorAll("[data-state]").forEach(b => b.addEventListener("click", () => {
+  stopSpeech();
+  if (b.dataset.state === "speaking") speak(SAMPLE);
+  else setState(b.dataset.state);
+}));
+document.querySelectorAll("[data-palette]").forEach(b => b.addEventListener("click", () => { palette = +b.dataset.palette; press(0, "palette", palette); }));
+document.querySelectorAll("[data-readouts]").forEach(b => b.addEventListener("click", () => { readouts = +b.dataset.readouts; press(0, "readouts", readouts); }));
+document.querySelectorAll("[data-backdrop]").forEach(b => b.addEventListener("click", () => {
+  pearl = b.dataset.backdrop === "pearl" ? 1 : 0;
+  document.documentElement.dataset.backdrop = b.dataset.backdrop;
+  press(0, "backdrop", b.dataset.backdrop);
+}));
+document.querySelectorAll("[data-motion]").forEach(b => b.addEventListener("click", () => {
+  reduced = b.dataset.motion === "reduced"; press(0, "motion", b.dataset.motion);
+}));
+press(0, "motion", reduced ? "reduced" : "full");
+
+// ---- demo conversation: the core "speaks" the reply, its voice envelope follows the letters ----
+const SAMPLE = "Good evening. All systems are steady, and I'm ready when you are.";
+const REPLIES = [
+  [/\b(hi|hello|hey|evening|morning)\b/i, "Hello. I'm Nexus, the core of this system. Ask me anything, or open an app and I'll stay close by."],
+  [/\b(who|what) are you\b/i, "I'm Nexus: the part of the OS you talk to. I suggest; you decide. Anything that changes the system goes through Guardian first."],
+  [/\b(file|files|folder|document)/i, "I'd bring Files into orbit for that. In the real desktop it appears beside me, ready to open."],
+  [/\b(status|system|health)\b/i, "In this study I can't read the real system, so I won't pretend to. On the desktop I'll show only what Core confirms."],
+];
+let speechTimer = null, speechIdle = null;
+function stopSpeech() { clearInterval(speechTimer); clearTimeout(speechIdle); voiceTarget = 0; }
+function speak(text) {
+  stopSpeech();
+  setState("speaking");
+  let i = 0;
+  $("reply").textContent = "";
+  speechTimer = setInterval(() => {
+    const ch = text[i++] || "";
+    $("reply").textContent = text.slice(0, i);
+    voiceTarget = /[aeiouy]/i.test(ch) ? 1 : /[a-z0-9]/i.test(ch) ? 0.55 : /[ ,]/.test(ch) ? 0.12 : 0.0;
+    if (i >= text.length) {
+      clearInterval(speechTimer); voiceTarget = 0;
+      speechIdle = setTimeout(() => setState("idle"), 1200);
+    }
+  }, 38);
+}
+$("chat").addEventListener("submit", e => {
+  e.preventDefault();
+  const q = $("ask").value.trim();
+  if (!q) return;
+  stopSpeech();
+  setState("thinking");
+  $("reply").textContent = "";
+  const hit = REPLIES.find(([re]) => re.test(q));
+  const answer = hit ? hit[1] : "I heard you. This study has no AI behind it, but this is how I'll look while I answer.";
+  setTimeout(() => speak(answer), 1500);
+  $("ask").value = "";
+});
+$("ask").addEventListener("input", () => { if (state === "idle" && $("ask").value) setState("listening"); });
+
+// ---- direct manipulation: drag to turn with inertia, tap the core to make it listen ----
+let drag = null;
+const coreHit = (x, y) => Math.hypot(x - layout.cx, y - layout.cy) < layout.r * 1.15;
+canvas.addEventListener("pointerdown", e => {
+  canvas.setPointerCapture(e.pointerId);
+  drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: 0 };
+  view.vyaw = 0; view.vpitch = 0;
+});
+canvas.addEventListener("pointermove", e => {
+  pointer = { x: e.clientX, y: e.clientY, inside: true };
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  const k = 2.2 / Math.max(120, layout.r * 2);
+  view.yaw += dx * k; view.pitch = Math.max(-1.2, Math.min(1.2, view.pitch + dy * k));
+  const now = performance.now(), dtm = Math.max(1, now - drag.t) / 1000;
+  view.vyaw = dx * k / dtm; view.vpitch = dy * k / dtm;
+  drag.moved += Math.abs(dx) + Math.abs(dy);
+  drag.x = e.clientX; drag.y = e.clientY; drag.t = now;
+});
+const endDrag = e => {
+  if (!drag) return;
+  if (drag.moved < 8 && coreHit(e.clientX, e.clientY)) tapCore();
+  if (performance.now() - drag.t > 80) { view.vyaw = 0; view.vpitch = 0; }
+  drag = null;
+};
+canvas.addEventListener("pointerup", endDrag);
+canvas.addEventListener("pointercancel", () => { drag = null; });
+canvas.addEventListener("pointerleave", () => { pointer.inside = false; });
+canvas.addEventListener("keydown", e => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tapCore(); }
+  if (e.key === "Escape") { stopSpeech(); setState("idle"); }
+  if (e.key === "ArrowLeft") view.yaw -= 0.15;
+  if (e.key === "ArrowRight") view.yaw += 0.15;
+  if (e.key === "ArrowUp") view.pitch = Math.max(-1.2, view.pitch - 0.15);
+  if (e.key === "ArrowDown") view.pitch = Math.min(1.2, view.pitch + 0.15);
+});
+function tapCore() {
+  ripple = 0;
+  stopSpeech();
+  setState(state === "listening" ? "idle" : "listening");
+  if (state === "listening") $("ask").focus({ preventScroll: true });
+}
+
+// ---- sizing, with resolution that adapts to keep the frame rate up ----
+const layout = { cx: 0, cy: 0, r: 100 };
+let scale = Math.min(1, (matchMedia("(pointer: coarse)").matches ? 0.75 : 1));
+let ema = 16, lastAdjust = 0;
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  const dpr = Math.min(devicePixelRatio || 1, 2) * scale;
+  canvas.width = Math.max(1, Math.round(w * dpr));
+  canvas.height = Math.max(1, Math.round(h * dpr));
+  layout.cx = w / 2;
+  layout.cy = h * (w < 640 ? 0.47 : 0.46);
+  layout.r = Math.min(w * 0.22, h * 0.19);
+  $("m-render").textContent = scale.toFixed(2) + "×";
+}
+addEventListener("resize", resize);
+resize();
+
+function rotation(yaw, pitch) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  // object rotation O = Ry(yaw) * Rx(pitch), column-major
+  return new Float32Array([cy, 0, -sy, sy * sp, cp, cy * sp, sy * cp, -sp, cy * cp]);
+}
+
+const approach = (a, b, rate, dt) => a + (b - a) * (1 - Math.exp(-rate * dt));
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  ema = ema * 0.92 + (dt * 1000) * 0.08;
+  if (now - lastAdjust > 1200) {
+    const next = ema > 24 ? Math.max(0.45, scale * 0.85) : ema < 14 && scale < 1 ? Math.min(1, scale * 1.12) : scale;
+    if (Math.abs(next - scale) > 0.01) { scale = next; resize(); }
+    lastAdjust = now;
+  }
+
+  const target = STATES[state];
+  for (const k of ["energy", "listen", "think", "speak", "bpm"]) live[k] = approach(live[k], target[k], 3, dt);
+  live.voice = approach(live.voice, voiceTarget, voiceTarget > live.voice ? 30 : 9, dt);
+  const dist = pointer.inside ? Math.hypot(pointer.x - layout.cx, pointer.y - layout.cy) / layout.r : 9;
+  live.awake = approach(live.awake, dist < 1.2 ? 1 : dist < 2.4 ? 0.4 : 0, 4, dt);
+  for (let i = 0; i < 3; i++) live.pal[i] = approach(live.pal[i], i === palette ? 1 : 0, 5, dt);
+  live.hud = approach(live.hud, readouts, 5, dt);
+  live.pearl = approach(live.pearl, pearl, 5, dt);
+
+  if (!reduced) {
+    time += dt;
+    beatPhase += dt * live.bpm / 60;
+    if (!drag) {
+      view.vyaw = approach(view.vyaw, 0.12 + 0.25 * live.energy, 2.0, dt);
+      view.vpitch = approach(view.vpitch, 0, 2.0, dt);
+      view.yaw += view.vyaw * dt;
+      view.pitch = Math.max(-1.2, Math.min(1.2, view.pitch + view.vpitch * dt));
+    }
+  }
+  ripple = reduced ? 9 : ripple + dt;
+  // the core leans gently towards the pointer
+  const lean = pointer.inside && !drag ? 0.18 : 0;
+  view.tiltX = approach(view.tiltX, lean * Math.max(-1, Math.min(1, (pointer.x - layout.cx) / (layout.r * 4))), 3, dt);
+  view.tiltY = approach(view.tiltY, lean * Math.max(-1, Math.min(1, (pointer.y - layout.cy) / (layout.r * 4))), 3, dt);
+
+  const ph = beatPhase % 1;
+  const beat = reduced ? 0.3 : Math.exp(-Math.pow(ph / 0.045, 2)) + 0.55 * Math.exp(-Math.pow((ph - 0.2) / 0.05, 2));
+
+  const px = canvas.width / innerWidth;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.uniform2f(U.uRes, canvas.width, canvas.height);
+  gl.uniform2f(U.uCenter, layout.cx * px, canvas.height - layout.cy * px);
+  gl.uniform1f(U.uCoreR, layout.r * px);
+  gl.uniform1f(U.uTime, time);
+  gl.uniform1f(U.uEnergy, live.energy);
+  gl.uniform1f(U.uBeat, beat);
+  gl.uniform1f(U.uVoice, live.voice);
+  gl.uniform1f(U.uListen, live.listen);
+  gl.uniform1f(U.uThink, live.think);
+  gl.uniform1f(U.uSpeak, live.speak);
+  gl.uniform3f(U.uPal, live.pal[0], live.pal[1], live.pal[2]);
+  gl.uniform1f(U.uHud, live.hud);
+  gl.uniform1f(U.uPearl, live.pearl);
+  gl.uniform1f(U.uRipple, ripple);
+  gl.uniform1f(U.uAwake, live.awake);
+  gl.uniformMatrix3fv(U.uRot, false, rotation(view.yaw + view.tiltX, view.pitch + view.tiltY));
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  $("m-bpm").textContent = String(Math.round(live.bpm));
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body></html>

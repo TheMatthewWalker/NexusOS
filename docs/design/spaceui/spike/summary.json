@@ -1,0 +1,35 @@
+{
+  "runs": 3,
+  "renderer": "llvmpipe (software GL, no GPU)",
+  "sharedLinesOfCode": 125,
+  "shells": {
+    "native": {
+      "linesOfCode": 347,
+      "startupSeconds": 0.5,
+      "idleLauncherPssMiB": 204.3,
+      "idleLauncherCpuPercent": 36.1,
+      "idleLauncherFps": 60.0,
+      "respondingCpuPercent": 106.6,
+      "respondingFps": 60.0,
+      "respondingPssMiB": 199.6,
+      "reducedMotionIdleCpuPercent": 0.0,
+      "reducedMotionIdlePssMiB": 204.3,
+      "inputPassThrough": true,
+      "allRunsCompleted": true
+    },
+    "web": {
+      "linesOfCode": 459,
+      "startupSeconds": 1.4,
+      "idleLauncherPssMiB": 427.3,
+      "idleLauncherCpuPercent": 56.9,
+      "idleLauncherFps": 62.0,
+      "respondingCpuPercent": 134.3,
+      "respondingFps": 61.0,
+      "respondingPssMiB": 452.4,
+      "reducedMotionIdleCpuPercent": 0.2,
+      "reducedMotionIdlePssMiB": 422.2,
+      "inputPassThrough": true,
+      "allRunsCompleted": true
+    }
+  }
+}

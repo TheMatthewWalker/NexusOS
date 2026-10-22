@@ -1,164 +1,96 @@
-# NexusOS — executable project roadmap
+# NexusOS — roadmap
 
-**Baseline:** 2026-10-14. **Cadence:** milestone-based, not promised delivery dates. **Status terminology:** TODO / IN PROGRESS / DONE / BLOCKED. A milestone becomes DONE only after its acceptance criteria have evidence in CI, tests, and (where required) real hardware.
+**Baseline:** 2026-10-14. **Updated:** 2026-10-21. Milestones are evidence-gated, not dated.
 
-## Release gates
+A milestone is **DONE** only when every gate has reproducible evidence: CI,
+VM tests and, where stated, real hardware. Passing CI or a VM is never
+treated as hardware acceptance. Evidence lives in [docs/evidence](evidence/).
+Older dated progress notes are kept in [history](evidence/history.md).
 
-| Gate | Milestone | Acceptance criteria | Status |
+## Status
+
+| Gate | Milestone | Status | Evidence |
 |---|---|---|---|
-| M0 | Repository/bootstrap | Build on Ubuntu in GitHub CI; test project runs; README reproduces local setup | DONE — CI verified |
-| M1 | Nexus Core v0.1 | Health, provider listing/selection, read-only system inventory, local Ollama chat, cloud OpenAI-compatible chat; CLI returns meaningful errors | PARTIAL — mock CI passed; physical Ollama/cloud test open |
-| M2 | Hardened Core v0.2 | Authenticated IPC, per-user storage, OS-keyring credentials, retention, request limits and provider isolation | IN PROGRESS — SQLite migration and Linux Unix SO_PEERCRED checks merged; live keyring, multi-user, network-egress and security acceptance still open |
-| M3 | Guardian preview | Typed plans, policy, Nix diff, approval, privileged immutable audit, no shell | IN PROGRESS — allowlisted typed previews and review acknowledgement with local hash-linked audit; advisory diff and one-time review tokens verified (#30, #31); privileged audit and executor open |
-| M4 | Guardian rollback | Reproducible Nix builds, VM smoke checks, staged boot, known-good recovery demonstrated on test hardware | IN PROGRESS — isolated GRUB-backed staged-broken-generation rollback and subsequent normal reboot passed in Guardian NixOS VM #41 (PR #47); privileged staging, data backup and physical hardware recovery remain open |
-| M5 | Inference manager | llama.cpp adapter, KV budget, VRAM/RAM monitoring, eviction/idle sleep and application priority | IN PROGRESS — llama.cpp API route, Ollama unload, optional idle eviction, Linux/NVIDIA telemetry and benchmark harness CI verified; actual offloading, KV budget and hardware tests open |
-| M6 | Desktop alpha | Hyprland/Quickshell command palette, provider switch, memory widget, visual change proposal and offline fallback | TODO |
-| M7 | OS alpha image | Reproducible bootable NixOS ISO, onboarding, supported hardware matrix, rollback and recovery documentation | TODO |
-| M8 | Context/search | Permission-aware semantic indexing, opt-in workspace context, retention/delete/export controls | TODO |
-| M9 | Automation/skills | Event scheduler, signed scoped tools, per-action approval and sandbox abuse tests | TODO |
-| M10 | Voice/vision | Offline optional STT/TTS, screen selection consent, protected-window handling, device battery profiles | TODO |
-| M11 | Advanced optional | MoE paging experiments with measured tokens/s, distributed inference, remote device control, workspace migration and marketplace | TODO |
+| M0 | Repository and bootstrap | **DONE** | Core CI on Ubuntu |
+| M1 | Nexus Core v0.1 | **DONE except 1 operator gate** | Real Ollama and llama.cpp engines pass 17 live checks; CI pulls a real model. Live cloud answer needs your API key ([M1](evidence/M1.md)) |
+| M2 | Hardened Core v0.2 | **DONE (pending review)** | Gates #50–#53 automated in CI, including two real Linux accounts, a real keyring, DNS/egress and log capture ([M2](evidence/M2.md)) |
+| M3 | Guardian preview and approval | **DONE in VM (pending review)** | Shared schema, Ed25519 attestations, root broker as a hardened NixOS service, root-console approval, AI-proposed typed plans with injection tests ([M3](evidence/M3.md), [ADR-002](adr/002-guardian-candidate-model.md)) |
+| M4 | Guardian rollback | **VM DONE; hardware open** | One-time trial boots on a real GRUB disk. A healthy trial is confirmed; a broken trial panics and falls back unattended. User-data snapshots are separate from OS generations ([M4](evidence/M4.md)). Physical-hardware drill outstanding |
+| M5 | Inference manager | **IN PROGRESS: tooling done, hardware open** | Provider registry, managed llama.cpp (start on demand, stop on unload), token budgets, RAM/VRAM telemetry, benchmark through Core, CI CPU run ([M5](evidence/M5.md)). 8 GB and 24 GB GPU runs and the gaming-reclaim test outstanding |
+| M6 | Desktop alpha | **TODO: needs your design input** | Not started, deliberately |
+| M7 | OS alpha image | TODO | Flake packages and NixOS modules for Core and Guardian exist (`flake.nix`); ISO, onboarding and hardware matrix not started |
+| M8 | Context and search | TODO | |
+| M9 | Automation and skills | TODO | |
+| M10 | Voice and vision | TODO | |
+| M11 | Advanced optional | TODO | |
 
-## MVP (M1) objective — working Nexus Core
+## Gates that need you or real hardware
 
-- [ ] .NET Core server compiles cleanly on Ubuntu and supported Linux workstation.
-- [ ] CLI calls `/health` and `/system` successfully.
-- [ ] `providers`, `use local`, `use openai-compatible` behave deterministically.
-- [ ] With Ollama running and configured model pulled, `ask` returns a non-empty model answer.
-- [ ] With a valid API key, cloud adapter returns a non-empty answer; missing token fails clearly.
-- [ ] Malformed prompts are rejected; LLM cannot execute shell commands or mutate system.
-- [ ] Integration tests use a fake model endpoint to run deterministically in CI.
-- [ ] Security checklist verifies service is loopback only; secrets are never logged.
+These cannot be completed from CI or a VM. Each has a written procedure.
 
-## M2 objective — safe foundation
-- [ ] IPC authenticates the invoking local user.
-- [ ] Provider credentials stored outside config files in an OS keyring.
-- [ ] Chats and routing preferences persist to per-user SQLite, with retention settings.
-- [ ] Rate limiting and cancellation handle long requests.
-- [ ] Cloud provider failover is opt-in, with explicit data egress policy.
-- [ ] API request size, endpoint allowlisting and SSRF protections are tested.
+1. **M1: live cloud answer.** One run with your own API key ([procedure](evidence/M1.md#gate-still-requiring-the-operator-live-cloud-answer)).
+2. **M2/M3: independent security review.** Read [ADR-002](adr/002-guardian-candidate-model.md) and the evidence files, then record sign-off in each.
+3. **M4: physical recovery drill.** On a spare NixOS machine, stage a deliberately broken candidate and confirm unattended fallback ([procedure](evidence/M4.md#physical-hardware-drill)).
+4. **M5: GPU profiles.** Run `scripts/bench/nexus_inference_bench.py` on an 8 GB and a 24 GB GPU machine, and do the game-launch VRAM reclaim check ([procedure](evidence/M5.md)).
 
-## M3–M4 objective — never brick the machine
-- [ ] AI generates only typed plans, not privileged shell strings.
-- [ ] Guardian enforces a permission policy independently of the model.
-- [ ] Every change displays diff, risk, approval and expected rollback path.
-- [ ] Nix evaluation/build and applicable disposable VM tests pass.
-- [ ] Boot-failure rollback exercised after an intentionally invalid deployment.
-- [ ] Home-directory snapshots/backups handled separately from OS generations.
+## M1 — working Nexus Core
 
-## M5–M7 objective — AI-native distribution
-- [ ] Measure model cold start, idle VRAM, active VRAM, token latency on CPU-only, 8GB GPU and 24GB GPU reference profiles.
-- [ ] Gaming workload reclaims VRAM without killing the desktop.
-- [ ] GUI allows normal non-AI system operation when inference offline.
-- [ ] Installer produces repeatable images and has a documented recovery path.
+- [x] Core and CLI compile cleanly on Ubuntu CI and in the Nix package.
+- [x] CLI `health` and `system` succeed; `providers` and `use` are deterministic.
+- [x] A real Ollama model returns a non-empty answer (real engine in the dev container; real `qwen2.5:0.5b` in CI).
+- [ ] With a valid API key, the cloud adapter returns a non-empty answer. **Operator gate.** Missing-key and no-consent paths fail clearly (tested).
+- [x] Malformed prompts are rejected; the LLM cannot execute shell commands or change the system.
+- [x] Integration tests use fake model endpoints in Core CI, plus real engines in M1 Live Model.
+- [x] The Unix socket is the default, with no TCP listener; secrets and prompts never appear in logs.
 
-## M8–M11 optional feature scope
-Nexus Search; Nexus Memory; Nexus Context Engine; Nexus Automations; Nexus Skills; Nexus Voice; Nexus Vision; Nexus Workspaces; Nexus Remote; Nexus Explain; self-documenting OS; troubleshooting agent; system migration; multi-machine inference; marketplace; AI development mode. All privacy-sensitive features opt-in, per-user isolated, and independently permissioned.
+## M2 — safe foundation
+
+- [x] IPC authenticates the invoking local user (`SO_PEERCRED` plus bearer token; mutation-verified).
+- [x] Provider credentials come from the OS keyring only (real gnome-keyring CI).
+- [x] Per-user SQLite with retention, atomic migration and verified erasure.
+- [x] Rate limiting, concurrency backpressure and cancellation.
+- [x] Explicit cloud egress consent; no implicit failover.
+- [x] Request and response bounds, endpoint allowlisting, DNS rebinding and SSRF protections tested.
+- [ ] Independent security review sign-off.
+
+## M3 / M4 — never brick the machine
+
+- [x] The AI generates only typed plans, validated against one shared schema.
+- [x] Guardian enforces policy in a separate root service, independently of the model.
+- [x] Every change shows its module, risk, root approval and rollback target.
+- [x] Signed build attestations bind evaluate, build and VM-test results to the exact system output.
+- [x] Boot-failure rollback exercised after an intentionally broken deployment, unattended (VM).
+- [x] Home-directory snapshots handled separately from OS generations.
+- [ ] Physical-hardware recovery drill. **Hardware gate.**
+- [ ] Desktop-user approval delegation (for example polkit), so approval doesn't need a root console. Design input needed; see ADR-002.
+
+## M5 — M7 — AI-native distribution
+
+- [x] Managed llama.cpp lifecycle (start on demand, health-gated, stopped on unload or Core shutdown).
+- [x] Benchmark harness measuring cold start, latency and memory reclaim through Core; CPU profile in CI.
+- [ ] 8 GB and 24 GB GPU benchmark profiles. **Hardware gate.**
+- [ ] A game launch reclaims VRAM without killing the desktop. **Hardware gate**, and it needs foreground-app detection (M6).
+- [ ] The GUI allows normal non-AI system operation when inference is offline. **M6, needs your design input.**
+- [ ] The installer produces repeatable images with a documented recovery path (M7).
+
+## M8 — M11 optional scope
+
+Nexus Search, Memory, Context Engine, Automations, Skills, Voice, Vision,
+Workspaces, Remote, Explain, a self-documenting OS, a troubleshooting agent,
+system migration, multi-machine inference, marketplace and AI development
+mode. All privacy-sensitive features are opt-in, isolated per user and
+independently permissioned.
 
 ## Definition of done (each milestone)
-Documented API/CLI; automated unit and integration checks; security review; log/telemetry behaviour; install/remove/rollback instructions; reproducible acceptance demonstration. No TODO milestone is called shipped merely because source files exist.
 
-## Next actions
-1. Run CI for initial source tree; repair any build/test errors (M0).
-2. Add fake Ollama and OpenAI HTTP integration tests, then run against a real local model (M1).
-3. Harden IPC, credential management and persistent state before enabling external plugins (M2).
+Documented API/CLI; automated unit and integration checks; security review;
+log and telemetry behaviour; install, remove and rollback instructions; a
+reproducible acceptance demonstration. Source files existing is never
+enough to call a milestone shipped.
 
+## Next steps
 
-## Evidence and outstanding gates (2026-10-14)
-
-- **M0:** GitHub CI builds and tests source on Ubuntu.
-- **M1:** Mock Ollama end-to-end chat path works; an actual downloaded model and paid cloud API remain **unverified**.
-- **M2:** Per-user bearer authentication, persistent settings/history, deletion, basic rate limiting and provider URL restrictions exist. Remaining: OS-keyring secrets, Unix socket peer credentials, bounded provider responses, multi-user boundaries, comprehensive logging/egress protections.
-- **M3:** Typed allowlisted Nix preview, explicit non-executing acknowledgement and hash-linked user-file audit are implemented. Remaining: trusted privileged broker, protected audit store, real Nix diff and policy enforcement.
-- **M4:** Pinned disposable NixOS VM boot, candidate verification, fail-closed review and read-only generation inspection implemented. Remaining: privileged staging, recovery testing and user-data backups. Guardian cannot apply changes.
-- **M5:** Backend availability and explicit Ollama unload request plus budget arithmetic exist. Remaining: llama.cpp lifecycle, VRAM/RAM telemetry, KV budgeting, idle eviction, foreground preemption and benchmarks on real GPUs.
-
-No milestone M2–M5 is DONE until its own definition-of-done criteria are satisfied. No desktop/UI work begins before these are addressed.
-
-
-## Evidence update — 2026-10-14
-
-Merged into `main` during development: Guardian preview and audit (#6, #8), Linux Secret Service credentials (#9), RAM/VRAM telemetry (#10), strict Guardian change validation (#11), opt-in idle unloading (#12), pinned NixOS VM boot/smoke test (#14), local llama.cpp provider (#15), response-size limits (#16), and benchmark harness (#18). GitHub Actions has verified their associated builds/tests, but mock-backend tests do not establish real model performance. Unix-only IPC is tracked in #19 until its CI and merge gates are satisfied.
-
-Remaining implementation needed before M2–M5 can be marked DONE:
-- M2: secure IPC rollout and peer credentials, real keyring integration testing, multi-user isolation, endpoint DNS/egress hardening, request concurrency and sensitive-data logging checks.
-- M3: policy-enforcing privileged broker, protected audit storage, real Nix module evaluation/diff and confirmation tied to a one-time authorisation.
-- M4: staged NixOS generation deployment, automated boot health assessment, known-good rollback including failed boot tests, and a separate user-data backup path.
-- M5: llama.cpp process lifecycle and GPU/CPU offload allocation, KV-cache/context budgeting, application foreground preemption, GPU vendor coverage and real 8/24GB benchmark data.
-
-The policy remains: do not claim these milestones complete merely because CI is green; hardware acceptance is a separately tracked gate. M6 Desktop/UI remains out of scope.
-
-
-## Current acceptance update — 2026-10-15
-
-- **M2:** Provider settings/history, Linux Secret Service lookup, bearer-authenticated optional Unix IPC, request size, concurrency/rate/response limits, host allowlists, and explicit cloud egress opt-in are merged and CI-tested. Open: native peer credentials for privileged services, SQLite history migration, unlocked-keyring integration, robust DNS/egress controls and hardening review.
-- **M3:** Typed allowlisted previews, advisory before/after diff (#30), single-use two-minute review acknowledgement (#31), and hash-linked **user-writable** audit records exist. None constitutes trusted privileged approval or immutable audit. Remaining: independent policy broker, observed NixOS configuration diff and protected audit.
-- **M4:** Pinned NixOS guest boots the verified allowlisted candidate; fail-closed review policy and read-only active-generation inspection exist. Remaining: privileged staging, reboot health checks, deliberately broken-candidate rollback in disposable VM and on later hardware, and separate data backup/recovery. No host activation is available.
-- **M5:** Ollama and llama.cpp API routing, optional idle unload, first-NVIDIA VRAM/RAM telemetry, configured output/context token budgets (#26), local latency benchmark and inference concurrency exist. Remaining: managed process lifecycle, measured GPU offloading and KV usage, foreground preemption, AMD/Intel support and CPU/8GB/24GB hardware benchmarks.
-
-**Completion policy:** Keep M2–M5 marked IN PROGRESS until their security and actual-system gates pass. The pinned test VM does not prove hardware rollback or GPU behaviour. Desktop/UI stays out of scope.
-
-### M2 security work in progress — PR #33 (not merged)
-
-- Cloud endpoint guard now rejects literal IP addresses even when explicitly listed as cloud hosts; xUnit regression cases added for IPv4, IPv6, mapped IPv6, metadata and loopback addresses.
-- This is **not** DNS rebinding protection: hostname resolution is not pinned to the outbound connection. CI, live DNS behavior, NixOS VM and hardware validation are not yet evidenced for this PR. M2 remains IN PROGRESS.
-
-## M2 DNS hardening PR #33 — acceptance evidence (2026-10-15)
-
-- Cloud HTTP handler validates every resolved DNS address and connects to a selected validated IP; automatic redirects and proxies remain disabled. Literal IP cloud endpoints are rejected.
-- Deterministic unit tests cover public/private mixed DNS answer order, empty answers, selected public address and special-use IPv4/IPv6 rejection. This is **unit/mock-level evidence**, not an external DNS, proxy or live cloud integration test.
-- CI evidence: Nexus Core CI #88 and Guardian Validation #60 passed on `8c660ce8`. Subsequent commits require their own checks before merge.
-- **NixOS VM:** DNS egress behavior has not been independently validated in a VM. **Physical hardware:** no live cloud, GPU or rollback validation performed.
-- M2 stays **IN PROGRESS**: native IPC peer identity, SQLite migration, keyring integration and broader egress threat review remain open. M3–M5 also remain IN PROGRESS; no Desktop/UI work is authorized.
-
-## M2 cloud connection regression follow-up — PR #34 (2026-10-15)
-
-- **Mock/unit gate:** PR #34 extends fail-closed mixed DNS-answer tests and checks literal-IP/empty hostname rejection at the connection-policy entry point.
-- **CI:** Initial Nexus Core CI #93 **failed** during test-project compilation (CS1729: unsupported `SocketsHttpConnectionContext` constructor). Guardian Validation #65 passed. Tests were revised to exercise a dedicated hostname guard; revised-head CI must pass before merging.
-- **NixOS VM gate:** No DNS interception/egress test has been performed in the NixOS VM for this change. Existing pinned NixOS boot smoke tests are a different gate.
-- **Hardware/live-network gate:** No live cloud provider, DNS rebinding, GPU or physical rollback test has been performed. No claims of physical validation.
-- **Remaining M2 gates:** native Unix IPC peer credentials, per-user SQLite persistence, unlocked keyring integration and stronger end-to-end network egress validation. M2–M5 remain IN PROGRESS; no Desktop/UI work.
-
-## M2 IPv6 egress follow-up — 2026-10-15
-
-- Follow-up to merged DNS pinning PRs #33 and #34: deny 6to4 `2002::/16` and IPv6 documentation `3fff::/20` destinations. Both are inappropriate for cloud model endpoint egress; tests include 6to4 addresses embedding public and private IPv4.
-- **Mock/unit evidence:** targeted address-policy tests are committed; CI is pending for this branch. No live DNS or network egress test has been performed.
-- **NixOS VM evidence:** no VM egress validation on this change. **Hardware-only gates:** physical cloud network, GPU and rollback checks remain unperformed.
-- M2–M5 remain IN PROGRESS; Desktop/UI is out of scope.
-
-## M2 malformed-history regression — 2026-10-15
-
-- PR #36 was superseded by merged PR #37; the current `IsRecentEntry` filter already removes malformed JSONL records from count-based retention. The isolated regression test is ported to main without overwriting PR #37 age-based filtering.
-- **Mock/unit:** deterministic test committed; CI pending. **NixOS VM:** no new VM test performed. **Physical hardware:** no hardware checks performed. SQLite migration and native IPC peer authentication remain outstanding; M2–M5 IN PROGRESS.
-
-
-## Acceptance-gate refresh — 2026-10-20 (after PR #47)
-
-The status table above supersedes older dated progress snapshots below; those snapshots are retained as historical evidence, not current implementation claims.
-
-### M2 — next security acceptance gates
-
-- [x] SQLite-backed per-user provider/history state and transactional legacy JSONL migration implemented; plaintext legacy backups remain and must be handled separately.
-- [x] Unix-domain Core IPC verifies kernel `SO_PEERCRED` UID and requires bearer authentication; TCP development mode is a separate loopback-only boundary.
-- [ ] **Keyring integration:** in a real Linux user session, prove unlocked-keyring success, locked/unavailable-keyring fail-closed behaviour and no credential logging. Record reproducible commands and test evidence.
-- [ ] **Multi-user isolation:** exercise distinct Linux UIDs against each other's socket, token, state directory and SQLite files; prove access denied and no cross-user history disclosure.
-- [ ] **Persistence/retention:** exercise SQLite migration restart/idempotence, malformed records, permissions, age/limit expiry, clear-history and retained legacy backup handling.
-- [ ] **Egress and abuse:** exercise DNS answer changes, denied private/special-use addresses, redirects/proxies, oversized responses, cancellation, concurrency and sensitive-data log inspection against an integration environment.
-- [ ] Complete security review and document evidence per gate before declaring M2 DONE.
-
-### M3 — next broker integration gates (after M2 security boundary)
-
-- [x] Non-executing typed previews, one-time review acknowledgement, root-owned review-broker and approval-issuer prototypes exist.
-- [ ] Package the review-only broker as an isolated systemd/NixOS VM service and test ownership, `SO_PEERCRED`, restart, denial and resource limits.
-- [ ] Separate trusted attestation signing from verification; bind approvals to candidate hash, observed generation, authorised UID and expiry, with durable nonce consumption.
-- [ ] Persist protected approval, denial and outcome audit records; test replay, forgery, stale baselines, filesystem replacement and crash recovery.
-- [ ] Independently review privilege boundaries before implementing any staging executor. No host activation until these gates pass.
-
-### M4 — newly verified VM gate and remaining acceptance
-
-- [x] GRUB-backed disposable VM boots baseline, stages a deliberately broken generation, observes failed boot, selects original generation from parsed GRUB entries, verifies exact recovered kernel init, reconnects to healthy userspace, restores the default profile and survives another reboot. **Evidence:** PR #47, Guardian NixOS VM workflow #41, commit `70b8ae4`.
-- [ ] Authorised, narrowly scoped staging executor and trusted build provenance (depends on M3).
-- [ ] Separate user-data backup/restore, interruption/power-loss scenarios and documented recovery drills.
-- [ ] Physical hardware boot-failure recovery and health checks. Passing CI/VM is not hardware acceptance.
-
-**Evidence rule:** Every unchecked gate requires a reproducible test procedure, captured passing result and security review where applicable. M2–M5 remain IN PROGRESS; M6 desktop work is not authorised by these VM results.
+1. Merge the open stacked PRs after review.
+2. Complete the four operator and hardware gates above.
+3. **M6 desktop:** agree the interaction design (command palette, provider switch, memory widget, change-proposal view, offline fallback) before any UI work.
+4. **M7:** a NixOS installer image built from `flake.nix`, onboarding (key provisioning, allowed users) and a supported-hardware matrix.

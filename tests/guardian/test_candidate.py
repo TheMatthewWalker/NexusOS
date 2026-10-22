@@ -1,36 +1,36 @@
-import importlib.util
-import sys
-from pathlib import Path
 import unittest
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts" / "guardian"))
+from support import BASELINE, CHANGES, HOST, OTHER_BASELINE
 from candidate import prepare
 
-class CandidateTests(unittest.TestCase):
-    def setUp(self):
-        self.changes = [{"option":"services.printing.enable","enabled":True}]
 
+class CandidateTests(unittest.TestCase):
     def test_deterministic_and_non_executing(self):
-        a = prepare(self.changes, "generation-42")
-        b = prepare(self.changes, "generation-42")
+        a, b = prepare(CHANGES, BASELINE, HOST), prepare(CHANGES, BASELINE, HOST)
         self.assertEqual(a, b)
-        self.assertEqual(a["activation"], "prohibited")
-        self.assertEqual(a["rollbackTarget"], "generation-42")
-        self.assertNotIn("switch", a["operations"])
+        self.assertEqual("prohibited", a["activation"])
+        self.assertEqual(BASELINE, a["rollbackTarget"])
+        self.assertEqual(["evaluate", "build", "vm-test"], a["operations"])
         self.assertIn("services.printing.enable = true;", a["nixModule"])
 
-    def test_baseline_changes_identity(self):
-        self.assertNotEqual(prepare(self.changes, "generation-42")["candidateId"],
-                            prepare(self.changes, "generation-43")["candidateId"])
+    def test_identity_binds_baseline_and_host(self):
+        base = prepare(CHANGES, BASELINE, HOST)["candidateId"]
+        self.assertNotEqual(base, prepare(CHANGES, OTHER_BASELINE, HOST)["candidateId"])
+        self.assertNotEqual(base, prepare(CHANGES, BASELINE, "path:/srv#nixosConfigurations.lab")["candidateId"])
+        self.assertEqual(prepare(CHANGES, BASELINE, HOST)["planId"], prepare(CHANGES, OTHER_BASELINE, HOST)["planId"])
 
-    def test_rejects_untrusted_operations(self):
-        with self.assertRaises(ValueError):
-            prepare([{"option":"imports","enabled":True}], "generation-42")
-        with self.assertRaises(ValueError):
-            prepare(self.changes, "../etc/passwd")
-        with self.assertRaises(ValueError):
-            prepare(self.changes, "")
+    def test_rejects_untrusted_input(self):
+        for changes, baseline, host in (([{"option": "imports", "enabled": True}], BASELINE, HOST),
+                                        (CHANGES, "generation-42", HOST), (CHANGES, "../etc/passwd", HOST),
+                                        (CHANGES, BASELINE, "evil")):
+            with self.assertRaises(ValueError):
+                prepare(changes, baseline, host)
+
+    def test_elevated_risk_is_reported(self):
+        candidate = prepare([{"option": "services.openssh.enable", "enabled": True}], BASELINE, HOST)
+        self.assertEqual("elevated", candidate["risk"]["level"])
+        self.assertTrue(candidate["risk"]["notes"])
+
 
 if __name__ == "__main__":
     unittest.main()

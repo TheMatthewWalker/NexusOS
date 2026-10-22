@@ -1,15 +1,13 @@
-import sys
-from pathlib import Path
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "guardian"))
+from support import BASELINE, HOST, OTHER_BASELINE
 from candidate import prepare
 from verify_candidate import extract
 
 class CandidateVerificationTests(unittest.TestCase):
     def setUp(self):
         self.changes = [{"option":"services.openssh.enable","enabled":True}]
-        self.candidate = prepare(self.changes, "generation-42")
+        self.candidate = prepare(self.changes, BASELINE, HOST)
 
     def test_extract_verified_module(self):
         self.assertIn("services.openssh.enable = true;", extract(self.candidate,self.changes))
@@ -23,7 +21,9 @@ class CandidateVerificationTests(unittest.TestCase):
         with self.assertRaises(ValueError): extract(candidate,self.changes)
         candidate = {**self.candidate, "extra": "arbitrary"}
         with self.assertRaises(ValueError): extract(candidate,self.changes)
+        candidate = {**self.candidate, "risk": {"level": "review", "notes": []}}
+        with self.assertRaises(ValueError): extract(candidate,self.changes)
 
     def test_reject_baseline_mismatch(self):
-        candidate = {**self.candidate, "baseline": "generation-43"}
+        candidate = {**self.candidate, "baseline": OTHER_BASELINE}
         with self.assertRaises(ValueError): extract(candidate,self.changes)

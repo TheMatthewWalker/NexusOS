@@ -1,151 +1,131 @@
-# NexusOS — AI-native Linux (early prototype)
+# NexusOS — AI-native Linux (prototype)
 
-NexusOS is a local-first, AI-native Linux project. This repository currently starts with **Nexus Core v0.1**: a loopback-only .NET HTTP daemon, a command-line client, local Ollama chat, an OpenAI-compatible provider and read-only system facts.
+NexusOS is a local-first Linux distribution, built on NixOS, where AI is the
+primary *optional* way to use the system. Linux keeps working when the model
+or the network is unavailable, and model output can never authorise its own
+privileged actions.
 
-**Status:** starter implementation; compile and integration tests must be run on a machine with the .NET SDK. Not yet an OS distribution. **Do not expose port 5077 on a network.** No authentication, durable settings, multi-user isolation or Guardian executor exists yet.
+This repository contains:
 
-## Run
+- **Nexus Core**: a per-user .NET 8 daemon and the `nexus` CLI. It provides
+  local and cloud model routing, chat history, inference management and
+  Guardian plan proposals.
+- **Guardian**: a separate root-owned broker that reviews typed NixOS
+  changes. Changes are approved by root, attested by a builder, and staged
+  for a one-time trial boot that falls back automatically.
+- **NixOS packaging**: `flake.nix` packages, modules and VM tests.
 
-Requires .NET 8+ SDK and optionally Ollama with `llama3.2:3b` pulled.
+**Status:** M0 is done, M1–M3 are done pending review, M4 is VM-proven
+with a hardware drill outstanding, and M5's tooling is done with GPU runs
+outstanding. There is no desktop UI or installer image yet. See the
+[roadmap](docs/ROADMAP.md) and the [evidence](docs/evidence/).
 
-Terminal 1:
+## Quick start (development)
+
+Requires the .NET 8 SDK. Optionally install [Ollama](https://ollama.com) and
+run `ollama pull llama3.2:3b`.
 
 ```bash
-dotnet run --project src/NexusOS.Core
-```
-
-Terminal 2:
-
-```bash
-dotnet run --project src/NexusOS.Cli -- health
-dotnet run --project src/NexusOS.Cli -- system
-dotnet run --project src/NexusOS.Cli -- providers
+dotnet run --project src/NexusOS.Core            # terminal 1: Core
+dotnet run --project src/NexusOS.Cli -- health   # terminal 2: CLI
 dotnet run --project src/NexusOS.Cli -- ask "Hello Nexus"
 ```
 
-For local AI, install and start Ollama, then run `ollama pull llama3.2:3b`. Override the local model with `NEXUS_OLLAMA_MODEL` and base URL with `NEXUS_OLLAMA_URL` (only trusted endpoints).
+On Linux, Core listens only on a peer-authenticated Unix socket in its
+state directory. On other platforms, or with `NEXUS_API_MODE=tcp`, it uses
+`127.0.0.1:5077` with a bearer token. Never expose either on a network.
 
-For an OpenAI-compatible provider, install `libsecret-tools` and ensure a user Secret Service keyring is unlocked. Enter your API key with `secret-tool store --label="NexusOS OpenAI" app nexusos provider openai-compatible` (type or paste the key on stdin, then finish with EOF). Set `NEXUS_OPENAI_ENDPOINT` and `NEXUS_OPENAI_MODEL` if required, restart Core, then:
+CLI commands: `health`, `system`, `providers`, `use <local|llama-cpp|openai-compatible>`,
+`ask <prompt>`, `history`, `clear-history`, `status`, `unload`.
 
-```bash
-dotnet run --project src/NexusOS.Cli -- use openai-compatible
-dotnet run --project src/NexusOS.Cli -- ask "Explain Linux namespaces"
+## Model providers
+
+| Provider | Setup |
+|---|---|
+| `local` (Ollama, default) | Ollama on HTTP loopback. `NEXUS_OLLAMA_URL`, `NEXUS_OLLAMA_MODEL`. A missing model gives an `ollama pull` hint |
+| `llama-cpp` | Either an existing server (`NEXUS_LLAMA_ENDPOINT`, loopback only), or a **Core-managed** one: set `NEXUS_LLAMA_SERVER_BIN` and `NEXUS_LLAMA_MODEL_PATH` (absolute paths), plus optionally `NEXUS_LLAMA_PORT` and `NEXUS_LLAMA_GPU_LAYERS`. It starts on first use and stops on `nexus unload` |
+| `openai-compatible` | Off until the operator sets `NEXUS_CLOUD_EGRESS_ALLOWED=true`. The key is read only from the Secret Service keyring: `secret-tool store --label="NexusOS OpenAI" app nexusos provider openai-compatible`. HTTPS on port 443 to `api.openai.com` or hosts listed in `NEXUS_CLOUD_HOSTS`. Every DNS answer is validated, with no redirects or proxies |
+
+Invalid configuration stops Core at startup with a clear message.
+
+## Guardian: changing the system safely
+
+```text
+nexus (user) ──propose──▶ model ──typed JSON──▶ Core validates (shared schema)
+     └──submit──▶ root broker ── observes running generation ──▶ candidate
+root console:  nexus-guardian approve --candidate-id <id> --user <name>
+builder (CI):  nexus-guardian-attest sign …   (Ed25519, names the built system)
+     └──review──▶ broker verifies attestation + approval ──▶ decision
+root:          nexus-guardian-stage --decision <hash>   (one-time trial boot)
+next boot:     healthy → confirmed;  failed boot → resets and falls back automatically
 ```
 
-**Security notes:** API credentials are read from the Linux Secret Service keyring; never place credentials in configuration or CI logs. Do not commit secrets, do not bind the daemon publicly, and do not assume OpenAI-compatible means every cloud provider works without adaptation.
-
-See [the roadmap](docs/ROADMAP.md) and [architecture](docs/ARCHITECTURE.md).
-
-
-## M2 experimental persistence
-
-Provider selection and successful chat requests now persist under `$XDG_STATE_HOME/nexusos` (default `~/.local/state/nexusos`; override with `NEXUS_STATE_DIR`). Use `nexus history` for the 50 most recent conversations. The history file is JSONL; it is **plaintext**, contains both prompts and responses, and is intended for local development only. Don't send passwords, API tokens or confidential documents in chat while persistence is enabled. There is not yet an authenticated IPC layer or encrypted credential vault. File permissions are restricted on Unix, but the HTTP service is still unauthenticated on loopback. These limitations block marking M2 complete.
-
-
-## M2 local API authentication (development)
-
-Nexus Core now creates a random per-user bearer token in `$NEXUS_STATE_DIR/api-token` (or the XDG state directory) and requires it on **every** endpoint, including health checks. The CLI loads the token from the same user's state directory automatically; start Core before running the CLI. Direct API clients must send `Authorization: Bearer <token>`. The file must not be committed, shared, or logged. For development, changing/removing the token while Core is stopped regenerates authentication at startup; existing clients must reconnect.
-
-**Important limitations:** This is initial loopback authentication, not a completed multi-user security boundary. Other processes running as the same Linux user can still read the token. Core is still bound to 127.0.0.1:5077, and chat transcripts remain plaintext. The eventual NexusOS daemon will use authenticated Unix-domain sockets with peer identity checks and an OS secrets service. Avoid privileged capabilities until those are in place.
-
-
-## History retention controls (M2)
-
-`NEXUS_HISTORY_LIMIT` sets the maximum number of saved successful conversations (default 200, accepted range 0–1000, with 0 disabling future saves). `nexus clear-history` removes currently saved conversation entries. History remains unencrypted plaintext and must not contain secrets. The clear operation is a normal file replacement, not secure erasure from snapshots, backups or storage media. HTTP requests are limited to 64 KiB. Future work includes a keyring-backed secret store, expiry retention and peer-authenticated Unix sockets.
-
-
-## M2 provider endpoint restrictions
-
-Cloud API calls default to `https://api.openai.com/v1`. Additional trusted HTTPS hosts must be explicitly listed in `NEXUS_CLOUD_HOSTS` (comma-separated exact hostnames); only port 443 is supported. The local Ollama URL must be HTTP loopback, and `/chat` has a basic 20-request/minute single-user rate limit. This is a first network policy, **not** complete protection against DNS rebinding, redirects, proxy configuration, model response abuse, or untrusted tools. Avoid adding privileged tools until those boundaries are hardened.
-
-
-## Guardian preview prototype (M3)
-
-`POST /guardian/preview` accepts a description and an array of `{option, enabled}` entries for four explicitly allowlisted NixOS boolean options. It returns a deterministic plan ID, textual Nix preview and risk classification. **This endpoint never edits files, executes Nix commands, requests root privileges, or applies changes.** It is not a complete Guardian workflow: Nix evaluation, diff against the active system, user confirmation, tamper-resistant audit trails, VM tests and rollback are future work.
-
-
-## M5 inference lifecycle prototype
-
-Authenticated `GET /inference/status` checks whether Ollama responds, and `POST /inference/unload` sends an Ollama `keep_alive=0` request for the configured local model. This is a request to unload, not a guarantee of reclaimed VRAM. The budget planner supports tests for reserving GPU headroom. There is not yet GPU telemetry, a llama.cpp adapter, preemption, active KV-cache control, automatic idle eviction, nor measured performance on real hardware.
-
-
-## Guardian acknowledgement audit (M3 prototype)
-
-`POST /guardian/acknowledge` requires the exact reviewed plan ID and the literal acknowledgement `I APPROVE`. It writes a hash-chained entry in `guardian-audit.jsonl` and returns `executed:false`. No system change is made. This chain detects accidental edits, but it is **not immutable or tamper-proof** against a process with write access to the user's files; the production executor and audit must live in a separately privileged service. No LLM may directly execute system commands.
-
-
-## Linux Secret Service integration (M2)
-
-For cloud API requests, Nexus Core reads the `openai-compatible` credential from the logged-in user's Secret Service through `secret-tool`. It does not accept `NEXUS_OPENAI_API_KEY` as an alternate plaintext environment source. A headless daemon without an unlocked keyring will fail cloud requests cleanly; local Ollama remains usable. This is Linux-specific until other OS credential providers are implemented. The code does not automatically install, unlock or persist keys in files.
-
-
-## Linux resource telemetry (M5)
-
-`GET /inference/telemetry` reports system RAM using `/proc/meminfo` and optional first-GPU VRAM statistics using `nvidia-smi` when available. Missing GPU data is reported as unavailable instead of fabricated. AMD/Intel support, GPU process accounting, telemetry sampling, automatic eviction and VRAM reclamation validation remain outstanding. Do not infer that a model fits in memory from total VRAM alone.
-
-
-## Automatic idle model unloading (experimental M5)
-
-Set `NEXUS_MODEL_IDLE_SECONDS` to a value of at least 30 to enable a periodic, best-effort Ollama model-unload request after inactivity. The service is disabled by default, checks every ten seconds, and attempts one unload per interval of request activity. This is not GPU preemption and makes no guarantee of actual memory reclamation. Background tasks other than `/chat` aren't yet tracked, and failures do not interrupt the OS.
-
-
-## Local llama.cpp server (M5)
-
-Nexus Core can now route requests to a separate llama.cpp HTTP server using `nexus use llama-cpp`. Configure `NEXUS_LLAMA_ENDPOINT` (defaults to HTTP loopback port 8080) and `NEXUS_LLAMA_MODEL` (defaults to `default`). This requires an independently running llama.cpp server with an OpenAI-compatible `/v1/chat/completions` endpoint. The service does not yet launch the model, pick quantisation, allocate CPU/GPU layers, or automatically offload model weights. CI tests the protocol through a mock only.
-
-
-## Local inference benchmark (M5 hardware acceptance)
-
-On a workstation with Ollama and a model loaded, run `python3 scripts/bench-ollama.py --model llama3.2:3b --runs 3`. It records wall-clock latency and Ollama-reported output tokens per second when available. It limits endpoints to HTTP loopback and response bodies to 4 MiB. To study cold starts and offloading, compare runs before and after explicitly unloading the model, while separately capturing VRAM telemetry. This script does not prove VRAM reclamation or SSD-based model paging and does not itself run on GPU hardware in CI.
-
-
-## Unix-domain API transport (M2)
-
-On Linux, set `NEXUS_API_MODE=unix` for both Core and CLI to communicate over `$NEXUS_STATE_DIR/nexus.sock` rather than TCP. The socket lives within a per-user mode-0700 state directory and requests still require the local bearer token. Core generates the token before opening the listener. A stale socket left after an unclean shutdown must be removed manually after verifying the old process is stopped. TCP is still the development default; privileged Guardian operations require a separately authenticated executor.
-
-
-## Inference concurrency limits (M2)
-
-Nexus Core now rejects a chat request with HTTP 429 when all inference slots are busy. The default is one in-flight inference request; `NEXUS_MAX_CONCURRENT_INFERENCE` allows 1–8 slots (values outside the range are clamped). Slots are released in a `finally`-safe lease even on backend failure or cancellation. This provides backpressure and helps avoid accidental simultaneous model loads. It does not yet implement model-specific VRAM admission control or queue prioritisation.
-
-
-## Inference token budgets (M5)
-
-`NEXUS_CONTEXT_TOKENS` (default 4096, supported 512–131072) and `NEXUS_MAX_OUTPUT_TOKENS` (default 512, must be less than context) provide a bounded budget. Ollama receives `num_ctx`/`num_predict`; llama.cpp and the cloud adapter receive `max_tokens`. Invalid configurations fail rather than silently allowing unbounded generation. **This is an advertised token budget, not a tokeniser or admission controller:** provider/model support varies and a prompt may still exceed its available context. KV-cache memory and actual truncation are not yet measured or guaranteed.
-
-
-## Cloud egress (M2)
-
-Sending prompts to the OpenAI-compatible provider is disabled by default. The Core operator must explicitly set `NEXUS_CLOUD_EGRESS_ALLOWED=true` to permit external transmission. Provider selection alone is insufficient. This is a process-level operator consent guard, not per-message approval or a network firewall.
-
-
-## Guardian typed configuration diff (M3)
-
-`GuardianDiffPlanner.Compare` produces before/after changes for allowlisted boolean NixOS settings and excludes unchanged options. The supplied baseline is **not observed or trusted**, and must be independently checked by a privileged Guardian broker prior to any deployment. This component is only for review and tests.
-
-
-## Guardian review replay protection (M3)
-
-Before `POST /guardian/acknowledge`, the authenticated client must now call `POST /guardian/review-token` with the same validated plan. The token is random, expires in two minutes and can be consumed exactly once; a repeated acknowledgement is rejected. This is an **in-memory review protocol**, not a trusted human-presence proof or a privileged authorization. Tokens expire on Core restart; the resulting acknowledgement remains `executed:false`. The privileged Guardian broker is not implemented.
-
-
-## Chat history age retention (M2)
-
-`NEXUS_HISTORY_MAX_DAYS` limits which saved chats can be returned by `/history` and which survive the next successful chat append (default 30 days; accepted range clamped to 1–365). Malformed and future-dated entries are ignored. This is a logical read filter plus lazy file compaction, **not automatic timer-based erasure**: expired entries may remain on disk until another successful chat is saved, and backup copies are not erased. `nexus clear-history` remains available for manual deletion.
-
-
-## State directory symlink hardening (M2)
-
-Core rejects a state directory whose path or any existing ancestor is a symbolic link, including links to missing targets. This helps prevent accidental redirection of API token and chat files. The check is path-based rather than race-free (`openat2`/directory-fd); it does **not** protect against an attacker concurrently replacing directory components. OS ownership and peer identity checks remain important.
-
-
-## SQLite-backed Core state (M2)
-
-The Core now stores selected provider and conversation history in `$NEXUS_STATE_DIR/state.sqlite3` (Unix mode 0600 in a private mode-0700 state directory), using SQL transactions and parameterized queries. Existing `provider.json` and `history.jsonl` are imported on first SQLite startup in one transaction. Import is marked complete within that transaction, so restarting cannot duplicate history; malformed legacy JSONL rows are skipped. Original legacy files are deliberately **retained as backups**, not deleted or securely erased. History limits, age filtering, and `clear-history` apply to the SQLite table; the legacy backups may still contain old chats and need separate manual handling after migration is verified.
-
-SQLite is **not encrypted at rest**. Avoid treating file permissions as protection against other privileged users or filesystem backups. Legacy provider file constructor is retained for backward-compatible test/utility use, while the Core DI service reads and writes SQLite.
-
-
-## Linux Unix IPC peer identity (M2)
-
-When `NEXUS_API_MODE=unix`, Kestrel now retrieves `SO_PEERCRED` for every accepted connection and rejects it before HTTP processing unless the kernel-reported peer UID equals Core's effective UID. Bearer-token authentication remains required in addition to the UID check. Missing socket features or unreadable peer credentials fail closed. CI covers kernel-reported same-user identity and the normal Unix CLI smoke test. TCP development mode remains loopback plus bearer token, **without** kernel peer authentication. This protects the per-user API connection boundary; it does not authorise privileged Guardian operations or provide a full security review of Unix socket filesystem races.
+- Core endpoints: `POST /guardian/propose` (the AI turns a request into a
+  typed *preview* and never submits it), `POST /guardian/preview`,
+  `POST /guardian/submit`, `GET /guardian/candidates/{id}` and
+  `POST /guardian/review`.
+- Only options in [schema/guardian-options.json](schema/guardian-options.json)
+  can be changed.
+- Design: [ADR-002](docs/adr/002-guardian-candidate-model.md). Operations:
+  [Guardian deployment](docs/GUARDIAN-DEPLOYMENT.md).
+
+## NixOS
+
+```nix
+{
+  inputs.nexusos.url = "github:TheMatthewWalker/NexusOS";
+  outputs = { nixpkgs, nexusos, ... }: {
+    nixosConfigurations.host = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        nexusos.nixosModules.core
+        nexusos.nixosModules.guardian
+        {
+          services.nexus-core.enable = true;
+          services.nexus-guardian = {
+            enable = true;
+            allowedUsers = [ "alice" ];
+            hostConfig = "path:/etc/nixos#nixosConfigurations.host";
+            trustedBuilderKeys = [ "<base64 Ed25519 public key of your builder>" ];
+            staging.enable = true;   # GRUB trial boots with automatic fallback
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+## Data and privacy
+
+- **History:** stored in per-user SQLite (`~/.local/state/nexusos/state.sqlite3`,
+  mode 0600) as plaintext, not encrypted at rest.
+  - Retention: `NEXUS_HISTORY_LIMIT` (default 200, 0 disables saving) and
+    `NEXUS_HISTORY_MAX_DAYS` (default 30).
+  - `nexus clear-history` deletes it with SQLite `secure_delete`.
+  - Legacy JSONL backups need a separate cleanup ([procedure](docs/evidence/M2.md#removing-legacy-plaintext-backups-after-migration)).
+- **Logs:** never contain prompts, answers, the API token or provider keys,
+  and outbound HTTP header values are redacted.
+- **User data:** snapshots are separate from OS rollback, in
+  `scripts/backup/nexus_backup.py`.
+
+## Tests
+
+```bash
+dotnet test tests/NexusOS.Tests/NexusOS.Tests.csproj     # unit + in-process API + real broker
+python3 -m unittest discover -s tests/guardian           # Guardian schema, attestation, broker, staging
+python3 -m unittest discover -s tests/backup             # user-data snapshots
+python3 -m unittest discover -s tests/bench              # benchmark harness
+bash scripts/ci-smoke.sh && bash scripts/ci-unix.sh      # after dotnet publish to out/core, out/cli
+bash scripts/ci/cross-user.sh                            # two real Linux accounts (uses sudo)
+bash scripts/acceptance/m1-live.sh                       # real Ollama/llama.cpp (see docs/evidence/M1.md)
+nix flake check                                          # packages + NixOS VM tests (KVM recommended)
+```
+
+## Documentation
+
+- [Roadmap](docs/ROADMAP.md) and [evidence](docs/evidence/)
+- [Architecture](docs/ARCHITECTURE.md) and [ADR-002: Guardian](docs/adr/002-guardian-candidate-model.md)
+- [Guardian deployment](docs/GUARDIAN-DEPLOYMENT.md)
+
+Licensed under MIT.

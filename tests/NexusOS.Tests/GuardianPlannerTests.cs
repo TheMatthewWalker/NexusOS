@@ -9,6 +9,8 @@ public sealed class GuardianPlannerTests
         var b = GuardianPlanner.Preview("Another description", [new GuardianChange("services.printing.enable", true)]);
         Assert.Equal(a.Id, b.Id);
         Assert.Contains("services.printing.enable = true;", a.NixPreview);
+        Assert.Equal(24, a.Id.Length);
+        Assert.EndsWith("}\n", a.NixPreview);
     }
 
     [Theory]

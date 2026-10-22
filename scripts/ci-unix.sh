@@ -34,4 +34,20 @@ private="$(mktemp -d)"; mkdir "$private/sub"
 ( cd "$private/sub" && chmod 000 "$private" && timeout 30 dotnet "$PWD_ROOT/out/core/NexusOS.Core.dll" > "$PWD_ROOT/out/unix-cwd.log" 2>&1 ) || true
 chmod 700 "$private"; rm -rf "$private"
 if grep -q "DirectoryNotFoundException" out/unix-cwd.log; then cat out/unix-cwd.log; exit 1; fi
+# A crash (SIGKILL) leaves the socket file behind; a restart must recover.
+kill -9 "$CORE_PID"; wait "$CORE_PID" 2>/dev/null || true
+test -S "$NEXUS_STATE_DIR/nexus.sock"
+dotnet out/core/NexusOS.Core.dll > out/unix-core2.log 2>&1 &
+CORE_PID=$!
+for i in $(seq 1 60); do
+  if dotnet out/cli/NexusOS.Cli.dll health > out/unix-health.log 2>&1; then break; fi
+  if ! kill -0 "$CORE_PID" 2>/dev/null; then cat out/unix-core2.log; exit 1; fi
+  sleep 1
+done
+grep -q '"status": "ok"' out/unix-health.log
+# A second Core for the same user must refuse rather than steal the socket.
+if timeout 30 dotnet out/core/NexusOS.Core.dll > out/unix-core3.log 2>&1; then
+  echo "ERROR: second Core started on a live socket" >&2; exit 1
+fi
+grep -q "already serving" out/unix-core3.log
 echo "Unix-only Core transport smoke checks passed."

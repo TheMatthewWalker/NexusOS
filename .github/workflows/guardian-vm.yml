@@ -9,6 +9,8 @@ on:
     paths:
       - 'nix/**'
       - 'scripts/guardian/**'
+      - 'scripts/backup/**'
+      - 'src/**'
       - 'schema/**'
       - 'flake.nix'
       - 'flake.lock'
@@ -19,14 +21,22 @@ jobs:
   vm:
     name: Boot and probe isolated NixOS guest
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 120
     steps:
+      - name: Free runner disk for VM disk images
+        run: |
+          # The GRUB trial-boot image holds three NixOS closures; hosted
+          # runners ship ~30 GB of unrelated toolchains.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
+          df -h /
       - uses: actions/checkout@v4
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
       - name: Verify candidate and compare Nix module
         run: |
-          python3 scripts/guardian/candidate.py --changes nix/guardian/candidate-changes.json --baseline generation-42 --output /tmp/guardian-candidate.json
+          python3 scripts/guardian/candidate.py --changes nix/guardian/candidate-changes.json \
+            --baseline /nix/store/00000000000000000000000000000000-nixos-system-guardian-ci-26.05 \
+            --host-config 'path:./nix/guardian#nixosConfigurations.guardian-bootloader-lab' --output /tmp/guardian-candidate.json
           python3 scripts/guardian/verify_candidate.py --candidate /tmp/guardian-candidate.json --changes nix/guardian/candidate-changes.json --output /tmp/guardian-verified.nix
           diff -u nix/guardian/generated-candidate.nix /tmp/guardian-verified.nix
       - name: Nix flake evaluation
@@ -42,3 +52,16 @@ jobs:
           nix build ./nix/guardian#checks.x86_64-linux.guardian-boot --no-update-lock-file --print-build-logs
           nix build ./nix/guardian#checks.x86_64-linux.guardian-recovery --no-update-lock-file --print-build-logs
           nix build ./nix/guardian#checks.x86_64-linux.guardian-bootloader-rollback --no-update-lock-file --print-build-logs
+      - name: Build Nix packages (Guardian unit suite runs as the check phase)
+        run: |
+          nix build .#nexus-guardian --no-update-lock-file --print-build-logs
+          nix build .#nexus-core --no-update-lock-file --print-build-logs
+      - name: Guardian broker as a hardened root service (VM)
+        run: nix build .#checks.x86_64-linux.guardian-broker --no-update-lock-file --print-build-logs
+      - name: Per-user Core with the broker, crash recovery (VM)
+        run: nix build .#checks.x86_64-linux.nexus-stack --no-update-lock-file --print-build-logs
+      - name: Unattended trial boot and fallback on a GRUB disk (VM)
+        run: |
+          nix-collect-garbage > /dev/null
+          df -h /
+          nix build .#checks.x86_64-linux.guardian-trial-boot --no-update-lock-file --print-build-logs

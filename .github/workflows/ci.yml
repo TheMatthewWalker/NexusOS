@@ -60,8 +60,10 @@ jobs:
       - name: Cross-user isolation between two real Linux accounts (#51)
         run: bash scripts/ci/cross-user.sh
 
-      - name: Validate benchmark parser
-        run: python3 -m unittest discover -s tests/bench -v
+      - name: Benchmark and user-data backup tests
+        run: |
+          python3 -m unittest discover -s tests/bench -v
+          python3 -m unittest discover -s tests/backup -v
 
       - name: Upload test logs
         if: always()

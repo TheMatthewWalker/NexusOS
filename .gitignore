@@ -12,3 +12,5 @@ out/
 __pycache__/
 *.pyc
 TestResults/
+result
+result-*

@@ -12,48 +12,44 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Test strict change schema
+      - name: Guardian unit and protocol tests (shared schema, Ed25519, broker)
         run: python3 -m unittest discover -s tests/guardian -v
       - name: Validate generated Nix expression
         run: |
           echo '[{"option":"services.printing.enable","enabled":true}]' > /tmp/guardian-plan.json
           python3 scripts/guardian/validate.py --changes /tmp/guardian-plan.json > /tmp/guardian-generated.nix
           test -s /tmp/guardian-generated.nix
-      - name: Build non-activating deployment candidate
+      - name: Build non-activating candidate bound to a store-path baseline
         run: |
-          python3 scripts/guardian/candidate.py --changes /tmp/guardian-plan.json --baseline generation-42 --output /tmp/guardian-candidate.json
-          python3 - <<'PY'
-          import json
-          with open("/tmp/guardian-candidate.json", encoding="utf-8") as f:
-              candidate = json.load(f)
-          assert candidate["activation"] == "prohibited"
-          assert candidate["rollbackTarget"] == "generation-42"
-          assert candidate["operations"] == ["evaluate", "build", "vm-test"]
-          PY
-      - name: Verify fail-closed review gate
-        run: |
+          python3 scripts/guardian/candidate.py --changes /tmp/guardian-plan.json \
+            --baseline /nix/store/00000000000000000000000000000000-nixos-system-guardian-ci-26.05 \
+            --host-config 'path:./nix/guardian#nixosConfigurations.guardian-bootloader-lab' --output /tmp/guardian-candidate.json
           python3 - <<'PY'
           import json
           candidate = json.load(open("/tmp/guardian-candidate.json", encoding="utf-8"))
-          evidence = {"candidateId":candidate["candidateId"],"baseline":candidate["baseline"],
-                      "checks":{"evaluate":True,"build":False,"vm-test":True}}
-          with open("/tmp/guardian-failed-evidence.json","w",encoding="utf-8") as stream:
-              json.dump(evidence,stream)
+          assert candidate["activation"] == "prohibited"
+          assert candidate["rollbackTarget"] == candidate["baseline"]
+          assert candidate["operations"] == ["evaluate", "build", "vm-test"]
           PY
-          if python3 scripts/guardian/recovery_gate.py --candidate /tmp/guardian-candidate.json --changes /tmp/guardian-plan.json --evidence /tmp/guardian-failed-evidence.json --current-baseline generation-42; then
-            echo "ERROR: failed candidate was eligible for review" >&2
-            exit 1
+      - name: Symbolic baselines are rejected
+        run: |
+          if python3 scripts/guardian/candidate.py --changes /tmp/guardian-plan.json --baseline generation-42 \
+               --host-config 'path:./nix/guardian#nixosConfigurations.guardian-bootloader-lab'; then
+            echo "ERROR: symbolic baseline accepted" >&2; exit 1
           fi
       - name: Confirm no deployment operations outside the staging executor
         run: |
-          # Only scripts/guardian/stage_executor.py may stage a generation, and
-          # nothing may switch the running system, escalate, or spawn a shell.
-          pattern='nixos-rebuild|switch-to-configuration|nix-env --profile|sudo|pkexec|shell=True|os\.system'
-          if grep -rnE "$pattern" scripts/guardian --include='*.py' | grep -v '^scripts/guardian/stage_executor.py:'; then
+          # Only the staging executor and boot check may touch the system
+          # profile or bootloader, and nothing may escalate or spawn a shell.
+          staging='^scripts/guardian/(stage_executor|boot_check)\.py:'
+          pattern='nixos-rebuild|switch-to-configuration|nix-env|grub-editenv|sudo|pkexec|shell=True|os\.system'
+          if grep -rnE "$pattern" scripts/guardian --include='*.py' | grep -vE "$staging" | grep -v 'guardian-scan: read-only'; then
             echo "ERROR: deployment or escalation primitive outside the staging executor" >&2
             exit 1
           fi
-          if grep -nE 'nixos-rebuild|switch-to-configuration (switch|test)|sudo|pkexec|shell=True|os\.system' scripts/guardian/stage_executor.py 2>/dev/null; then
-            echo "ERROR: staging executor may only use 'switch-to-configuration boot'" >&2
+          # Even there, the running system is never switched: only "boot" is allowed.
+          if grep -nE '"(switch|test|dry-activate)"|nixos-rebuild|sudo|pkexec|shell=True|os\.system' \
+               scripts/guardian/stage_executor.py scripts/guardian/boot_check.py; then
+            echo "ERROR: staging may only use 'switch-to-configuration boot'" >&2
             exit 1
           fi

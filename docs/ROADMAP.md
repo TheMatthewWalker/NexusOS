@@ -17,7 +17,7 @@ Older dated progress notes are kept in [history](evidence/history.md).
 | M3 | Guardian preview and approval | **DONE in VM (pending review)** | Shared schema, Ed25519 attestations, root broker as a hardened NixOS service, root-console approval, AI-proposed typed plans with injection tests ([M3](evidence/M3.md), [ADR-002](adr/002-guardian-candidate-model.md)) |
 | M4 | Guardian rollback | **VM DONE; hardware open** | One-time trial boots on a real GRUB disk. A healthy trial is confirmed; a broken trial panics and falls back unattended. User-data snapshots are separate from OS generations ([M4](evidence/M4.md)). Physical-hardware drill outstanding |
 | M5 | Inference manager | **IN PROGRESS: tooling done, hardware open** | Provider registry, managed llama.cpp (start on demand, stop on unload), token budgets, RAM/VRAM telemetry, benchmark through Core, CI CPU run ([M5](evidence/M5.md)). 8 GB and 24 GB GPU runs and the gaming-reclaim test outstanding |
-| M6 | Desktop alpha | **IN PROGRESS: design approved, shell chosen** | SpaceUI design pack archived ([docs/design/spaceui](design/spaceui/README.md)). Shell: Quickshell on Hyprland ([ADR-003](adr/003-desktop-shell.md), [spike](design/spaceui-spike.md)). The 3D core look is being iterated with you |
+| M6 | Desktop alpha | **IN PROGRESS: desktop built; VM test added** | `nixosModules.desktop` logs into Hyprland running the Nexus shell (SpaceUI, Quickshell): Nova core, app orbit from Core suggestions, streamed answers, open windows as launcher planets, a real system panel, offline mode, and a lock screen that covers the shell. Covered end to end by the `hyprland-desktop` VM test ([M6](evidence/M6.md)). Still needs your input on Settings, Files and the dark colour set |
 | M7 | OS alpha image | TODO | Flake packages and NixOS modules for Core and Guardian exist (`flake.nix`); ISO, onboarding and hardware matrix not started |
 | M8 | Context and search | TODO | |
 | M9 | Automation and skills | TODO | |
@@ -70,7 +70,7 @@ These cannot be completed from CI or a VM. Each has a written procedure.
 - [x] Benchmark harness measuring cold start, latency and memory reclaim through Core; CPU profile in CI.
 - [ ] 8 GB and 24 GB GPU benchmark profiles. **Hardware gate.**
 - [ ] A game launch reclaims VRAM without killing the desktop. **Hardware gate**, and it needs foreground-app detection (M6).
-- [ ] The GUI allows normal non-AI system operation when inference is offline. **M6, needs your design input.**
+- [ ] The GUI allows normal non-AI system operation when inference is offline. Built: the shell says Core is offline and apps still open from the orbit and launcher. Needs its VM evidence ([M6](evidence/M6.md)).
 - [ ] The installer produces repeatable images with a documented recovery path (M7).
 
 ## M8 — M11 optional scope
@@ -92,5 +92,5 @@ enough to call a milestone shipped.
 
 1. Merge the open stacked PRs after review.
 2. Complete the four operator and hardware gates above.
-3. **M6 desktop:** agree the interaction design (command palette, provider switch, memory widget, change-proposal view, offline fallback) before any UI work.
+3. **M6 desktop:** decide the Settings and Files apps, the dark colour set, and how Guardian change proposals appear on the desktop. Then run the shell on your own GPU.
 4. **M7:** a NixOS installer image built from `flake.nix`, onboarding (key provisioning, allowed users) and a supported-hardware matrix.

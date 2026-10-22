@@ -1,0 +1,9 @@
+{
+  "comment": "Spike-only layout of the one bottom-centred layer surface both shells draw into (surface pixels). The harness reads it too, so its clicks land on the same targets in both shells.",
+  "surface": { "width": 760, "height": 800 },
+  "core": { "x": 380, "y": 290 },
+  "launcher": { "x": 380, "y": 756, "diameter": 56 },
+  "chat": { "x": 75, "y": 548, "width": 610, "height": 62 },
+  "reply": { "x": 75, "y": 622, "width": 610 },
+  "launcherHoverDelay": 600
+}

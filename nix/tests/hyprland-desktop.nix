@@ -172,8 +172,14 @@ pkgs.testers.runNixOSTest {
 
     with subtest("the lock screen covers the shell"):
         before = shot("06-before-lock")
-        hypr("dispatch exec 'hyprlock --config /etc/nexus/hyprlock.conf'")
-        machine.wait_until_succeeds("pgrep -x hyprlock", timeout=60)
+        # Super+L, the real binding, through the kernel input device.
+        for _ in range(4):
+            machine.succeed("YDOTOOL_SOCKET=/run/ydotoold/socket ydotool key 125:1 38:1 38:0 125:0")
+            if machine.execute("timeout 45 sh -c 'until pgrep -x hyprlock; do sleep 2; done'")[0] == 0:
+                break
+        else:
+            diagnostics()
+            raise AssertionError("Super+L did not start hyprlock")
         assert bright(before, *LAUNCHER) > 300
         deadline = time.time() + 120
         while bright(locked := shot("07-locked"), *LAUNCHER) >= 120:

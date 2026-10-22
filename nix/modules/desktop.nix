@@ -47,8 +47,8 @@ let
 
     # Super+Space opens Nexus; Super+L locks; Super+Return opens a terminal.
     bind = SUPER, Space, global, nexus:toggle
-    bind = SUPER, L, exec, hyprlock --config /etc/nexus/hyprlock.conf
-    bind = SUPER, Return, exec, gtk-launch ${terminal}
+    bind = SUPER, L, exec, ${config.programs.hyprlock.package}/bin/hyprlock --config /etc/nexus/hyprlock.conf
+    bind = SUPER, Return, exec, ${pkgs.gtk3}/bin/gtk-launch ${terminal}
     bind = SUPER, Q, killactive
     bind = SUPER SHIFT, E, exit
     bind = SUPER, F, fullscreen

@@ -2,11 +2,13 @@
 set -euo pipefail
 export NEXUS_STATE_DIR="$(mktemp -d)"
 export NEXUS_API_MODE=tcp
+# Search may only index folders inside "home"; use a throwaway one, outside the state directory.
+export NEXUS_SEARCH_HOME="$(mktemp -d)"
 trap 'status=$?; if [[ $status -ne 0 ]]; then echo "Smoke failure at line $LINENO (exit $status)"; cat out/core.log out/mock.log 2>/dev/null || true; fi' ERR
 
 cleanup() {
   kill "${CORE_PID:-}" "${MOCK_PID:-}" 2>/dev/null || true
-  rm -rf "$NEXUS_STATE_DIR"
+  rm -rf "$NEXUS_STATE_DIR" "$NEXUS_SEARCH_HOME"
 }
 trap cleanup EXIT
 
@@ -73,6 +75,22 @@ test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN"
   -d '{"description":"Enable printing","changes":[{"option":"services.printing.enable","enabled":true}]}' \
   http://127.0.0.1:5077/guardian/submit)" = 503
 test "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" -X POST http://127.0.0.1:5077/guardian/acknowledge)" = 404
+
+# Private search: choose a folder, index it locally (mock /api/embed), find it by
+# words and by meaning, refuse a folder outside home, then erase the index.
+mkdir -p "$NEXUS_SEARCH_HOME/Documents"
+echo "Plumber invoice overdue" > "$NEXUS_SEARCH_HOME/Documents/money.txt"
+dotnet out/cli/NexusOS.Cli.dll search sources add "$NEXUS_SEARCH_HOME/Documents" | grep '"indexing": true' > /dev/null
+for i in $(seq 1 30); do
+  if dotnet out/cli/NexusOS.Cli.dll search status | grep '"embeddedChunks": 1' > /dev/null; then break; fi
+  sleep 1
+done
+dotnet out/cli/NexusOS.Cli.dll search status | tee /dev/stderr | grep '"available": true' > /dev/null
+dotnet out/cli/NexusOS.Cli.dll search plumber | tee /dev/stderr | grep 'money.txt' > /dev/null
+dotnet out/cli/NexusOS.Cli.dll search bill | tee /dev/stderr | grep 'Close in meaning' > /dev/null
+if dotnet out/cli/NexusOS.Cli.dll search sources add /etc; then echo "Search accepted a folder outside home"; exit 1; fi
+dotnet out/cli/NexusOS.Cli.dll search erase | grep '"verified": true' > /dev/null
+dotnet out/cli/NexusOS.Cli.dll search plumber | grep 'No matches.' > /dev/null
 
 TOKEN="$(cat "$NEXUS_STATE_DIR/api-token")"
 curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:5077/inference/telemetry | grep -q '"ramTotalBytes"'

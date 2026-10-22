@@ -63,6 +63,7 @@ builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianBrokerClient>();
 builder.Services.AddSingleton<GuardianProposer>();
 builder.Services.AddSingleton<LocalApiToken>();
+builder.Services.AddNexusSearch(); // Private search (M8): SearchEndpoints.cs
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -209,6 +210,7 @@ app.MapGet("/system", () => Results.Ok(new
     memoryBytes = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes,
     machineName = Environment.MachineName
 })); // Deliberately read-only, limited metadata.
+app.MapNexusSearch();
 app.Run();
 
 public sealed record ChatRequest(string Prompt);

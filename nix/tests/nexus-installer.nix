@@ -23,9 +23,9 @@ pkgs.testers.runNixOSTest {
       common
       "${modulesPath}/profiles/installation-device.nix"
       "${modulesPath}/profiles/base.nix"
-      # Formats the installer's own small root disk on first boot.
-      "${modulesPath}/../tests/common/auto-format-root-device.nix"
     ];
+    # Format the installer's own small root disk on first boot (systemd initrd).
+    virtualisation.fileSystems."/".autoFormat = true;
     virtualisation.emptyDiskImages = [ 1024 ];
     virtualisation.rootDevice = "/dev/vdb";
     hardware.enableAllFirmware = lib.mkForce false;

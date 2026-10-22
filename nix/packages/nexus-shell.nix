@@ -28,9 +28,10 @@ stdenvNoCC.mkDerivation {
     cp -r build $out/share/nexus-shell
     makeWrapper ${quickshell}/bin/quickshell $out/bin/nexus-shell \
       --add-flags "-p $out/share/nexus-shell/shell.qml"
-    # Talks to the running shell, e.g. `nexus-shell-ipc call nexus toggle`.
+    # Talks to the running shell, e.g. `nexus-shell-ipc call nexus toggle`. Each user's
+    # runtime dir holds only their own shell, so the display filter is not needed.
     makeWrapper ${quickshell}/bin/quickshell $out/bin/nexus-shell-ipc \
-      --add-flags "ipc -p $out/share/nexus-shell/shell.qml"
+      --add-flags "ipc -p $out/share/nexus-shell/shell.qml --any-display"
     runHook postInstall
   '';
   meta = {

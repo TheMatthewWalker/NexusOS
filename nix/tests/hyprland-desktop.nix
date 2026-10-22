@@ -19,6 +19,7 @@ pkgs.testers.runNixOSTest {
       # Software rendering in a VM: keep the test fast and deterministic.
       reducedMotion = true;
       blur = false;
+      coreDetail = 16;
       apps = { terminal = "kitty"; files = "thunar"; browser = "firefox"; };
       extraHyprlandConfig = ''
         input {
@@ -67,6 +68,18 @@ pkgs.testers.runNixOSTest {
     def bright(img, x, y, r=10):
         return max(sum(img.getpixel((x + dx, y + dy))) for dx in range(-r, r + 1, 2) for dy in range(-r, r + 1, 2))
 
+    def wait_drawn(name, x, y, r, threshold, timeout=240):
+        """Software rendering in a VM can take seconds per frame: poll the screen."""
+        deadline = time.time() + timeout
+        while True:
+            img = shot(name)
+            if bright(img, x, y, r) > threshold:
+                return img
+            if time.time() > deadline:
+                diagnostics()
+                raise AssertionError(f"{name}: nothing drawn at {x},{y} after {timeout}s")
+            time.sleep(5)
+
     def diagnostics():
         print(machine.execute("journalctl -b --no-pager -t nexus-shell | tail -60")[1])
         print(machine.execute("journalctl -b --no-pager --user-unit nexus-core -M alice@ | tail -20")[1])
@@ -93,16 +106,12 @@ pkgs.testers.runNixOSTest {
             assert ns in layers, f"{ns} missing:\n{layers}"
         print(machine.execute("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' 2>&1")[1])
         wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":true'", 300)
-        machine.sleep(5)
-        idle = shot("01-desktop")
-        assert bright(idle, *LAUNCHER) > 300, "the launcher core is not drawn"
+        wait_drawn("01-desktop", *LAUNCHER, r=10, threshold=300)
 
     with subtest("the launcher opens the full core"):
         click(*LAUNCHER)
         wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"expanded\":true'", 60)
-        machine.sleep(3)
-        opened = shot("02-core")
-        assert bright(opened, *CORE, r=20) > 450, "the full core is not drawn"
+        wait_drawn("02-core", *CORE, r=20, threshold=450)
 
     with subtest("a question goes to Nexus Core and the answer streams back"):
         click(*CHAT)
@@ -128,9 +137,10 @@ pkgs.testers.runNixOSTest {
         before = shot("05-before-lock")
         hypr("dispatch exec 'hyprlock --config /etc/nexus/hyprlock.conf'")
         machine.wait_until_succeeds("pgrep -x hyprlock", timeout=60)
-        machine.sleep(5)
-        locked = shot("06-locked")
         assert bright(before, *LAUNCHER) > 300
-        assert bright(locked, *LAUNCHER) < 120, "the Nexus launcher shows through the lock screen"
+        deadline = time.time() + 120
+        while bright(locked := shot("06-locked"), *LAUNCHER) >= 120:
+            assert time.time() < deadline, "the Nexus launcher shows through the lock screen"
+            time.sleep(5)
   '';
 }

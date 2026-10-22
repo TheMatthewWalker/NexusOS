@@ -14,6 +14,7 @@ let
     # Absolute: Hyprland's exec-once does not get the login PATH.
     env = NEXUS_CLI,${config.services.nexus-core.package}/bin/nexus
     ${lib.optionalString cfg.reducedMotion "env = NEXUS_REDUCED_MOTION,1"}
+    env = NEXUS_CORE_STEPS,${toString cfg.coreDetail}
     # The shell logs to the journal: journalctl --user -t nexus-shell
     exec-once = ${pkgs.systemd}/bin/systemd-cat -t nexus-shell ${cfg.shellPackage}/bin/nexus-shell
 
@@ -118,6 +119,15 @@ in
       type = lib.types.bool;
       default = false;
       description = "Freeze the Nexus core and app motion, and turn off Hyprland animations.";
+    };
+    coreDetail = lib.mkOption {
+      type = lib.types.ints.between 8 64;
+      default = 56;
+      description = ''
+        Samples per pixel through the Nova core's gas. Lower it (for example to
+        20) on machines that render without a capable GPU; the core looks
+        softer but stays responsive.
+      '';
     };
     blur = lib.mkOption {
       type = lib.types.bool;

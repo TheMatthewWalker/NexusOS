@@ -242,6 +242,8 @@ ShellRoot {
                 z: -1
                 centre: Qt.point(root.lay.core.x, root.lay.core.y)
                 radius: root.tk.nexus.hitDiameter / 2
+                // Fewer raymarch samples for machines without a capable GPU.
+                steps: Number(Quickshell.env("NEXUS_CORE_STEPS")) || 56
                 reduced: root.reduced
                 mode: ({ idle: "idle", typing: "listening", thinking: "thinking", responding: "speaking" })[root.mode]
                 voice: root.voice

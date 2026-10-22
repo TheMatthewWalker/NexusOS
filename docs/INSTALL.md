@@ -64,7 +64,7 @@ On the first start, NexusOS asks for your password. It then downloads the defaul
 | Step | Detail |
 |---|---|
 | Disk | A GPT table with a 1 GiB EFI system partition (`BOOT`) and an ext4 root (`nexusos`) |
-| Source | The NexusOS source from the stick is copied to `/etc/nexusos` |
+| Source | The NexusOS source from the stick is copied to `/etc/nixos/nexusos` |
 | Configuration | `/etc/nixos/flake.nix` imports NexusOS. `/etc/nixos/local.nix` holds your user name, computer name and time zone. `/etc/nixos/hardware-configuration.nix` is generated for your hardware |
 | Boot loader | systemd-boot, keeping the last 20 system versions. Pick an older one at start-up if an update goes wrong |
 
@@ -76,7 +76,7 @@ Edit `/etc/nixos/local.nix` (for example `nexusos.autologin = true;`), then run:
 sudo nixos-rebuild switch --flake /etc/nixos#nexus
 ```
 
-The options are documented in `nix/profiles/nexusos.nix` and `nix/modules/desktop.nix` (under `/etc/nexusos`).
+The options are documented in `nix/profiles/nexusos.nix` and `nix/modules/desktop.nix` (under `/etc/nixos/nexusos`).
 
 ## Not in this alpha
 

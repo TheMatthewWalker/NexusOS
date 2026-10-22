@@ -5,8 +5,8 @@
 #   nexus-install --disk /dev/vdb --user alice --password-file pw.txt --yes
 #
 # What it does: erases the chosen disk, makes a 1 GiB EFI partition and an
-# ext4 root, copies the NexusOS source to /etc/nexusos, writes a small flake in
-# /etc/nixos that imports it, and runs nixos-install.
+# ext4 root, writes a small flake in /etc/nixos that imports a copy of the
+# NexusOS source in /etc/nixos/nexusos, and runs nixos-install.
 set -euo pipefail
 
 source_dir=/etc/nexusos
@@ -129,11 +129,11 @@ mount -o umask=0077 "$boot_part" /mnt/boot
 say "Writing the configuration"
 nixos-generate-config --root /mnt > /dev/null
 rm -f /mnt/etc/nixos/configuration.nix
-mkdir -p /mnt/etc/nexusos
-# Keep the executable bits: the flake lock hashes the source, and the copy
-# must hash the same as the installer's own /etc/nexusos.
-cp -r --no-preserve=ownership "$source_dir/." /mnt/etc/nexusos/
-chmod -R u+w /mnt/etc/nexusos
+# The NexusOS source lives inside /etc/nixos, so the machine's flake can
+# refer to it by a relative path and rebuild without network access.
+mkdir -p /mnt/etc/nixos/nexusos
+cp -rL --no-preserve=ownership "$source_dir/." /mnt/etc/nixos/nexusos/
+chmod -R u+w /mnt/etc/nixos/nexusos
 
 nix_string() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g')"; }
 
@@ -141,7 +141,7 @@ cat > /mnt/etc/nixos/flake.nix <<'EOF'
 # This computer's NexusOS configuration. Change local.nix, then run:
 #   sudo nixos-rebuild switch --flake /etc/nixos#nexus
 {
-  inputs.nexusos.url = "path:/etc/nexusos";
+  inputs.nexusos.url = "path:./nexusos";
   outputs = { self, nexusos }: {
     nixosConfigurations.nexus = nexusos.lib.mkSystem {
       modules = [ ./hardware-configuration.nix ./local.nix ];
@@ -151,7 +151,7 @@ cat > /mnt/etc/nixos/flake.nix <<'EOF'
 EOF
 cat > /mnt/etc/nixos/local.nix <<EOF
 # Settings for this computer, written by nexus-install. Options are listed
-# in /etc/nexusos/nix/profiles/nexusos.nix and nix/modules/desktop.nix.
+# in /etc/nixos/nexusos/nix/profiles/nexusos.nix and nix/modules/desktop.nix.
 {
   nexusos.user = $(nix_string "$user");
   nexusos.fullName = $(nix_string "$full_name");

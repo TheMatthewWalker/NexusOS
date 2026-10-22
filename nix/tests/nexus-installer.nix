@@ -76,7 +76,7 @@ pkgs.testers.runNixOSTest {
             "nexus-install --disk /dev/vda --user alice --full-name 'Alice Test'"
             " --password-file /tmp/pw --hostname nexus-test --timezone Europe/London --yes >&2",
             timeout=7200)
-        installer.succeed("test -f /mnt/etc/nixos/flake.lock")
+        installer.succeed("test -f /mnt/etc/nixos/flake.lock && test -f /mnt/etc/nixos/nexusos/flake.nix")
         installer.succeed("grep -q 'nexusos.user = \"alice\"' /mnt/etc/nixos/local.nix")
         installer.succeed("umount -R /mnt")
         installer.succeed("sync")

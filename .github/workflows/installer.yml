@@ -1,0 +1,32 @@
+name: NexusOS installer
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'nix/**'
+      - 'shell/**'
+      - 'src/**'
+      - 'flake.nix'
+      - 'flake.lock'
+      - '.github/workflows/installer.yml'
+permissions:
+  contents: read
+jobs:
+  installer:
+    name: Installer image and install to a blank disk (VM)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Free runner disk for VM images
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Installer script passes shellcheck
+        run: nix build .#nexus-install --no-update-lock-file --print-build-logs
+      - name: The image evaluates
+        run: nix eval --no-update-lock-file .#packages.x86_64-linux.iso.drvPath
+      - name: Install to a blank UEFI disk, then boot it (VM)
+        run: nix build .#checks.x86_64-linux.nexus-installer --no-update-lock-file --print-build-logs

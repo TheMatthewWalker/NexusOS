@@ -39,6 +39,11 @@ jobs:
       - name: Install Ollama and pull a small real model
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
+          # The installer only starts Ollama when it detects systemd; on runners
+          # where it does not, start the server ourselves.
+          if ! curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+            nohup ollama serve > ollama-serve.log 2>&1 &
+          fi
           for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:11434/api/version && break; sleep 1; done
           ollama pull "$MODEL"
       - name: Install llama.cpp

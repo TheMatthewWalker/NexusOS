@@ -77,6 +77,9 @@ pkgs.testers.runNixOSTest {
         installer.succeed("""cat > /tmp/test.nix <<'EOF'
     { modulesPath, ... }: {
       imports = [ "''${modulesPath}/testing/test-instrumentation.nix" "''${modulesPath}/profiles/qemu-guest.nix" ];
+      # Boot the default entry at once: in the test harness the boot menu's
+      # countdown can stop and wait for a key that never comes.
+      boot.loader.timeout = 0;
     }
     EOF""")
         installer.succeed(
@@ -109,6 +112,8 @@ pkgs.testers.runNixOSTest {
         target.wait_for_unit("ollama.service")
         target.succeed("test -x /run/current-system/sw/bin/nexus-shell")
         target.succeed("test -f /etc/nexus/hyprland.conf")
+        # The login screen's greeter account is a system user: Core must not run for it.
+        target.fail("journalctl -b --no-pager | grep -q 'nexus-core.*Unhandled exception'")
 
     with subtest("the machine can rebuild itself from /etc/nixos"):
         target.succeed("nix --extra-experimental-features 'nix-command flakes' eval --raw /etc/nixos#nixosConfigurations.nexus.config.networking.hostName | grep -qx nexus-test")

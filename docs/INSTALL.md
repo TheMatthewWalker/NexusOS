@@ -57,7 +57,10 @@ The live desktop starts by itself, with a terminal called **Install NexusOS**:
    It then partitions the disk, writes the configuration and installs NexusOS. That takes 5–30 minutes, depending on your connection and disk.
 4. When it says **NexusOS is installed**, remove the stick and restart.
 
-On the first start, NexusOS asks for your password. It then downloads the default local model in the background (a few GB). Until the model is there, Nexus says it is unavailable and apps work as normal.
+On the first start, NexusOS asks for your password.
+
+![The installed system's login screen, then the NexusOS desktop](evidence/img/M7-installed-desktop.png)
+ It then downloads the default local model in the background (a few GB). Until the model is there, Nexus says it is unavailable and apps work as normal.
 
 ## What the installer does
 

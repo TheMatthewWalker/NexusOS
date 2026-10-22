@@ -63,6 +63,8 @@ builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianBrokerClient>();
 builder.Services.AddSingleton<GuardianProposer>();
 builder.Services.AddSingleton<LocalApiToken>();
+// Fix it and the health report: read-only probes and the fix library (FixIt.cs).
+builder.Services.AddFixIt();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -77,6 +79,7 @@ var app = builder.Build();
 // at startup with a clear message instead of failing individual requests.
 _ = app.Services.GetRequiredService<LocalApiToken>();
 _ = app.Services.GetRequiredService<ModelRouter>();
+_ = app.Services.GetRequiredService<FixLibrary>();
 app.Use(async (context, next) =>
 {
     var token = context.RequestServices.GetRequiredService<LocalApiToken>();
@@ -209,6 +212,8 @@ app.MapGet("/system", () => Results.Ok(new
     memoryBytes = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes,
     machineName = Environment.MachineName
 })); // Deliberately read-only, limited metadata.
+// POST /fixit, POST /fixit/apply, GET /health/report (FixIt.cs).
+app.MapFixIt();
 app.Run();
 
 public sealed record ChatRequest(string Prompt);

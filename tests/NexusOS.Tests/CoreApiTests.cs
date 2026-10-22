@@ -41,6 +41,8 @@ public sealed class CoreApiFactory : WebApplicationFactory<Program>
     public HttpMessageHandler AiHandler { get => _ai.Inner; set => _ai.Inner = value; }
     public HttpMessageHandler CloudHandler { get => _cloud.Inner; set => _cloud.Inner = value; }
     public FakeCredentials Credentials { get; set; } = new("sk-nexus-test-credential-0123456789");
+    // Replaces the process runner behind probes and personal fixes.
+    public ICommandRunner? Commands { get; set; }
     public CapturedLogs Logs { get; } = new();
     public string StateRoot => _state.Root;
 
@@ -63,6 +65,7 @@ public sealed class CoreApiFactory : WebApplicationFactory<Program>
             services.AddHttpClient("ai").ConfigurePrimaryHttpMessageHandler(() => _ai);
             services.AddHttpClient("cloud").ConfigurePrimaryHttpMessageHandler(() => _cloud);
             services.AddSingleton<IProviderCredentialStore>(_ => Credentials);
+            if (Commands is not null) services.AddSingleton(Commands);
         });
     }
 
@@ -115,6 +118,9 @@ public sealed class CoreApiTests
     [InlineData("POST", "/guardian/preview")]
     [InlineData("GET", "/inference/status")]
     [InlineData("POST", "/inference/unload")]
+    [InlineData("POST", "/fixit")]
+    [InlineData("POST", "/fixit/apply")]
+    [InlineData("GET", "/health/report")]
     public async Task EveryEndpointRequiresTheBearerToken(string method, string path)
     {
         using var factory = new CoreApiFactory();

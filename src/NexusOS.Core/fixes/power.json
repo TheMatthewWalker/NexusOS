@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "power.battery-critical",
+      "area": "power",
+      "priority": 10,
+      "match": [
+        {
+          "probe": "power.devices",
+          "where": [
+            { "field": "kind", "equals": "battery" },
+            { "field": "power supply", "equals": "yes" },
+            { "field": "state", "equals": "discharging" },
+            { "field": "percentage", "atMost": 10 }
+          ]
+        }
+      ],
+      "bind": [
+        {
+          "name": "percent",
+          "probe": "power.devices",
+          "where": [ { "field": "kind", "equals": "battery" }, { "field": "power supply", "equals": "yes" }, { "field": "state", "equals": "discharging" } ],
+          "field": "percentage",
+          "pattern": "[0-9]{1,3}(\\.[0-9]+)?%"
+        }
+      ],
+      "cause": "The battery is at {percent} and not charging; the computer will turn off soon.",
+      "fixes": [
+        { "id": "power-saver", "kind": "personal", "label": "Switch to power saver", "action": "power.power-saver" }
+      ]
+    }
+  ]
+}

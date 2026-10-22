@@ -55,7 +55,7 @@
         };
         nexus-try = self.packages.${system}.nexus-try;
         try-apps = import ./nix/tests/try-apps.nix {
-          inherit pkgs;
+          inherit pkgs nixpkgs;
           tryAppsModule = self.nixosModules.try-apps;
         };
       };

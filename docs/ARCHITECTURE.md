@@ -64,7 +64,9 @@ system's pinned nixpkgs without installing it. `services.nexus-desktop.tryApps.e
    quoting or shell metacharacters. It is fetched or built with
    `nix build --no-link --print-out-paths nixpkgs#<attr>` through the system
    registry. No profile is touched and no GC root is left, so the next
-   garbage collection removes it.
+   garbage collection removes it. When the registry entry is locked (it has
+   a `narHash`, as on flake-built systems), evaluation is cached after the
+   first trial.
 2. **Run in bubblewrap**, as the user, with:
    - a new user, PID, IPC, UTS, cgroup and (with `--no-network`) network
      namespace, `--die-with-parent`, `--new-session` and all capabilities

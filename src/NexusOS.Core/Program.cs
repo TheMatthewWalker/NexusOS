@@ -62,6 +62,7 @@ builder.Services.AddHostedService<IdleModelEvictionService>();
 builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianBrokerClient>();
 builder.Services.AddSingleton<GuardianProposer>();
+builder.Services.AddSingleton<AppSuggester>();
 builder.Services.AddSingleton<LocalApiToken>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -124,6 +125,71 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
         return Results.Problem(ex.Message, statusCode: ex.StatusCode);
     }
 }).RequireRateLimiting("ai");
+// Streams the answer as newline-delimited JSON events:
+//   {"type":"delta","text":"..."}  repeated, then {"type":"done","provider":"..."}
+// An error before the first piece is an ordinary HTTP problem response; an
+// error mid-answer becomes {"type":"error","message":"..."}. Only completed
+// answers are written to history.
+app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, ModelRouter router, ConversationStore history,
+    InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
+        return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
+    using var slot = await concurrency.TryEnterAsync(ct);
+    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    var answer = new System.Text.StringBuilder();
+    var started = false;
+    async Task WriteEvent(object value)
+    {
+        if (!started)
+        {
+            http.Response.ContentType = "application/x-ndjson";
+            http.Response.Headers.CacheControl = "no-store";
+            started = true;
+        }
+        await http.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(value) + "\n", ct);
+        await http.Response.Body.FlushAsync(ct);
+    }
+    activity.BeginRequest();
+    try
+    {
+        var (pieces, provider) = router.Stream(request.Prompt, ct);
+        await foreach (var piece in pieces)
+        {
+            answer.Append(piece);
+            await WriteEvent(new { type = "delta", text = piece });
+        }
+        await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, provider, request.Prompt, answer.ToString()), ct);
+        await WriteEvent(new { type = "done", provider });
+        return Results.Empty;
+    }
+    catch (ProviderException ex)
+    {
+        if (!started) return Results.Problem(ex.Message, statusCode: ex.StatusCode);
+        await WriteEvent(new { type = "error", message = ex.Message });
+        return Results.Empty;
+    }
+    finally { activity.EndRequest(); }
+}).RequireRateLimiting("ai");
+// App suggestions for the desktop. /suggest uses the catalogue's rules: it is
+// instant and runs while the user types. /suggest/model asks the selected
+// model to choose from the catalogue and, if it cannot, falls back to the
+// rules, labelled as such.
+app.MapPost("/suggest", async (SuggestRequest request, AppSuggester suggester, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > AppSuggester.MaxPromptLength)
+        return Results.BadRequest(new { error = $"Prompt must be 1-{AppSuggester.MaxPromptLength} characters." });
+    return Results.Ok(await suggester.SuggestAsync(request.Prompt, false, ct));
+});
+app.MapPost("/suggest/model", async (SuggestRequest request, AppSuggester suggester, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > AppSuggester.MaxPromptLength)
+        return Results.BadRequest(new { error = $"Prompt must be 1-{AppSuggester.MaxPromptLength} characters." });
+    using var slot = await concurrency.TryEnterAsync(ct);
+    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    return Results.Ok(await suggester.SuggestAsync(request.Prompt, true, ct));
+}).RequireRateLimiting("ai");
+app.MapGet("/apps", () => Results.Ok(AppCatalogue.Roles.Select(r => new { id = r.Id, label = r.Label, detail = r.Detail })));
 app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
 {
     try { return Results.Ok(GuardianPlanner.Preview(request.Description, request.Changes)); }
@@ -212,6 +278,7 @@ app.MapGet("/system", () => Results.Ok(new
 app.Run();
 
 public sealed record ChatRequest(string Prompt);
+public sealed record SuggestRequest(string Prompt);
 public sealed record SelectRequest(string Name);
 public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
 public sealed record GuardianProposeRequest(string Request);

@@ -58,6 +58,8 @@ builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceActivity>();
 builder.Services.AddSingleton<InferenceConcurrencyGate>();
 builder.Services.AddSingleton<InferenceTokenSettings>();
+// Automations in plain words: rule store, engine, parser and timer (RuleEndpoints.cs).
+builder.Services.AddRules();
 builder.Services.AddHostedService<IdleModelEvictionService>();
 builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianBrokerClient>();
@@ -101,7 +103,8 @@ app.MapPost("/providers/select", (SelectRequest request, ProviderStore store) =>
     if (!store.Select(request.Name)) return Results.BadRequest(new { error = "Unknown provider" });
     return Results.Ok(new { selected = store.Selected });
 });
-app.MapDelete("/history", async (ConversationStore history, CancellationToken ct) => { await history.ClearAsync(ct); return Results.NoContent(); });
+app.MapDelete("/history", async (ConversationStore history, RuleStore rules, CancellationToken ct) =>
+    { await history.ClearAsync(ct); await rules.ClearRunsAsync(ct); return Results.NoContent(); });
 app.MapGet("/history", async (ConversationStore history, CancellationToken ct) => Results.Ok(await history.RecentAsync(50, ct)));
 app.MapPost("/chat", async (ChatRequest request, ModelRouter router, ConversationStore history, InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
 {
@@ -189,6 +192,8 @@ app.MapPost("/guardian/review", async (GuardianReviewRequest request, GuardianBr
 });
 app.MapGet("/inference/telemetry", async (MemoryTelemetry telemetry, CancellationToken ct) =>
     Results.Ok(await telemetry.ReadAsync(ct)));
+// /rules, /rules/parse, /events and /rules/pending-actions (RuleEndpoints.cs).
+app.MapRules();
 app.MapGet("/inference/status", async (ModelRouter router, CancellationToken ct) =>
 {
     var provider = router.Current;

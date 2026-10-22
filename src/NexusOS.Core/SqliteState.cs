@@ -21,6 +21,7 @@ public sealed class SqliteStateDatabase
             CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """;
         schema.ExecuteNonQuery();
+        SchemaMigration.Apply(connection, RuleStore.MigrationMarker, RuleStore.Schema);
         MigrateLegacy(connection, paths);
     }
 

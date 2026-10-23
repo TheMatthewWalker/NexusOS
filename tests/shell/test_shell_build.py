@@ -96,6 +96,20 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("paused: root.launcherPaused", shell)
         self.assertIn("IdleMonitor", shell)
 
+    def test_shell_scales_down_to_fit_a_small_screen(self):
+        """On a screen shorter or narrower than the layout, the whole surface scales down instead of cropping."""
+        shell = (self.out / "shell.qml").read_text()
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn("fitScreen.height / root.lay.surface.height, fitScreen.width / root.lay.surface.width", shell)
+        self.assertIn("implicitHeight: Math.round(root.lay.surface.height * fit)", shell)
+        self.assertIn("scale: panel.fit; transformOrigin: Item.TopLeft", shell)
+        # The hit regions are children of the scaled item, so input follows the scale.
+        content = shell.index("id: content")
+        self.assertLess(content, shell.index("id: fullHit"))
+        self.assertLess(content, shell.index("id: launcherHit"))
+        # A VM or remote desktop on Windows keeps the Super key: a terminal is also on Ctrl+Alt+T.
+        self.assertIn("bind = CTRL ALT, T, exec,", desktop)
+
     def test_game_mode_frees_the_gpu_and_restores_the_desktop(self):
         """Feature 11: a fullscreen game unloads the model and drops blur and animations until it closes."""
         shell = (self.out / "shell.qml").read_text()

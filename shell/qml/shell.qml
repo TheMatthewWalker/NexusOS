@@ -182,8 +182,14 @@ ShellRoot {
     PanelWindow {
         id: panel
         anchors.bottom: true
-        implicitWidth: root.lay.surface.width
-        implicitHeight: root.lay.surface.height
+        implicitWidth: Math.round(root.lay.surface.width * fit)
+        implicitHeight: Math.round(root.lay.surface.height * fit)
+        // The layout is drawn for a 760x800 surface. On a shorter or narrower
+        // screen it is scaled down to fit, so the core stays on screen; input
+        // regions follow, as Region maps its item through the scale.
+        readonly property var fitScreen: panel.screen || Quickshell.screens[0]
+        readonly property real fit: !fitScreen ? 1 : Math.min(1,
+            fitScreen.height / root.lay.surface.height, fitScreen.width / root.lay.surface.width)
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Top            // below lock and secure surfaces
@@ -194,302 +200,308 @@ ShellRoot {
         // Only the drawn parts take input; the rest of the surface passes clicks through.
         mask: Region { item: root.expanded ? fullHit : launcherHit }
 
-        Item { id: fullHit; anchors.fill: parent }
         Item {
-            id: launcherHit
-            x: root.lay.launcher.x - w / 2; y: root.lay.launcher.y - h + 44
-            property real w: launcher.hoverOpen ? 300 : 120
-            property real h: launcher.hoverOpen ? 190 : 100
-            width: w; height: h
-        }
+            id: content
+            width: root.lay.surface.width; height: root.lay.surface.height
+            scale: panel.fit; transformOrigin: Item.TopLeft
 
-        // Click outside the content collapses the expanded Nexus.
-        MouseArea { anchors.fill: parent; enabled: root.expanded; onClicked: root.collapse() }
-
-        // ---- collapsed: the bottom launcher with open windows as tiny planets ----
-        Item {
-            id: launcher
-            visible: !root.expanded
-            x: root.lay.launcher.x; y: root.lay.launcher.y
-            property bool hoverOpen: false
-            readonly property var windows: ToplevelManager.toplevels.values
-
-            Timer { id: hoverDelay; interval: root.lay.launcherHoverDelay; onTriggered: launcher.hoverOpen = true }
+            Item { id: fullHit; anchors.fill: parent }
             Item {
-                x: -launcherHit.w / 2; y: -launcherHit.h + 44; width: launcherHit.w; height: launcherHit.h
-                HoverHandler {
-                    id: launcherHover
-                    onHoveredChanged: {
-                        if (hovered) hoverDelay.start();
-                        else { hoverDelay.stop(); launcher.hoverOpen = false }
-                    }
-                }
+                id: launcherHit
+                x: root.lay.launcher.x - w / 2; y: root.lay.launcher.y - h + 44
+                property real w: launcher.hoverOpen ? 300 : 120
+                property real h: launcher.hoverOpen ? 190 : 100
+                width: w; height: h
             }
-            NovaCore {
-                id: miniCore
-                width: 300; height: 190
-                x: -150; y: -146
-                centre: Qt.point(150, 146)
-                radius: root.lay.launcher.diameter * 0.4
-                steps: 24
-                idleFps: 30
-                paused: root.launcherPaused
-                reduced: root.reduced
-                hovered: launcherHover.hovered
-            }
+
+            // Click outside the content collapses the expanded Nexus.
+            MouseArea { anchors.fill: parent; enabled: root.expanded; onClicked: root.collapse() }
+
+            // ---- collapsed: the bottom launcher with open windows as tiny planets ----
             Item {
-                width: root.lay.launcher.diameter; height: width
-                x: -width / 2; y: -height / 2
-                TapHandler { onTapped: root.open() }
-                Accessible.role: Accessible.Button
-                Accessible.name: "Open Nexus"
-            }
-            Repeater {
-                model: launcher.windows
-                delegate: Item {
-                    required property var modelData
-                    required property int index
-                    readonly property var p: O.launcherPlanet(index, launcher.windows.length, launcher.hoverOpen)
-                    readonly property string icon: apps.iconFor(modelData.appId)
-                    x: p.x; y: p.y
-                    Behavior on x { NumberAnimation { duration: root.reduced ? 0 : 260; easing.type: Easing.OutCubic } }
-                    Behavior on y { NumberAnimation { duration: root.reduced ? 0 : 260; easing.type: Easing.OutCubic } }
-                    Rectangle {
-                        width: p.size; height: p.size; radius: width / 2
-                        x: -width / 2; y: -height / 2
-                        color: root.dark.glass; border.color: modelData.activated ? root.dark.focus : root.dark.glassBorder; border.width: 1
-                        Behavior on width { NumberAnimation { duration: root.reduced ? 0 : 260 } }
-                        Image {
-                            anchors.centerIn: parent
-                            width: parent.width * 0.6; height: width
-                            visible: launcher.hoverOpen && parent.parent.icon !== ""
-                            source: parent.parent.icon
-                            sourceSize: Qt.size(64, 64)
-                        }
-                        Text {
-                            anchors.centerIn: parent
-                            visible: launcher.hoverOpen && parent.parent.icon === ""
-                            text: (modelData.title || modelData.appId || "?").slice(0, 1).toUpperCase()
-                            font.pixelSize: 18; font.weight: 600; color: root.dark.ink
-                        }
-                        TapHandler { enabled: launcher.hoverOpen; onTapped: modelData.activate() }
-                        Accessible.role: Accessible.Button
-                        Accessible.name: "Switch to " + modelData.title
-                    }
-                    Text {
-                        visible: launcher.hoverOpen
-                        y: p.size / 2 + 4; x: -width / 2
-                        width: Math.min(implicitWidth, 120); elide: Text.ElideRight
-                        text: modelData.title || modelData.appId
-                        font.pixelSize: 13; color: root.dark.ink
-                    }
-                }
-            }
-        }
+                id: launcher
+                visible: !root.expanded
+                x: root.lay.launcher.x; y: root.lay.launcher.y
+                property bool hoverOpen: false
+                readonly property var windows: ToplevelManager.toplevels.values
 
-        // ---- expanded: full core, orbit and chat ----
-        Item {
-            id: stage
-            anchors.fill: parent
-            visible: root.expanded
-            opacity: root.expanded ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: root.reduced ? 0 : 220 } }
-
-            NovaCore {
-                id: bigCore
-                anchors.fill: parent
-                z: -1
-                centre: Qt.point(root.lay.core.x, root.lay.core.y)
-                radius: root.tk.nexus.hitDiameter / 2
-                // Fewer raymarch samples for machines without a capable GPU.
-                steps: Number(Quickshell.env("NEXUS_CORE_STEPS")) || 56
-                busy: root.modelBusy
-                reduced: root.reduced
-                mode: ({ idle: "idle", typing: "listening", thinking: "thinking", responding: "speaking" })[root.mode]
-                voice: root.voice
-                hovered: coreHover.hovered
-            }
-            Shape {
-                x: root.lay.core.x; y: root.lay.core.y
-                preferredRendererType: Shape.CurveRenderer
-                ShapePath {
-                    strokeColor: root.dark.orbit; strokeWidth: 1; fillColor: "transparent"
-                    PathAngleArc { radiusX: root.tk.appOrbit.radius; radiusY: radiusX; sweepAngle: 360 }
-                }
-                ShapePath {
-                    strokeColor: Qt.rgba(0.55, 0.62, 1.0, 0.16); strokeWidth: 1; fillColor: "transparent"
-                    strokeStyle: ShapePath.DashLine; dashPattern: [2, 7]
-                    PathAngleArc { radiusX: root.tk.appOrbit.innerRadius; radiusY: radiusX; sweepAngle: 360 }
-                }
-            }
-            // Touching the core: hover wakes it, a tap brings every app into orbit, a drag turns it.
-            Item {
-                width: root.tk.nexus.hitDiameter; height: width
-                x: root.lay.core.x - width / 2; y: root.lay.core.y - height / 2
-                activeFocusOnTab: true
-                Keys.onReturnPressed: { bigCore.ripple(); root.showAll = !root.showAll }
-                Keys.onSpacePressed: { bigCore.ripple(); root.showAll = !root.showAll }
-                Keys.onEscapePressed: root.collapse()
-                Rectangle {
-                    anchors.fill: parent; radius: width / 2; color: "transparent"
-                    border.color: root.dark.focus; border.width: 3; visible: parent.activeFocus
-                }
-                HoverHandler { id: coreHover }
-                TapHandler { onTapped: { bigCore.ripple(); root.showAll = !root.showAll } }
-                DragHandler {
-                    target: null
-                    property point last: Qt.point(0, 0)
-                    onActiveChanged: last = Qt.point(0, 0)
-                    onTranslationChanged: { bigCore.turn(translation.x - last.x, translation.y - last.y); last = Qt.point(translation.x, translation.y) }
-                }
-                Accessible.role: Accessible.Button
-                Accessible.name: "Show or hide all apps around Nexus"
-            }
-            Column {
-                x: root.lay.core.x - width / 2; y: root.lay.core.y + 98
-                spacing: 4
-                Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Nexus AI"
-                       font.pixelSize: root.tk.typography.coreTitle.fontSize; font.weight: 550
-                       font.letterSpacing: root.tk.typography.coreTitle.letterSpacing; color: root.dark.ink }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: !bridge.online ? "Offline · apps still work"
-                        : ({ idle: "Ready when you are", typing: "Listening", thinking: "Thinking…", responding: "Responding" })[root.mode]
-                    font.pixelSize: 13; color: bridge.online ? root.dark.inkSecondary : root.dark.error
-                }
-            }
-
-            Repeater {
-                model: O.APP_IDS
-                delegate: Item {
-                    id: node
-                    required property string modelData
-                    required property int index
-                    readonly property bool shown: root.expanded && root.visibleApps().includes(modelData)
-                    readonly property bool available: apps.installed(modelData)
-                    property real progress: 0
-                    readonly property real eased: shown ? O.entryEase(progress) : 1 - O.exitEase(1 - progress)
-                    readonly property var at: root.reduced ? Object.assign(O.slot(modelData), { scale: 1, opacity: progress })
-                                                           : O.emergence(modelData, eased)
-                    readonly property bool settled: shown && progress >= 1
-                    x: root.lay.core.x + at.x; y: root.lay.core.y + at.y
-                    opacity: at.opacity; scale: at.scale
-                    visible: progress > 0
-                    onShownChanged: {
-                        anim.stop();
-                        anim.delay = shown && !root.reduced ? index * root.tk.appOrbit.motion.entryStagger : 0;
-                        anim.to = shown ? 1 : 0;
-                        anim.duration = root.reduced ? root.tk.appOrbit.motion.reducedEntryExit
-                                      : shown ? root.tk.appOrbit.motion.entry : root.tk.appOrbit.motion.exit;
-                        anim.start();
-                    }
-                    SequentialAnimation {
-                        id: anim
-                        property int delay: 0
-                        property real to: 1
-                        property int duration: 850
-                        PauseAnimation { duration: anim.delay }
-                        NumberAnimation { target: node; property: "progress"; to: anim.to; duration: anim.duration }
-                    }
-                    Rectangle {
-                        width: root.tk.appOrbit.buttonDiameter; height: width; radius: width / 2
-                        x: -width / 2; y: -height / 2
-                        color: root.dark.glass
-                        opacity: node.available ? 1 : 0.55
-                        // Keyboard: Tab reaches each settled app, Enter or Space opens it.
-                        activeFocusOnTab: node.settled
-                        Keys.onReturnPressed: if (node.available) root.openApp(node.modelData)
-                        Keys.onSpacePressed: if (node.available) root.openApp(node.modelData)
-                        Keys.onEscapePressed: root.collapse()
-                        border.color: activeFocus || (btnHover.hovered && node.settled && node.available) ? root.dark.focus : root.dark.glassBorder
-                        border.width: activeFocus ? 3 : 1.5
-                        Image { anchors.centerIn: parent; width: 30; height: 30; sourceSize: Qt.size(60, 60)
-                                source: "icons/" + node.modelData + ".svg" }
-                        HoverHandler { id: btnHover; enabled: node.settled }
-                        TapHandler { enabled: node.settled && node.available; onTapped: root.openApp(node.modelData) }
-                        Accessible.role: Accessible.Button
-                        Accessible.name: node.available ? "Open " + O.APP_LABELS[node.modelData]
-                                                        : O.APP_LABELS[node.modelData] + ", not installed"
-                    }
-                    Column {
-                        y: root.tk.appOrbit.buttonDiameter / 2 + root.tk.appOrbit.labelGap; x: -width / 2
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: O.APP_LABELS[node.modelData]; font.pixelSize: 13; font.weight: 500
-                            color: node.available ? root.dark.ink : root.dark.inkSecondary
-                        }
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            visible: !node.available
-                            text: "Not installed"; font.pixelSize: 12; color: root.dark.muted
+                Timer { id: hoverDelay; interval: root.lay.launcherHoverDelay; onTriggered: launcher.hoverOpen = true }
+                Item {
+                    x: -launcherHit.w / 2; y: -launcherHit.h + 44; width: launcherHit.w; height: launcherHit.h
+                    HoverHandler {
+                        id: launcherHover
+                        onHoveredChanged: {
+                            if (hovered) hoverDelay.start();
+                            else { hoverDelay.stop(); launcher.hoverOpen = false }
                         }
                     }
                 }
-            }
-
-            // Chat bar
-            Rectangle {
-                id: chat
-                x: root.lay.chat.x; y: root.lay.chat.y
-                width: root.lay.chat.width; height: root.lay.chat.height
-                radius: root.tk.radii.chat; color: root.dark.glass
-                border.color: input.activeFocus ? root.dark.focus : root.dark.glassBorder; border.width: 1
-                Image { x: 22; anchors.verticalCenter: parent.verticalCenter; width: 22; height: 22
-                        source: "icons/spark.svg"; sourceSize: Qt.size(44, 44) }
-                TextInput {
-                    id: input
-                    x: 58; width: parent.width - 130; anchors.verticalCenter: parent.verticalCenter
-                    font.pixelSize: 14; color: root.dark.ink; clip: true
-                    readOnly: !bridge.online
-                    focus: root.expanded
-                    Text {
-                        visible: !input.text
-                        text: bridge.online ? "Ask Nexus AI or find anything" : "Nexus Core is offline. Apps above still open."
-                        font.pixelSize: 14; color: root.dark.inkSecondary
-                    }
-                    onTextEdited: { root.mode = text ? "typing" : "idle"; debounce.restart() }
-                    onAccepted: if (text.trim()) root.ask(text.trim())
-                    activeFocusOnTab: true
-                    Keys.onEscapePressed: root.collapse()
-                    Accessible.name: "Ask Nexus AI"
+                NovaCore {
+                    id: miniCore
+                    width: 300; height: 190
+                    x: -150; y: -146
+                    centre: Qt.point(150, 146)
+                    radius: root.lay.launcher.diameter * 0.4
+                    steps: 24
+                    idleFps: 30
+                    paused: root.launcherPaused
+                    reduced: root.reduced
+                    hovered: launcherHover.hovered
                 }
-                MouseArea { anchors.fill: input; onClicked: input.forceActiveFocus(); cursorShape: Qt.IBeamCursor }
-                Rectangle {
-                    width: root.tk.chat.sendDiameter; height: width; radius: width / 2
-                    anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
-                    color: bridge.online ? root.dark.primary : root.dark.glassBorder
-                    Image { anchors.centerIn: parent; width: 20; height: 20; source: "icons/send.svg"; sourceSize: Qt.size(40, 40) }
-                    TapHandler { enabled: bridge.online; onTapped: if (input.text.trim()) root.ask(input.text.trim()) }
+                Item {
+                    width: root.lay.launcher.diameter; height: width
+                    x: -width / 2; y: -height / 2
+                    TapHandler { onTapped: root.open() }
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Send"
+                    Accessible.name: "Open Nexus"
+                }
+                Repeater {
+                    model: launcher.windows
+                    delegate: Item {
+                        required property var modelData
+                        required property int index
+                        readonly property var p: O.launcherPlanet(index, launcher.windows.length, launcher.hoverOpen)
+                        readonly property string icon: apps.iconFor(modelData.appId)
+                        x: p.x; y: p.y
+                        Behavior on x { NumberAnimation { duration: root.reduced ? 0 : 260; easing.type: Easing.OutCubic } }
+                        Behavior on y { NumberAnimation { duration: root.reduced ? 0 : 260; easing.type: Easing.OutCubic } }
+                        Rectangle {
+                            width: p.size; height: p.size; radius: width / 2
+                            x: -width / 2; y: -height / 2
+                            color: root.dark.glass; border.color: modelData.activated ? root.dark.focus : root.dark.glassBorder; border.width: 1
+                            Behavior on width { NumberAnimation { duration: root.reduced ? 0 : 260 } }
+                            Image {
+                                anchors.centerIn: parent
+                                width: parent.width * 0.6; height: width
+                                visible: launcher.hoverOpen && parent.parent.icon !== ""
+                                source: parent.parent.icon
+                                sourceSize: Qt.size(64, 64)
+                            }
+                            Text {
+                                anchors.centerIn: parent
+                                visible: launcher.hoverOpen && parent.parent.icon === ""
+                                text: (modelData.title || modelData.appId || "?").slice(0, 1).toUpperCase()
+                                font.pixelSize: 18; font.weight: 600; color: root.dark.ink
+                            }
+                            TapHandler { enabled: launcher.hoverOpen; onTapped: modelData.activate() }
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "Switch to " + modelData.title
+                        }
+                        Text {
+                            visible: launcher.hoverOpen
+                            y: p.size / 2 + 4; x: -width / 2
+                            width: Math.min(implicitWidth, 120); elide: Text.ElideRight
+                            text: modelData.title || modelData.appId
+                            font.pixelSize: 13; color: root.dark.ink
+                        }
+                    }
                 }
             }
 
-            // Reply, with its sources kept visibly separate.
-            Column {
-                x: root.lay.reply.x + 12; y: root.lay.reply.y
-                width: root.lay.reply.width - 24
-                spacing: 8
-                visible: root.reply.length > 0 || root.error.length > 0
-                Text {
-                    width: parent.width; wrapMode: Text.Wrap
-                    textFormat: Text.PlainText      // model output is never rendered as rich text
-                    maximumLineCount: 6; elide: Text.ElideRight
-                    text: root.error ? "Nexus Core could not answer: " + root.error : root.reply
-                    font.pixelSize: 14; lineHeight: 1.5; color: root.error ? root.dark.error : root.dark.ink
+            // ---- expanded: full core, orbit and chat ----
+            Item {
+                id: stage
+                anchors.fill: parent
+                visible: root.expanded
+                opacity: root.expanded ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: root.reduced ? 0 : 220 } }
+
+                NovaCore {
+                    id: bigCore
+                    anchors.fill: parent
+                    z: -1
+                    centre: Qt.point(root.lay.core.x, root.lay.core.y)
+                    radius: root.tk.nexus.hitDiameter / 2
+                    // Fewer raymarch samples for machines without a capable GPU.
+                    steps: Number(Quickshell.env("NEXUS_CORE_STEPS")) || 56
+                    busy: root.modelBusy
+                    reduced: root.reduced
+                    mode: ({ idle: "idle", typing: "listening", thinking: "thinking", responding: "speaking" })[root.mode]
+                    voice: root.voice
+                    hovered: coreHover.hovered
                 }
-                Flow {
-                    width: parent.width; spacing: 6
-                    visible: !root.error && root.provider !== ""
-                    Repeater {
-                        model: ["Answer · Nexus Core (" + root.provider + " provider)"].concat(
-                            root.suggestedBy ? ["Apps · " + ({ rules: "keyword rules, not AI", model: "chosen by the model",
-                                                             "rules-fallback": "keyword rules (model unavailable)" })[root.suggestedBy]] : [])
-                        delegate: Rectangle {
-                            required property string modelData
-                            width: chip.implicitWidth + 20; height: 28; radius: 14
-                            color: root.dark.chip
-                            Text { id: chip; anchors.centerIn: parent; text: modelData; font.pixelSize: 13; color: root.dark.inkSecondary }
+                Shape {
+                    x: root.lay.core.x; y: root.lay.core.y
+                    preferredRendererType: Shape.CurveRenderer
+                    ShapePath {
+                        strokeColor: root.dark.orbit; strokeWidth: 1; fillColor: "transparent"
+                        PathAngleArc { radiusX: root.tk.appOrbit.radius; radiusY: radiusX; sweepAngle: 360 }
+                    }
+                    ShapePath {
+                        strokeColor: Qt.rgba(0.55, 0.62, 1.0, 0.16); strokeWidth: 1; fillColor: "transparent"
+                        strokeStyle: ShapePath.DashLine; dashPattern: [2, 7]
+                        PathAngleArc { radiusX: root.tk.appOrbit.innerRadius; radiusY: radiusX; sweepAngle: 360 }
+                    }
+                }
+                // Touching the core: hover wakes it, a tap brings every app into orbit, a drag turns it.
+                Item {
+                    width: root.tk.nexus.hitDiameter; height: width
+                    x: root.lay.core.x - width / 2; y: root.lay.core.y - height / 2
+                    activeFocusOnTab: true
+                    Keys.onReturnPressed: { bigCore.ripple(); root.showAll = !root.showAll }
+                    Keys.onSpacePressed: { bigCore.ripple(); root.showAll = !root.showAll }
+                    Keys.onEscapePressed: root.collapse()
+                    Rectangle {
+                        anchors.fill: parent; radius: width / 2; color: "transparent"
+                        border.color: root.dark.focus; border.width: 3; visible: parent.activeFocus
+                    }
+                    HoverHandler { id: coreHover }
+                    TapHandler { onTapped: { bigCore.ripple(); root.showAll = !root.showAll } }
+                    DragHandler {
+                        target: null
+                        property point last: Qt.point(0, 0)
+                        onActiveChanged: last = Qt.point(0, 0)
+                        onTranslationChanged: { bigCore.turn(translation.x - last.x, translation.y - last.y); last = Qt.point(translation.x, translation.y) }
+                    }
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Show or hide all apps around Nexus"
+                }
+                Column {
+                    x: root.lay.core.x - width / 2; y: root.lay.core.y + 98
+                    spacing: 4
+                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Nexus AI"
+                           font.pixelSize: root.tk.typography.coreTitle.fontSize; font.weight: 550
+                           font.letterSpacing: root.tk.typography.coreTitle.letterSpacing; color: root.dark.ink }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: !bridge.online ? "Offline · apps still work"
+                            : ({ idle: "Ready when you are", typing: "Listening", thinking: "Thinking…", responding: "Responding" })[root.mode]
+                        font.pixelSize: 13; color: bridge.online ? root.dark.inkSecondary : root.dark.error
+                    }
+                }
+
+                Repeater {
+                    model: O.APP_IDS
+                    delegate: Item {
+                        id: node
+                        required property string modelData
+                        required property int index
+                        readonly property bool shown: root.expanded && root.visibleApps().includes(modelData)
+                        readonly property bool available: apps.installed(modelData)
+                        property real progress: 0
+                        readonly property real eased: shown ? O.entryEase(progress) : 1 - O.exitEase(1 - progress)
+                        readonly property var at: root.reduced ? Object.assign(O.slot(modelData), { scale: 1, opacity: progress })
+                                                               : O.emergence(modelData, eased)
+                        readonly property bool settled: shown && progress >= 1
+                        x: root.lay.core.x + at.x; y: root.lay.core.y + at.y
+                        opacity: at.opacity; scale: at.scale
+                        visible: progress > 0
+                        onShownChanged: {
+                            anim.stop();
+                            anim.delay = shown && !root.reduced ? index * root.tk.appOrbit.motion.entryStagger : 0;
+                            anim.to = shown ? 1 : 0;
+                            anim.duration = root.reduced ? root.tk.appOrbit.motion.reducedEntryExit
+                                          : shown ? root.tk.appOrbit.motion.entry : root.tk.appOrbit.motion.exit;
+                            anim.start();
+                        }
+                        SequentialAnimation {
+                            id: anim
+                            property int delay: 0
+                            property real to: 1
+                            property int duration: 850
+                            PauseAnimation { duration: anim.delay }
+                            NumberAnimation { target: node; property: "progress"; to: anim.to; duration: anim.duration }
+                        }
+                        Rectangle {
+                            width: root.tk.appOrbit.buttonDiameter; height: width; radius: width / 2
+                            x: -width / 2; y: -height / 2
+                            color: root.dark.glass
+                            opacity: node.available ? 1 : 0.55
+                            // Keyboard: Tab reaches each settled app, Enter or Space opens it.
+                            activeFocusOnTab: node.settled
+                            Keys.onReturnPressed: if (node.available) root.openApp(node.modelData)
+                            Keys.onSpacePressed: if (node.available) root.openApp(node.modelData)
+                            Keys.onEscapePressed: root.collapse()
+                            border.color: activeFocus || (btnHover.hovered && node.settled && node.available) ? root.dark.focus : root.dark.glassBorder
+                            border.width: activeFocus ? 3 : 1.5
+                            Image { anchors.centerIn: parent; width: 30; height: 30; sourceSize: Qt.size(60, 60)
+                                    source: "icons/" + node.modelData + ".svg" }
+                            HoverHandler { id: btnHover; enabled: node.settled }
+                            TapHandler { enabled: node.settled && node.available; onTapped: root.openApp(node.modelData) }
+                            Accessible.role: Accessible.Button
+                            Accessible.name: node.available ? "Open " + O.APP_LABELS[node.modelData]
+                                                            : O.APP_LABELS[node.modelData] + ", not installed"
+                        }
+                        Column {
+                            y: root.tk.appOrbit.buttonDiameter / 2 + root.tk.appOrbit.labelGap; x: -width / 2
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: O.APP_LABELS[node.modelData]; font.pixelSize: 13; font.weight: 500
+                                color: node.available ? root.dark.ink : root.dark.inkSecondary
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                visible: !node.available
+                                text: "Not installed"; font.pixelSize: 12; color: root.dark.muted
+                            }
+                        }
+                    }
+                }
+
+                // Chat bar
+                Rectangle {
+                    id: chat
+                    x: root.lay.chat.x; y: root.lay.chat.y
+                    width: root.lay.chat.width; height: root.lay.chat.height
+                    radius: root.tk.radii.chat; color: root.dark.glass
+                    border.color: input.activeFocus ? root.dark.focus : root.dark.glassBorder; border.width: 1
+                    Image { x: 22; anchors.verticalCenter: parent.verticalCenter; width: 22; height: 22
+                            source: "icons/spark.svg"; sourceSize: Qt.size(44, 44) }
+                    TextInput {
+                        id: input
+                        x: 58; width: parent.width - 130; anchors.verticalCenter: parent.verticalCenter
+                        font.pixelSize: 14; color: root.dark.ink; clip: true
+                        readOnly: !bridge.online
+                        focus: root.expanded
+                        Text {
+                            visible: !input.text
+                            text: bridge.online ? "Ask Nexus AI or find anything" : "Nexus Core is offline. Apps above still open."
+                            font.pixelSize: 14; color: root.dark.inkSecondary
+                        }
+                        onTextEdited: { root.mode = text ? "typing" : "idle"; debounce.restart() }
+                        onAccepted: if (text.trim()) root.ask(text.trim())
+                        activeFocusOnTab: true
+                        Keys.onEscapePressed: root.collapse()
+                        Accessible.name: "Ask Nexus AI"
+                    }
+                    MouseArea { anchors.fill: input; onClicked: input.forceActiveFocus(); cursorShape: Qt.IBeamCursor }
+                    Rectangle {
+                        width: root.tk.chat.sendDiameter; height: width; radius: width / 2
+                        anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
+                        color: bridge.online ? root.dark.primary : root.dark.glassBorder
+                        Image { anchors.centerIn: parent; width: 20; height: 20; source: "icons/send.svg"; sourceSize: Qt.size(40, 40) }
+                        TapHandler { enabled: bridge.online; onTapped: if (input.text.trim()) root.ask(input.text.trim()) }
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Send"
+                    }
+                }
+
+                // Reply, with its sources kept visibly separate.
+                Column {
+                    x: root.lay.reply.x + 12; y: root.lay.reply.y
+                    width: root.lay.reply.width - 24
+                    spacing: 8
+                    visible: root.reply.length > 0 || root.error.length > 0
+                    Text {
+                        width: parent.width; wrapMode: Text.Wrap
+                        textFormat: Text.PlainText      // model output is never rendered as rich text
+                        maximumLineCount: 6; elide: Text.ElideRight
+                        text: root.error ? "Nexus Core could not answer: " + root.error : root.reply
+                        font.pixelSize: 14; lineHeight: 1.5; color: root.error ? root.dark.error : root.dark.ink
+                    }
+                    Flow {
+                        width: parent.width; spacing: 6
+                        visible: !root.error && root.provider !== ""
+                        Repeater {
+                            model: ["Answer · Nexus Core (" + root.provider + " provider)"].concat(
+                                root.suggestedBy ? ["Apps · " + ({ rules: "keyword rules, not AI", model: "chosen by the model",
+                                                                 "rules-fallback": "keyword rules (model unavailable)" })[root.suggestedBy]] : [])
+                            delegate: Rectangle {
+                                required property string modelData
+                                width: chip.implicitWidth + 20; height: 28; radius: 14
+                                color: root.dark.chip
+                                Text { id: chip; anchors.centerIn: parent; text: modelData; font.pixelSize: 13; color: root.dark.inkSecondary }
+                            }
                         }
                     }
                 }

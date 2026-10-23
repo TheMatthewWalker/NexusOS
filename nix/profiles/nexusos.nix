@@ -6,7 +6,7 @@ let
   cfg = config.nexusos;
 in
 {
-  imports = [ ../modules/desktop.nix ];
+  imports = [ ../modules/desktop.nix ../modules/nvidia.nix ];
 
   options.nexusos = {
     user = lib.mkOption {

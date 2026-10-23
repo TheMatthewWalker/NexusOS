@@ -1,6 +1,6 @@
 # The NexusOS installer image: a live NexusOS desktop that opens the
 # installer in a terminal. Build it with `nix build .#iso`.
-{ config, lib, pkgs, modulesPath, nexusSource, referenceSystem, nixpkgsSource, ... }:
+{ config, lib, pkgs, modulesPath, nexusSource, referenceSystem, referenceSystemNvidia, nixpkgsSource, ... }:
 let
   nexus-install = pkgs.callPackage ../packages/nexus-install.nix { };
   welcome = pkgs.writeShellScriptBin "nexus-install-welcome" ''
@@ -26,6 +26,7 @@ in
   imports = [
     "${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix"
     ../modules/desktop.nix
+    ../modules/nvidia.nix
   ];
 
   system.nixos.distroName = "NexusOS";
@@ -36,8 +37,17 @@ in
 
   # Most of what the installer needs is already on the image: the installed
   # system's closure and the pinned nixpkgs source, so installing downloads
-  # little more than the parts built for this computer's hardware.
-  isoImage.storeContents = [ referenceSystem nixpkgsSource ];
+  # little more than the parts built for this computer's hardware. The NVIDIA
+  # variant carries the driver, which the NixOS cache does not build.
+  isoImage.storeContents = [ referenceSystem referenceSystemNvidia nixpkgsSource ];
+
+  # A second boot entry, "NexusOS live (NVIDIA)", for machines whose screen
+  # is driven by an NVIDIA card. The default entry uses the built-in open
+  # driver, which is enough to install on most machines, laptops included.
+  specialisation.nvidia.configuration = {
+    nexusos.nvidia.enable = true;
+    isoImage.configurationName = lib.mkForce "(NVIDIA)";
+  };
   environment.etc."nexusos".source = nexusSource;
 
   services.nexus-desktop = {

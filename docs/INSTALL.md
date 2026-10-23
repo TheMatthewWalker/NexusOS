@@ -35,7 +35,7 @@ On Windows or macOS, a tool such as balenaEtcher or Rufus (in "DD image" mode) d
 
 ## 3. Try it live
 
-Boot the computer from the stick (usually F12, F11, F8 or Esc during start-up opens the boot menu). Choose **NexusOS live**.
+Boot the computer from the stick (usually F12, F11, F8 or Esc during start-up opens the boot menu). Choose **NexusOS live**. If the screen stays black on a computer with an NVIDIA card, restart and choose **NexusOS live (NVIDIA)** instead.
 
 The live desktop starts by itself, with a terminal called **Install NexusOS**:
 
@@ -48,7 +48,7 @@ The live desktop starts by itself, with a terminal called **Install NexusOS**:
 ## 4. Install
 
 1. Connect to the internet: open the system panel (top right) and turn on Wi-Fi, or plug in a cable.
-2. In the **Install NexusOS** terminal, press Enter. If you closed it, press Super+Return for a new terminal and run `sudo nexus-install`.
+2. In the **Install NexusOS** terminal, press Enter. If you closed it, press Super+Return (or Ctrl+Alt+T) for a new terminal and run `sudo nexus-install`.
 3. The installer asks for:
    - the disk to install to (it lists the disks with their sizes and models);
    - your login name, full name and password;
@@ -61,6 +61,24 @@ On the first start, NexusOS asks for your password.
 
 ![The installed system's login screen, then the NexusOS desktop](evidence/img/M7-installed-desktop.png)
  It then downloads the default local model in the background (a few GB). Until the model is there, Nexus says it is unavailable and apps work as normal.
+
+## NVIDIA graphics
+
+The installer finds an NVIDIA card and sets up its driver; the summary before the install shows what it found ("Graphics: …"). You do not need to do anything. It sets:
+
+| Computer | What NexusOS uses |
+|---|---|
+| Laptop with an Intel or AMD built-in GPU as well | PRIME offload: the desktop runs on the built-in GPU, which saves battery. Run an app on the NVIDIA GPU with `nvidia-offload <app>` |
+| NVIDIA card only (most desktops, or a laptop with its MUX switch set to the dedicated GPU) | The NVIDIA card runs the desktop |
+| GTX 900 or 10 series (older than Turing) | The 580 driver series with NVIDIA's closed kernel modules, the last that supports these cards |
+
+The local model runs on the NVIDIA GPU through Ollama's Vulkan backend. The settings are in `/etc/nixos/local.nix` under `nexusos.nvidia`; to switch the model to CUDA (often faster, but it compiles Ollama on your computer, which takes a long time), add `nexusos.nvidia.ollamaBackend = "cuda";` and rebuild. To install without the NVIDIA driver, run `sudo nexus-install --no-nvidia`.
+
+Building the image (step 1) downloads NVIDIA's driver from nvidia.com and builds it, so the install does not have to.
+
+## In a virtual machine
+
+Windows keeps the Super (Windows) key for itself, so Super shortcuts do not reach NexusOS in a VM or remote desktop on Windows. Open a terminal with **Ctrl+Alt+T** instead, and open Nexus by clicking the core at the bottom of the screen.
 
 ## What the installer does
 
@@ -87,7 +105,6 @@ The options are documented in `nix/profiles/nexusos.nix` and `nix/modules/deskto
 - A graphical installer. The installer runs in a terminal.
 - Guardian (AI-proposed system changes) is not switched on in installed systems yet. It needs a builder signing key to be set up on each machine.
 - Settings and Files apps of its own. Thunar is the file manager, and settings are changed in `local.nix`.
-- NVIDIA graphics need extra configuration (`hardware.nvidia`), which the installer does not add.
 
 ## How the installer is tested
 

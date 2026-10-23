@@ -10,6 +10,7 @@ on:
       - 'src/**'
       - 'flake.nix'
       - 'flake.lock'
+      - 'tests/installer/**'
       - '.github/workflows/installer.yml'
 permissions:
   contents: read
@@ -24,6 +25,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Graphics detection (recorded lspci output)
+        run: python3 -m unittest discover -s tests/installer -v
       - name: Installer script passes shellcheck
         run: nix build .#nexus-install --no-update-lock-file --print-build-logs
       - name: The image evaluates

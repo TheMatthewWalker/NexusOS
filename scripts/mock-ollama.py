@@ -51,6 +51,9 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.read_body())
             if not body.get("model"):
                 raise ValueError("Missing model")
+            if body.get("stream") is True:
+                self.stream(body)
+                return
             if self.path == "/v1/chat/completions":
                 message = body.get("messages", [{}])[0].get("content", "")
                 content = json.dumps({"choices":[{"message":{"role":"assistant","content":"Nexus llama mock: " + message}}]}).encode()
@@ -69,6 +72,34 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
+
+    def stream(self, body):
+        """Streaming replies, word by word: Ollama NDJSON or OpenAI-style SSE."""
+        if self.path == "/v1/chat/completions":
+            text = "Nexus llama mock: " + body.get("messages", [{}])[0].get("content", "")
+        elif isinstance(body.get("prompt"), str):
+            text = "Nexus mock response: " + body["prompt"]
+        else:
+            raise ValueError("Missing prompt")
+        words = text.split(" ")
+        pieces = [w + (" " if i < len(words) - 1 else "") for i, w in enumerate(words)]
+        if self.path == "/v1/chat/completions":
+            lines = ["data: " + json.dumps({"choices": [{"delta": {"content": p}}]}) + "\n\n" for p in pieces]
+            lines.append("data: [DONE]\n\n")
+            kind = "text/event-stream"
+        else:
+            lines = [json.dumps({"response": p, "done": False}) + "\n" for p in pieces]
+            lines.append(json.dumps({"response": "", "done": True}) + "\n")
+            kind = "application/x-ndjson"
+        self.send_response(200)
+        self.send_header("Content-Type", kind)
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+        for line in lines:
+            data = line.encode()
+            self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
+            self.wfile.flush()
+        self.wfile.write(b"0\r\n\r\n")
 
 if __name__ == "__main__":
     ThreadingHTTPServer(("127.0.0.1", 11435), Handler).serve_forever()

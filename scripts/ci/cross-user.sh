@@ -104,8 +104,10 @@ try:
 except OSError as error:
     print("connect-denied", error.errno); sys.exit(0)
 s.settimeout(5)
-s.sendall(("GET /health HTTP/1.1\r\nHost: nexus\r\nAuthorization: Bearer " + token + "\r\n\r\n").encode())
+# Core may reject and close before the request is even written: a broken
+# pipe or reset here is the same rejection as an empty read.
 try:
+    s.sendall(("GET /health HTTP/1.1\r\nHost: nexus\r\nAuthorization: Bearer " + token + "\r\n\r\n").encode())
     data = s.recv(4096)
 except OSError:
     data = b""

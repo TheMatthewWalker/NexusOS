@@ -13,11 +13,17 @@ This repository contains:
 - **Guardian**: a separate root-owned broker that reviews typed NixOS
   changes. Changes are approved by root, attested by a builder, and staged
   for a one-time trial boot that falls back automatically.
+- **Desktop (SpaceUI)**: a Hyprland desktop with the Nexus shell
+  ([shell/](shell/README.md)), written in Quickshell. It has a deep-space
+  wallpaper and a live 3D Nova core that you talk to. Apps come into orbit
+  when they fit what you are doing, and open windows orbit a small launcher.
+  A system panel shows real audio, network, Bluetooth and battery state.
 - **NixOS packaging**: `flake.nix` packages, modules and VM tests.
 
 **Status:** M0 is done, M1–M3 are done pending review, M4 is VM-proven
 with a hardware drill outstanding, and M5's tooling is done with GPU runs
-outstanding. There is no desktop UI or installer image yet. See the
+outstanding. M6, the desktop alpha, is in progress: the Hyprland desktop and
+Nexus shell are built, with an end-to-end VM test. There is no installer image yet. See the
 [roadmap](docs/ROADMAP.md) and the [evidence](docs/evidence/).
 
 ## Quick start (development)
@@ -80,8 +86,10 @@ next boot:     healthy → confirmed;  failed boot → resets and falls back aut
       modules = [
         nexusos.nixosModules.core
         nexusos.nixosModules.guardian
+        nexusos.nixosModules.desktop
         {
           services.nexus-core.enable = true;
+          services.nexus-desktop.enable = true;   # Hyprland + the Nexus shell (shell/README.md)
           services.nexus-guardian = {
             enable = true;
             allowedUsers = [ "alice" ];
@@ -119,13 +127,16 @@ python3 -m unittest discover -s tests/bench              # benchmark harness
 bash scripts/ci-smoke.sh && bash scripts/ci-unix.sh      # after dotnet publish to out/core, out/cli
 bash scripts/ci/cross-user.sh                            # two real Linux accounts (uses sudo)
 bash scripts/acceptance/m1-live.sh                       # real Ollama/llama.cpp (see docs/evidence/M1.md)
-nix flake check                                          # packages + NixOS VM tests (KVM recommended)
+nix develop .#desktop --command python3 -m unittest tests/shell/test_shell_build.py tests/shell/test_contrast.py
+python3 -m unittest tests/cli/test_bridge.py             # CLI streaming + desktop bridge, after publishing to out/
+nix flake check                                          # packages + NixOS VM tests, including the Hyprland desktop (KVM recommended)
 ```
 
 ## Documentation
 
 - [Roadmap](docs/ROADMAP.md) and [evidence](docs/evidence/)
-- [Architecture](docs/ARCHITECTURE.md) and [ADR-002: Guardian](docs/adr/002-guardian-candidate-model.md)
+- [Architecture](docs/ARCHITECTURE.md), [ADR-002: Guardian](docs/adr/002-guardian-candidate-model.md) and [ADR-003: desktop shell](docs/adr/003-desktop-shell.md)
+- [Nexus shell](shell/README.md) and the [SpaceUI design pack](docs/design/spaceui/README.md)
 - [Guardian deployment](docs/GUARDIAN-DEPLOYMENT.md)
 
 Licensed under MIT.

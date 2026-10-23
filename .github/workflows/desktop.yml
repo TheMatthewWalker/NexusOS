@@ -1,0 +1,43 @@
+name: NexusOS desktop
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'shell/**'
+      - 'nix/**'
+      - 'src/**'
+      - 'docs/design/spaceui/design-tokens.json'
+      - 'scripts/mock-ollama.py'
+      - 'tests/shell/**'
+      - 'flake.nix'
+      - 'flake.lock'
+      - '.github/workflows/desktop.yml'
+permissions:
+  contents: read
+jobs:
+  desktop:
+    name: Nexus shell and Hyprland desktop (VM)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Free runner disk for VM images
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Shell build and unit tests (orbit maths, Nova shader, noise atlas)
+        run: nix develop .#desktop --no-update-lock-file --command python3 -m unittest tests/shell/test_shell_build.py tests/shell/test_contrast.py -v
+      - name: Build the nexus-shell package
+        run: nix build .#nexus-shell --no-update-lock-file --print-build-logs
+      - name: Hyprland desktop end to end (VM)
+        run: nix build .#checks.x86_64-linux.hyprland-desktop --no-update-lock-file --print-build-logs --out-link desktop-vm
+      - name: Upload desktop screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-desktop-screenshots
+          path: desktop-vm/*.png
+          if-no-files-found: ignore
+          retention-days: 30

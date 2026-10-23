@@ -27,6 +27,9 @@ public interface IModelProvider
     string Name { get; }
     bool SupportsUnload { get; }
     Task<string> AskAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct);
+    // Yields the answer in pieces as the engine produces it. Same bounds and
+    // error rules as AskAsync; an empty stream is an error.
+    IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct);
     // null means the provider is deliberately not probed (for example, cloud egress).
     Task<bool?> IsAvailableAsync(CancellationToken ct);
     Task UnloadAsync(CancellationToken ct);
@@ -80,6 +83,116 @@ public static class ProviderHttp
         _ => new ProviderException($"{label} returned HTTP {(int)status}.", 502)
     };
 
+    public static readonly TimeSpan StreamTimeout = TimeSpan.FromSeconds(180);
+    public const int MaxStreamLineBytes = 256 * 1024;
+
+    // Streams newline-delimited events (Ollama NDJSON or OpenAI-style SSE).
+    // parse turns one line into a text piece (null to skip) and says whether
+    // the stream is finished. The whole stream is bounded like a full response.
+    public static async IAsyncEnumerable<string> StreamAsync(string label,
+        Func<CancellationToken, Task<HttpResponseMessage>> send, Func<string, (string? Text, bool Done)> parse,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct, string? notFoundHint = null)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(StreamTimeout);
+        var response = await SendForStreamAsync(label, send, ct, timeout.Token);
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+                throw StatusError(label, response.StatusCode, notFoundHint);
+            using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token), Encoding.UTF8);
+            long total = 0;
+            var any = false;
+            while (true)
+            {
+                var line = await ReadLineAsync(label, reader, ct, timeout.Token);
+                if (line is null) break;
+                total += Encoding.UTF8.GetByteCount(line) + 1;
+                if (total > ModelResponseGuard.MaxResponseBytes || line.Length > MaxStreamLineBytes)
+                    throw new ProviderException($"{label} response exceeded the allowed size.", 502);
+                if (line.Length == 0) continue;
+                var (text, done) = ParseLine(label, parse, line);
+                if (!string.IsNullOrEmpty(text)) { any = true; yield return text; }
+                if (done) break;
+            }
+            if (!any) throw new ProviderException($"{label} returned an empty answer.", 502);
+        }
+    }
+
+    private static async Task<HttpResponseMessage> SendForStreamAsync(string label,
+        Func<CancellationToken, Task<HttpResponseMessage>> send, CancellationToken caller, CancellationToken token)
+    {
+        try { return await send(token); }
+        catch (HttpRequestException)
+        {
+            throw new ProviderException($"{label} is unreachable. Check that it is running at the configured endpoint.", 502);
+        }
+        catch (OperationCanceledException) when (!caller.IsCancellationRequested)
+        {
+            throw new ProviderException($"{label} did not respond before the timeout.", 504);
+        }
+    }
+
+    private static async Task<string?> ReadLineAsync(string label, StreamReader reader, CancellationToken caller, CancellationToken token)
+    {
+        try { return await reader.ReadLineAsync(token); }
+        catch (OperationCanceledException) when (!caller.IsCancellationRequested)
+        {
+            throw new ProviderException($"{label} did not finish before the timeout.", 504);
+        }
+        catch (IOException)
+        {
+            throw new ProviderException($"{label} closed the connection mid-answer.", 502);
+        }
+    }
+
+    private static (string? Text, bool Done) ParseLine(string label, Func<string, (string? Text, bool Done)> parse, string line)
+    {
+        try { return parse(line); }
+        catch (JsonException) { throw new ProviderException($"{label} returned malformed JSON.", 502); }
+        catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException)
+        {
+            throw new ProviderException($"{label} returned an unexpected response format.", 502);
+        }
+    }
+
+    // Ollama streams one JSON object per line: {"response": "...", "done": false}.
+    public static (string? Text, bool Done) ParseOllamaLine(string line)
+    {
+        using var doc = JsonDocument.Parse(line);
+        var root = doc.RootElement;
+        var done = root.TryGetProperty("done", out var d) && d.ValueKind == JsonValueKind.True;
+        return (root.TryGetProperty("response", out var r) ? r.GetString() : null, done);
+    }
+
+    // OpenAI-compatible servers stream Server-Sent Events: "data: {json}" lines, ending with "data: [DONE]".
+    public static (string? Text, bool Done) ParseSseLine(string line)
+    {
+        if (line.StartsWith(':')) return (null, false);
+        if (!line.StartsWith("data:", StringComparison.Ordinal)) return (null, false);
+        var data = line[5..].Trim();
+        if (data == "[DONE]") return (null, true);
+        using var doc = JsonDocument.Parse(data);
+        var choices = doc.RootElement.GetProperty("choices");
+        if (choices.GetArrayLength() == 0) return (null, false);
+        var choice = choices[0];
+        var text = choice.TryGetProperty("delta", out var delta) && delta.TryGetProperty("content", out var c)
+            && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
+        var done = choice.TryGetProperty("finish_reason", out var f) && f.ValueKind == JsonValueKind.String;
+        return (text, done);
+    }
+
+    public static Task<HttpResponseMessage> PostStreamAsync(HttpClient client, string url, object body, CancellationToken ct,
+        AuthenticationHeaderValue? auth = null)
+    {
+        var message = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
+        };
+        if (auth is not null) message.Headers.Authorization = auth;
+        return client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, ct);
+    }
+
     public static async Task<bool> ProbeAsync(HttpClient client, string url, CancellationToken ct)
     {
         try
@@ -115,6 +228,13 @@ public sealed class OllamaProvider : IModelProvider
                       options = new { num_ctx = budget.ContextTokens, num_predict = budget.ReservedOutputTokens } }, token),
             root => root.GetProperty("response").GetString(), ct,
             $"Model '{Model}' is not installed in Ollama. Run: ollama pull {Model}");
+
+    public IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct) =>
+        ProviderHttp.StreamAsync("Local Ollama", token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"),
+                Endpoint + "/api/generate",
+                new { model = Model, prompt, stream = true,
+                      options = new { num_ctx = budget.ContextTokens, num_predict = budget.ReservedOutputTokens } }, token),
+            ProviderHttp.ParseOllamaLine, ct, $"Model '{Model}' is not installed in Ollama. Run: ollama pull {Model}");
 
     public async Task<bool?> IsAvailableAsync(CancellationToken ct) =>
         await ProviderHttp.ProbeAsync(_factory.CreateClient("ai"), Endpoint + "/api/tags", ct);
@@ -158,6 +278,18 @@ public sealed class LlamaCppProvider : IModelProvider
             root => root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString(), ct);
     }
 
+    public async IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        if (_process is not null) await _process.EnsureRunningAsync(ct);
+        await foreach (var piece in ProviderHttp.StreamAsync("Local llama.cpp server",
+                           token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"), Endpoint + "/v1/chat/completions",
+                               new { model = Model, messages = new[] { new { role = "user", content = prompt } }, stream = true,
+                                     max_tokens = budget.ReservedOutputTokens }, token),
+                           ProviderHttp.ParseSseLine, ct))
+            yield return piece;
+    }
+
     public async Task<bool?> IsAvailableAsync(CancellationToken ct) =>
         await ProviderHttp.ProbeAsync(_factory.CreateClient("ai"), Endpoint + "/health", ct);
 
@@ -192,13 +324,7 @@ public sealed class OpenAiCompatibleProvider : IModelProvider
 
     public async Task<string> AskAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct)
     {
-        if (!CloudEgressPolicy.IsExplicitlyAllowed(_config))
-            throw new ProviderException("Cloud prompt transmission is disabled. Set NEXUS_CLOUD_EGRESS_ALLOWED=true explicitly to enable.", 503);
-        string? token;
-        try { token = await _credentials.GetAsync(Name, ct); }
-        catch (InvalidOperationException ex) { throw new ProviderException(ex.Message, 503); }
-        if (string.IsNullOrWhiteSpace(token))
-            throw new ProviderException("Cloud credential missing from the OS keyring.", 503);
+        var token = await RequireCredentialAsync(ct);
         return await ProviderHttp.SendAsync("Cloud provider", async innerCt =>
             {
                 using var message = new HttpRequestMessage(HttpMethod.Post, Endpoint + "/chat/completions");
@@ -211,6 +337,32 @@ public sealed class OpenAiCompatibleProvider : IModelProvider
                 return await _factory.CreateClient("cloud").SendAsync(message, innerCt);
             },
             root => root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString(), ct);
+    }
+
+    public async IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        var token = await RequireCredentialAsync(ct);
+        await foreach (var piece in ProviderHttp.StreamAsync("Cloud provider",
+                           innerCt => ProviderHttp.PostStreamAsync(_factory.CreateClient("cloud"), Endpoint + "/chat/completions",
+                               new { model = Model, messages = new[] { new { role = "user", content = prompt } }, stream = true,
+                                     max_tokens = budget.ReservedOutputTokens }, innerCt,
+                               new AuthenticationHeaderValue("Bearer", token)),
+                           ProviderHttp.ParseSseLine, ct))
+            yield return piece;
+    }
+
+    // Consent first, then the keyring: no credential is read for a prompt that may not leave the machine.
+    private async Task<string> RequireCredentialAsync(CancellationToken ct)
+    {
+        if (!CloudEgressPolicy.IsExplicitlyAllowed(_config))
+            throw new ProviderException("Cloud prompt transmission is disabled. Set NEXUS_CLOUD_EGRESS_ALLOWED=true explicitly to enable.", 503);
+        string? token;
+        try { token = await _credentials.GetAsync(Name, ct); }
+        catch (InvalidOperationException ex) { throw new ProviderException(ex.Message, 503); }
+        if (string.IsNullOrWhiteSpace(token))
+            throw new ProviderException("Cloud credential missing from the OS keyring.", 503);
+        return token;
     }
 
     public Task<bool?> IsAvailableAsync(CancellationToken ct) => Task.FromResult<bool?>(null);
@@ -240,5 +392,11 @@ public sealed class ModelRouter
     {
         var provider = Current;
         return (await provider.AskAsync(prompt, _tokens.Budget, ct), provider.Name);
+    }
+
+    public (IAsyncEnumerable<string> Pieces, string Provider) Stream(string prompt, CancellationToken ct)
+    {
+        var provider = Current;
+        return (provider.StreamAsync(prompt, _tokens.Budget, ct), provider.Name);
     }
 }

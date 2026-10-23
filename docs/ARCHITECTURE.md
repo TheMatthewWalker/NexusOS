@@ -57,7 +57,8 @@ the catalogue and falls back to the rules, labelled as such), `GET /apps`,
 `POST /guardian/preview`, `POST /guardian/propose`,
 `POST /guardian/submit`, `GET /guardian/candidates/{id}`,
 `POST /guardian/review`, `POST|GET|DELETE /journal`,
-`GET /journal/today/summary`, `POST /journal/{id}/undo`.
+`GET /journal/today/summary`, `POST /journal/{id}/undo`, `POST /fixit`, `POST /fixit/apply`,
+`GET /health/report`.
 
 ## Activity journal
 
@@ -88,3 +89,34 @@ kind (`setting`, `app`, `system`, `ai-read`, `egress`, `device`), an actor
   checks none remain before committing. `GET /journal/today/summary` gives the
   privacy dashboard's counts: left the computer, AI reads, device uses.
 - **CLI:** `nexus journal [--today] [--kind K]`, `nexus journal forget-today`.
+
+## Probes and Fix it
+
+Design: [features.md](design/features.md) ("Probes", features 2 and 14).
+
+- **Probes** (`Probes.cs`) are a fixed, in-code allow-list of read-only
+  diagnostics: an id, an area (sound, network, display, power, disk, app),
+  an exact argv started without a shell, a timeout and an output cap.
+  Binaries resolve only from fixed system directories (`NEXUS_PROBE_PATH`
+  overrides them); a missing tool reports `unavailable`, never a guess.
+  Output is untrusted text, parsed into bounded records.
+- **Fix library** (`src/NexusOS.Core/fixes/*.json`, embedded and validated
+  at startup) holds known problems as data: an area, match clauses (a regex,
+  structured field conditions, or a probe status), a plain-English cause and
+  one or two fixes. A `personal` fix names an action from the in-code
+  allow-list (`PersonalActions`), whose parameters are bound from probe
+  records and must match a strict pattern. A `system` fix is only a
+  description for a Guardian proposal.
+- **`POST /fixit`** classifies the area by keywords, or (only when no
+  keyword matches, and only with a local provider) asks the model for
+  `{"area": ...}` under a strict schema; anything else falls back to checking
+  every area. The model never sees probe output and never chooses a fix or
+  command. Core runs the area's probes, matches the library and returns the
+  cause, short sanitised evidence excerpts, the fixes and a one-use evidence
+  token.
+- **`POST /fixit/apply`** runs a personal fix only if it belongs to the latest
+  diagnosis and the token matches and is under 10 minutes old (410 when
+  stale, 404 for a fix not in that diagnosis). System fixes return 409
+  "needs approval" and are never applied by Core.
+- **`GET /health/report`** runs the health probes and fills fixed templates
+  with validated figures, plus any library problems found. No model.

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "sound.pipewire-down",
+      "area": "sound",
+      "priority": 10,
+      "match": [
+        { "probe": "sound.status", "regex": "Could not connect to PipeWire" }
+      ],
+      "cause": "The sound service (PipeWire) is not running, so no app can play sound.",
+      "fixes": [
+        { "id": "restart", "kind": "personal", "label": "Restart the sound service", "action": "audio.restart-pipewire" }
+      ]
+    },
+    {
+      "id": "sound.default-sink-dummy",
+      "area": "sound",
+      "priority": 20,
+      "match": [
+        { "probe": "sound.status", "where": [ { "field": "default", "equals": "yes" }, { "field": "name", "equals": "Dummy Output" } ] }
+      ],
+      "bind": [
+        {
+          "name": "sinkId",
+          "probe": "sound.status",
+          "where": [ { "field": "default", "equals": "no" }, { "field": "name", "notEquals": "Dummy Output" } ],
+          "field": "id",
+          "pattern": "[0-9]{1,6}"
+        }
+      ],
+      "cause": "Sound is going to a placeholder output instead of your speakers or headphones.",
+      "fixes": [
+        { "id": "set-default", "kind": "personal", "label": "Send sound to output {sinkId}", "action": "audio.set-default-sink" }
+      ]
+    },
+    {
+      "id": "sound.muted",
+      "area": "sound",
+      "priority": 30,
+      "match": [
+        { "probe": "sound.volume", "regex": "\\[MUTED\\]" }
+      ],
+      "cause": "Your main sound output is muted.",
+      "fixes": [
+        { "id": "unmute", "kind": "personal", "label": "Unmute sound", "action": "audio.unmute-default-sink" }
+      ]
+    }
+  ]
+}

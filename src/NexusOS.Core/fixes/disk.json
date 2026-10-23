@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "disk.low-space",
+      "area": "disk",
+      "priority": 10,
+      "match": [
+        { "probe": "disk.usage", "where": [ { "field": "mount", "in": [ "/", "/home", "/nix", "/nix/store", "/var" ] }, { "field": "capacity", "atLeast": 95 } ] }
+      ],
+      "bind": [
+        {
+          "name": "mount",
+          "probe": "disk.usage",
+          "where": [ { "field": "mount", "in": [ "/", "/home", "/nix", "/nix/store", "/var" ] }, { "field": "capacity", "atLeast": 95 } ],
+          "field": "mount",
+          "pattern": "/[A-Za-z0-9/._-]{0,40}"
+        }
+      ],
+      "cause": "The {mount} drive is almost full, which can stop apps and updates from working.",
+      "fixes": [
+        {
+          "id": "clean-generations",
+          "kind": "system",
+          "label": "Free space by removing old system versions",
+          "proposal": "Remove system generations older than 14 days and collect unused Nix store paths to free space on {mount}."
+        }
+      ]
+    }
+  ]
+}

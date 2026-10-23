@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "network.wifi-off",
+      "area": "network",
+      "priority": 10,
+      "match": [
+        { "probe": "network.general", "where": [ { "field": "WIFI-HW", "equals": "enabled" }, { "field": "WIFI", "equals": "disabled" } ] }
+      ],
+      "cause": "Wi-Fi is switched off in software.",
+      "fixes": [
+        { "id": "radio-on", "kind": "personal", "label": "Turn Wi-Fi on", "action": "network.wifi-radio-on" }
+      ]
+    },
+    {
+      "id": "network.disconnected",
+      "area": "network",
+      "priority": 20,
+      "match": [
+        { "probe": "network.general", "where": [ { "field": "STATE", "equals": "disconnected" } ] }
+      ],
+      "bind": [
+        {
+          "name": "device",
+          "probe": "network.devices",
+          "where": [ { "field": "TYPE", "in": [ "wifi", "ethernet" ] }, { "field": "STATE", "equals": "disconnected" } ],
+          "field": "DEVICE",
+          "pattern": "[A-Za-z0-9][A-Za-z0-9._-]{0,14}"
+        }
+      ],
+      "cause": "The computer is not connected to any network; {device} is available but disconnected.",
+      "fixes": [
+        { "id": "connect", "kind": "personal", "label": "Reconnect {device}", "action": "network.connect-device" }
+      ]
+    }
+  ]
+}

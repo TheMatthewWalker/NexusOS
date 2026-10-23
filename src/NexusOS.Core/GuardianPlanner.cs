@@ -2,10 +2,13 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 public sealed record GuardianChange(string Option, bool Enabled);
+// Packages are nixpkgs attribute names added to environment.systemPackages;
+// on the broker wire each is a {"package": attr} change.
 public sealed record GuardianPlan(string Id, string Description, IReadOnlyList<GuardianChange> Changes, string NixPreview,
-    string Risk, string RiskLevel);
+    string Risk, string RiskLevel, IReadOnlyList<string>? Packages = null);
 
 public sealed record GuardianOptionSpec(string Type, string Risk, bool? ElevatedWhen, string Summary, string? RiskNote);
 
@@ -16,6 +19,13 @@ public static class GuardianSchema
     public static int MaxChanges { get; }
     public static int MaxDescriptionLength { get; }
     public static IReadOnlyDictionary<string, GuardianOptionSpec> Options { get; }
+    private static readonly Regex PackagePattern;
+    private static readonly HashSet<string> ReservedWords;
+
+    // A plain nixpkgs attribute path ("hello", "python3Packages.requests"): no
+    // flake references, store paths, quoting or Nix syntax.
+    public static bool IsPackageAttr(string? attr) =>
+        attr is not null && PackagePattern.IsMatch(attr) && !attr.Split('.').Any(ReservedWords.Contains);
 
     static GuardianSchema()
     {
@@ -38,33 +48,68 @@ public static class GuardianSchema
                 value.TryGetProperty("riskNote", out var note) ? note.GetString() : null);
         }
         Options = options;
+        var packages = root.GetProperty("packages");
+        PackagePattern = new Regex(@"\A(?:" + packages.GetProperty("attrPattern").GetString() + @")\z",
+            RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        ReservedWords = packages.GetProperty("reservedWords").EnumerateArray().Select(x => x.GetString()!)
+            .ToHashSet(StringComparer.Ordinal);
     }
 }
 
 public static class GuardianPlanner
 {
-    public static string RenderModule(IEnumerable<GuardianChange> sorted) =>
-        "{\n" + string.Concat(sorted.Select(x => "  " + x.Option + " = " + (x.Enabled ? "true" : "false") + ";\n")) + "}\n";
+    public static string RenderModule(IEnumerable<GuardianChange> sorted) => RenderModule(sorted, []);
+
+    // Byte-identical to guardian_schema.render (schema/guardian-vectors.json).
+    public static string RenderModule(IEnumerable<GuardianChange> sorted, IReadOnlyList<string> sortedPackages)
+    {
+        var options = string.Concat(sorted.Select(x => "  " + x.Option + " = " + (x.Enabled ? "true" : "false") + ";\n"));
+        if (sortedPackages.Count == 0) return "{\n" + options + "}\n";
+        return "{ pkgs, ... }:\n{\n  environment.systemPackages = [ " +
+               string.Join(' ', sortedPackages.Select(x => "pkgs." + x)) + " ];\n" + options + "}\n";
+    }
 
     public static string PlanId(string moduleText) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("nexus-guardian-plan-v1\n" + moduleText)))[..24].ToLowerInvariant();
 
-    public static GuardianPlan Preview(string? description, IReadOnlyList<GuardianChange>? changes)
+    // The typed plan for "install <attr>": one package, nothing else.
+    public static GuardianPlan Install(string? attr, string? description = null)
     {
+        if (!GuardianSchema.IsPackageAttr(attr)) throw new ArgumentException("Invalid package attribute.");
+        return Preview(description ?? "Install " + attr, [], [attr!]);
+    }
+
+    // The broker's change list: options as {option, enabled}, packages as {package}.
+    public static object[] WireChanges(GuardianPlan plan) =>
+        plan.Changes.Select(x => (object)new { option = x.Option, enabled = x.Enabled })
+            .Concat((plan.Packages ?? []).Select(x => (object)new { package = x })).ToArray();
+
+    public static GuardianPlan Preview(string? description, IReadOnlyList<GuardianChange>? changes,
+        IReadOnlyList<string>? packages = null)
+    {
+        packages ??= [];
+        changes ??= packages.Count > 0 ? [] : null;
         if (string.IsNullOrWhiteSpace(description) || description.Trim().Length > GuardianSchema.MaxDescriptionLength ||
-            changes is null || changes.Count < 1 || changes.Count > GuardianSchema.MaxChanges)
+            changes is null || changes.Count + packages.Count < 1 || changes.Count + packages.Count > GuardianSchema.MaxChanges)
             throw new ArgumentException("Invalid change plan.");
         if (changes.Any(x => x is null || x.Option is null || !GuardianSchema.Options.TryGetValue(x.Option, out var spec) || spec.Type != "bool") ||
             changes.Select(x => x.Option).Distinct(StringComparer.Ordinal).Count() != changes.Count)
             throw new ArgumentException("Unsupported or duplicate NixOS option.");
+        if (packages.Any(x => !GuardianSchema.IsPackageAttr(x)) ||
+            packages.Distinct(StringComparer.Ordinal).Count() != packages.Count)
+            throw new ArgumentException("Invalid or duplicate package attribute.");
 
         var sorted = changes.OrderBy(x => x.Option, StringComparer.Ordinal).ToArray();
-        var module = RenderModule(sorted);
+        var sortedPackages = packages.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        var module = RenderModule(sorted, sortedPackages);
         var notes = sorted.Where(x => GuardianSchema.Options[x.Option] is { Risk: "elevated" } spec && spec.ElevatedWhen == x.Enabled)
             .Select(x => GuardianSchema.Options[x.Option].RiskNote).ToArray();
         var risk = notes.Length > 0
             ? "Elevated — " + string.Join(" ", notes)
             : "Review required — configuration proposal only.";
-        return new GuardianPlan(PlanId(module), description.Trim(), sorted, module, risk, notes.Length > 0 ? "elevated" : "review");
+        if (sortedPackages.Length > 0)
+            risk += " Installs " + string.Join(", ", sortedPackages) + " system-wide from the host's pinned nixpkgs.";
+        return new GuardianPlan(PlanId(module), description.Trim(), sorted, module, risk, notes.Length > 0 ? "elevated" : "review",
+            sortedPackages.Length > 0 ? sortedPackages : null);
     }
 }

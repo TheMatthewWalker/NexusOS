@@ -34,8 +34,12 @@ new key, rebuild, then remove the old one.
 
 1. **Propose (optional):** `POST /guardian/propose {"request": "enable printing"}`
    returns a typed preview from the model. Check it.
-2. **Submit:** `POST /guardian/submit {description, changes}`. The broker
-   binds the candidate to the running generation.
+2. **Submit:** `POST /guardian/submit {description, changes, packages?}`. The
+   broker binds the candidate to the running generation. A package is a plain
+   nixpkgs attribute (the pattern is in `schema/guardian-options.json`); it is
+   sent as a `{"package": attr}` change and adds `pkgs.<attr>` to
+   `environment.systemPackages`. `POST /try/keep {attr}` (`nexus try keep`)
+   submits exactly that for one package.
 3. **Build and test** the candidate on the builder. It is the host
    configuration with the module overlay added through `extendModules`, then
    evaluated, built and VM-tested.

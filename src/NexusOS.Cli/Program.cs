@@ -3,6 +3,10 @@ using System.Text.Json;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
 
+// `nexus try <app>` runs the sandbox directly and needs no Core; only
+// `nexus try keep <app>` talks to Core, which turns it into a Guardian proposal.
+if (args.Length > 1 && args[0].Equals("try", StringComparison.OrdinalIgnoreCase) && args[1] != "keep")
+    return RunTrial(args[1..]);
 var root = Environment.GetEnvironmentVariable("NEXUS_STATE_DIR");
 if (string.IsNullOrWhiteSpace(root))
 {
@@ -108,6 +112,9 @@ try
             return await Search(args[1..]);
         case "ask" when args.Length > 1:
             using (var res = await http.PostAsJsonAsync("/chat", new { prompt = string.Join(' ', args.Skip(1)) }))
+            { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
+        case "try" when args.Length == 3 && args[1] == "keep":
+            using (var res = await http.PostAsJsonAsync("/try/keep", new { attr = args[2] }))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
         default: Usage(); return 2;
     }
@@ -287,9 +294,26 @@ static string ErrorMessage(string raw, HttpResponseMessage response)
         _ => "Request failed."
     };
 }
+static int RunTrial(string[] trialArgs)
+{
+    var start = new System.Diagnostics.ProcessStartInfo("nexus-try") { UseShellExecute = false };
+    foreach (var arg in trialArgs) start.ArgumentList.Add(arg);
+    try
+    {
+        using var trial = System.Diagnostics.Process.Start(start)!;
+        trial.WaitForExit();
+        return trial.ExitCode;
+    }
+    catch (System.ComponentModel.Win32Exception)
+    {
+        Console.Error.WriteLine("nexus: nexus-try is not installed (services.nexus-desktop.tryApps.enable).");
+        return 1;
+    }
+}
 static void Usage()
 {
-    Console.WriteLine("nexus [health [report]|fixit <problem>|fixit apply <fix id> <token>|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge|journal [--today] [--kind K]|journal forget-today]");
+    Console.WriteLine("nexus [health [report]|fixit <problem>|fixit apply <fix id> <token>|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge|journal [--today] [--kind K]|journal forget-today|try <app> [-- args]|try keep <app>]");
+    Console.WriteLine(RulesCommand.Usage);
     Console.WriteLine("nexus search <query> | search status | search formats | search reindex | search erase");
     Console.WriteLine("nexus search sources [list | add <folder>... | rm <folder>]   (search -- <query> to search for a subcommand word)");
 }

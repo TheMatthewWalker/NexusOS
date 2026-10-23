@@ -204,7 +204,7 @@ app.MapPost("/suggest/model", async (SuggestRequest request, AppSuggester sugges
 app.MapGet("/apps", () => Results.Ok(AppCatalogue.Roles.Select(r => new { id = r.Id, label = r.Label, detail = r.Detail })));
 app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
 {
-    try { return Results.Ok(GuardianPlanner.Preview(request.Description, request.Changes)); }
+    try { return Results.Ok(GuardianPlanner.Preview(request.Description, request.Changes, request.Packages)); }
     catch (ArgumentException) { return Results.BadRequest(new { error = "Unsupported or invalid change plan." }); }
 });
 // The model may only *propose* a typed plan; the response is a preview the
@@ -237,14 +237,14 @@ app.MapPost("/guardian/submit", async (GuardianPreviewRequest request, GuardianB
     CancellationToken ct) =>
 {
     GuardianPlan plan;
-    try { plan = GuardianPlanner.Preview(request.Description, request.Changes); }
+    try { plan = GuardianPlanner.Preview(request.Description, request.Changes, request.Packages); }
     catch (ArgumentException) { return Results.BadRequest(new { error = "Unsupported or invalid change plan." }); }
     try
     {
         var response = await broker.SendAsync("submit", new
         {
             description = plan.Description,
-            changes = plan.Changes.Select(x => new { option = x.Option, enabled = x.Enabled })
+            changes = GuardianPlanner.WireChanges(plan)
         }, ct);
         var candidate = response.TryGetProperty("candidate", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.Object &&
             c.TryGetProperty("candidateId", out var cid) && cid.ValueKind == System.Text.Json.JsonValueKind.String &&
@@ -339,6 +339,7 @@ app.MapDelete("/journal", async (string? day, ActivityJournal journal, Cancellat
         return Results.BadRequest(new { error = "day must be YYYY-MM-DD." });
     return Results.Ok(new { day, erased = await journal.ForgetDayAsync(date, ct) });
 }).RequireRateLimiting("journal");
+app.MapTryApps();
 app.MapGet("/inference/telemetry", async (MemoryTelemetry telemetry, CancellationToken ct) =>
     Results.Ok(await telemetry.ReadAsync(ct)));
 // /rules, /rules/parse, /events and /rules/pending-actions (RuleEndpoints.cs).
@@ -378,7 +379,7 @@ static string Summary(string prefix, string detail)
 public sealed record ChatRequest(string Prompt);
 public sealed record SuggestRequest(string Prompt);
 public sealed record SelectRequest(string Name);
-public sealed record GuardianPreviewRequest(string Description, GuardianChange[] Changes);
+public sealed record GuardianPreviewRequest(string Description, GuardianChange[]? Changes, string[]? Packages = null);
 public sealed record GuardianProposeRequest(string Request);
 public sealed record JournalPostRequest(string? Kind, string? Actor, string? Summary, System.Text.Json.JsonElement? Before,
     System.Text.Json.JsonElement? After, bool? Reversible, string? Ref);

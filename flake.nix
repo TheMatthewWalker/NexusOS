@@ -14,6 +14,7 @@
         nexus-install = pkgs.callPackage ./nix/packages/nexus-install.nix { };
         # The installer image: `nix build .#iso`, then write result/iso/*.iso to a USB stick.
         iso = self.nixosConfigurations.installer.config.system.build.isoImage;
+        nexus-try = pkgs.callPackage ./nix/packages/nexus-try.nix { };
         default = self.packages.${system}.nexus-core;
       };
 
@@ -68,6 +69,7 @@
         core = ./nix/modules/core.nix;
         desktop = ./nix/modules/desktop.nix;
         nexusos = ./nix/profiles/nexusos.nix;
+        try-apps = ./nix/modules/try-apps.nix;
       };
 
       checks.${system} = {
@@ -97,6 +99,11 @@
         guardian-trial-boot = import ./nix/tests/guardian-trial-boot.nix {
           inherit pkgs;
           guardianModule = self.nixosModules.guardian;
+        };
+        nexus-try = self.packages.${system}.nexus-try;
+        try-apps = import ./nix/tests/try-apps.nix {
+          inherit pkgs nixpkgs;
+          tryAppsModule = self.nixosModules.try-apps;
         };
       };
     };

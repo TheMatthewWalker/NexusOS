@@ -6,6 +6,8 @@ public sealed class SqliteStateDatabase
     private readonly string _path;
     // Test-only fault injection: returns true to abort the legacy import after N rows.
     internal static Func<int, bool>? ImportFault;
+    // Test-only fault injection: returns true to abort the named schema step before it is marked done.
+    internal static Func<string, bool>? MigrationFault;
 
     public SqliteStateDatabase(NexusStatePaths paths)
     {
@@ -22,6 +24,40 @@ public sealed class SqliteStateDatabase
             """;
         schema.ExecuteNonQuery();
         MigrateLegacy(connection, paths);
+        Migrate(connection, "schema_journal_v1", """
+            CREATE TABLE journal(id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('setting','app','system','ai-read','egress','device')),
+                actor TEXT NOT NULL, summary TEXT NOT NULL, before TEXT, after TEXT,
+                reversible INTEGER, ref TEXT, undone_at TEXT);
+            CREATE INDEX journal_timestamp ON journal(timestamp);
+            """);
+    }
+
+    // Each schema step runs once, in one transaction with its completion
+    // marker, so a failure part-way leaves the previous schema untouched.
+    private static void Migrate(SqliteConnection connection, string marker, string ddl)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var check = connection.CreateCommand();
+        check.Transaction = transaction;
+        check.CommandText = "SELECT COUNT(*) FROM metadata WHERE key=$marker";
+        check.Parameters.AddWithValue("$marker", marker);
+        if (Convert.ToInt64(check.ExecuteScalar()) > 0) { transaction.Commit(); return; }
+        using (var apply = connection.CreateCommand())
+        {
+            apply.Transaction = transaction;
+            apply.CommandText = ddl;
+            apply.ExecuteNonQuery();
+        }
+        if (MigrationFault?.Invoke(marker) == true)
+            throw new IOException("Injected schema migration fault.");
+        using var mark = connection.CreateCommand();
+        mark.Transaction = transaction;
+        mark.CommandText = "INSERT INTO metadata(key,value) VALUES($marker,'1')";
+        mark.Parameters.AddWithValue("$marker", marker);
+        mark.ExecuteNonQuery();
+        transaction.Commit();
     }
 
     public SqliteConnection Open()
@@ -112,6 +148,7 @@ public sealed class ProviderStore
     private readonly SqliteStateDatabase _database;
     private readonly object _gate = new();
     private string _selected = ProviderNames.Local;
+    private DateTimeOffset? _selectedAt;
     public string[] Names => ProviderNames.All;
 
     public ProviderStore(SqliteStateDatabase database)
@@ -121,10 +158,15 @@ public sealed class ProviderStore
         using var query = db.CreateCommand();
         query.CommandText = "SELECT value FROM settings WHERE key='provider'";
         _selected = ProviderNames.Normalise(query.ExecuteScalar() as string) ?? ProviderNames.Local;
+        query.CommandText = "SELECT value FROM settings WHERE key='provider_selected_at'";
+        _selectedAt = DateTimeOffset.TryParse(query.ExecuteScalar() as string, out var at) ? at : null;
     }
     public ProviderStore(NexusStatePaths paths) : this(new SqliteStateDatabase(paths)) { }
 
     public string Selected { get { lock (_gate) return _selected; } }
+    // When the person last chose a provider; choosing the cloud provider is
+    // their consent to send prompts. Null if chosen before this was recorded.
+    public DateTimeOffset? SelectedAt { get { lock (_gate) return _selectedAt; } }
     public bool Select(string? name)
     {
         var next = ProviderNames.Normalise(name);
@@ -134,15 +176,25 @@ public sealed class ProviderStore
             using var db = _database.Open();
             using var cmd = db.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO settings(key,value) VALUES('provider',$value)
+                INSERT INTO settings(key,value) VALUES('provider',$value),('provider_selected_at',$at)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value
                 """;
+            var now = DateTimeOffset.UtcNow;
             cmd.Parameters.AddWithValue("$value", next);
+            cmd.Parameters.AddWithValue("$at", now.ToString("O"));
             cmd.ExecuteNonQuery();
             _selected = next;
+            _selectedAt = now;
         }
         return true;
     }
+}
+
+public static class HistoryRetention
+{
+    // One age limit (NEXUS_HISTORY_MAX_DAYS) for chat history and the activity journal.
+    public static TimeSpan MaxAge(IConfiguration config) =>
+        TimeSpan.FromDays(int.TryParse(config["NEXUS_HISTORY_MAX_DAYS"], out var days) ? Math.Clamp(days, 1, 365) : 30);
 }
 
 public sealed record ConversationEntry(DateTimeOffset Timestamp, string Provider, string Prompt, string Answer);
@@ -159,8 +211,7 @@ public sealed class ConversationStore
         _database = database;
         _maxEntries = int.TryParse(config["NEXUS_HISTORY_LIMIT"], out var count)
             ? Math.Clamp(count, 0, 1000) : 200;
-        _maxAge = TimeSpan.FromDays(int.TryParse(config["NEXUS_HISTORY_MAX_DAYS"], out var days)
-            ? Math.Clamp(days, 1, 365) : 30);
+        _maxAge = HistoryRetention.MaxAge(config);
     }
     public ConversationStore(NexusStatePaths paths, IConfiguration config) : this(new SqliteStateDatabase(paths), config) { }
     public ConversationStore(NexusStatePaths paths) : this(paths, new ConfigurationBuilder().Build()) { }
@@ -194,6 +245,7 @@ public sealed class ConversationStore
             trim.Parameters.AddWithValue("$limit", _maxEntries);
             trim.ExecuteNonQuery();
         }
+        ActivityJournal.PruneExpired(db, tx, _maxAge);
         tx.Commit();
         return Task.CompletedTask;
     }

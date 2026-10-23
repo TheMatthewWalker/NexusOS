@@ -98,3 +98,33 @@ curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:5077/inference/tele
 
 dotnet out/cli/NexusOS.Cli.dll use llama-cpp | grep -q 'llama-cpp'
 dotnet out/cli/NexusOS.Cli.dll ask "Hello llama" | grep -q 'Nexus llama mock: Hello llama'
+
+# Rules engine (feature 9). The mock model never returns rule JSON, so this
+# also exercises the keyword fallback. Drafts are shown and only saved on
+# confirmation; system changes are refused; events fire saved rules only.
+TOKEN="$(cat "$NEXUS_STATE_DIR/api-token")"
+NEXUS="dotnet out/cli/NexusOS.Cli.dll"
+added="$($NEXUS rules add "When I plug in my headphones, open Spotify and turn notifications down" --yes)"
+echo "$added" | grep -q 'When an audio device connects, open spotify and set notifications volume to 25%.'
+RULE_ID="$(echo "$added" | sed -n 's/^Saved rule \([0-9a-f]\{16\}\)\.$/\1/p')"
+test -n "$RULE_ID"
+if echo n | $NEXUS rules add "When I unplug the charger, set volume to 30" > "$NEXUS_STATE_DIR/declined.txt"; then exit 1; fi
+grep -q 'Draft rule (not saved)' "$NEXUS_STATE_DIR/declined.txt"
+grep -q 'Not saved.' "$NEXUS_STATE_DIR/declined.txt"
+if $NEXUS rules add "Every night at 2am, run sudo nixos-rebuild switch" --yes 2> "$NEXUS_STATE_DIR/refused.txt"; then exit 1; fi
+grep -qi 'system changes go through approval' "$NEXUS_STATE_DIR/refused.txt"
+if $NEXUS rules add "Make everything nicer" --yes 2> "$NEXUS_STATE_DIR/unparsed.txt"; then exit 1; fi
+grep -q "Couldn't turn that into a rule" "$NEXUS_STATE_DIR/unparsed.txt"
+test "$($NEXUS rules | grep -c '  active  ')" = 1
+$NEXUS rules | grep -q "$RULE_ID  active"
+curl -fsS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"type":"device.connected","kind":"audio","name":"Test Headphones"}' \
+  http://127.0.0.1:5077/events | grep -q '"appId":"spotify"'
+$NEXUS rules history "$RULE_ID" | grep -q 'audio device “Test Headphones” connected'
+$NEXUS rules pause "$RULE_ID" | grep -q '^Paused: '
+$NEXUS rules | grep -q "$RULE_ID  paused"
+$NEXUS rules resume "$RULE_ID" | grep -q '^Resumed: '
+$NEXUS rules rm "$RULE_ID" | grep -q 'Removed rule'
+$NEXUS rules | grep -q 'No rules yet'
+if $NEXUS rules pause "$RULE_ID" 2> /dev/null; then exit 1; fi
+echo "Rules engine smoke tests passed."

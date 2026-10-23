@@ -88,6 +88,7 @@ done
 dotnet out/cli/NexusOS.Cli.dll search status | tee /dev/stderr | grep '"available": true' > /dev/null
 dotnet out/cli/NexusOS.Cli.dll search plumber | tee /dev/stderr | grep 'money.txt' > /dev/null
 dotnet out/cli/NexusOS.Cli.dll search bill | tee /dev/stderr | grep 'Close in meaning' > /dev/null
+dotnet out/cli/NexusOS.Cli.dll search formats | tee /dev/stderr | grep 'document .*\.pdf' > /dev/null
 if dotnet out/cli/NexusOS.Cli.dll search sources add /etc; then echo "Search accepted a folder outside home"; exit 1; fi
 dotnet out/cli/NexusOS.Cli.dll search erase | grep '"verified": true' > /dev/null
 dotnet out/cli/NexusOS.Cli.dll search plumber | grep 'No matches.' > /dev/null

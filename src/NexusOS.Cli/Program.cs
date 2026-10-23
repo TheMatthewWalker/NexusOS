@@ -86,13 +86,26 @@ try
 catch (HttpRequestException ex) { Console.Error.WriteLine($"Nexus Core not reachable: {ex.Message}"); return 1; }
 catch (TaskCanceledException) { Console.Error.WriteLine("Request timed out."); return 1; }
 
-// nexus search <query> | status | reindex | erase | sources [list|add <dir>...|rm <dir>]
+// nexus search <query> | status | formats | reindex | erase | sources [list|add <dir>...|rm <dir>]
 // A query that starts with a subcommand word can be given after "--".
 async Task<int> Search(string[] rest)
 {
     switch (rest)
     {
         case ["status"]: return await PrintGet("/search/status");
+        case ["formats"]:
+        {
+            using var res = await http.GetAsync("/search/status");
+            if (!res.IsSuccessStatusCode) { await PrintResponse(res); return 1; }
+            using var document = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+            var formats = document.RootElement.GetProperty("formats");
+            Console.WriteLine("Indexed file types:");
+            foreach (var kind in formats.GetProperty("indexed").EnumerateObject())
+                Console.WriteLine($"  {kind.Name,-9} {string.Join(' ', kind.Value.EnumerateArray().Select(x => x.GetString()))}");
+            Console.WriteLine("Reported as not indexed: " +
+                string.Join(' ', formats.GetProperty("reportedNotIndexed").EnumerateArray().Select(x => x.GetString())));
+            return 0;
+        }
         case ["sources"] or ["sources", "list"]: return await PrintGet("/search/sources");
         case ["sources", "add", .. var dirs] when dirs.Length > 0:
             using (var res = await http.PostAsJsonAsync("/search/sources", new { paths = dirs.Select(FullPath).ToArray() }))
@@ -185,6 +198,6 @@ static string ErrorMessage(string raw, HttpResponseMessage response)
 static void Usage()
 {
     Console.WriteLine("nexus [health|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask <prompt>]");
-    Console.WriteLine("nexus search <query> | search status | search reindex | search erase");
+    Console.WriteLine("nexus search <query> | search status | search formats | search reindex | search erase");
     Console.WriteLine("nexus search sources [list | add <folder>... | rm <folder>]   (search -- <query> to search for a subcommand word)");
 }

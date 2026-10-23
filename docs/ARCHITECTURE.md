@@ -75,15 +75,47 @@ files, never follows a symbolic link, opens each file with
 it). Each scan re-validates the chosen folders; one that disappears or turns
 into a link has its entries dropped.
 
-**What is indexed.** Text (`.txt .md .rst .org .tex .adoc`), data (`.csv .tsv
-.json .yaml .toml .xml .ini`), code (about 50 source extensions) and
-documents (`.docx`, `.odt`, read from the archive's XML with DTDs refused and
-every part size-capped). Known but unsupported documents (`.pdf .doc .rtf
-.xlsx .pptx …`) are reported as "not indexed (pdf)" and so on; other files
-(images, binaries, files with no extension such as `id_rsa`) are ignored.
-Files over `NEXUS_SEARCH_MAX_FILE_BYTES` (4 MiB) or with a NUL byte are
-skipped. Text is cut into passages of about 1,000 characters at line
-breaks; each records its path, mtime, size, character offset and lines.
+**What is indexed.** `GET /search/status` (`formats`) and `nexus search
+formats` list the types. All extractors are pure .NET except PDF, which uses
+[PdfPig](https://github.com/UglyToad/PdfPig) (Apache-2.0, no dependencies on
+net8.0). None touches the network.
+
+| Kind | Types | What is extracted |
+|---|---|---|
+| text | `.txt .md .rst .org .tex .adoc` | The text (UTF-8) |
+| code | about 50 source extensions | The text |
+| data | `.csv .tsv .json .yaml .toml .xml .ini` | The text |
+| data | `.xlsx .xlsm`, `.ods` | Each sheet as `Sheet: name`, one row per line, cells tab-separated; shared strings resolved, cached values used (formulas not evaluated), repeated ODS cells not expanded |
+| document | `.docx`, `.odt` | Paragraph text |
+| document | `.pptx`, `.odp` | `Slide n`, its text in presentation order, then `Notes: …` (speaker notes); slide-number fields skipped |
+| document | `.pdf` | The text layer, page by page in reading order. A PDF with no text (a scan) is reported as `not indexed (pdf: no text layer)` and is never OCR'd; encrypted PDFs as `(pdf: encrypted)` |
+| document | `.rtf` | Text with control words removed; font and colour tables, pictures, metadata, headers, footers and field instructions dropped; `\'hh` and `\u` escapes decoded |
+| document | `.epub` | Title, then each XHTML chapter in spine (reading) order |
+| document | `.html .htm .xhtml` | Visible text; scripts, styles, templates, SVG, objects and comments dropped; charset from a BOM or `<meta charset>` |
+| mail | `.eml` | `Subject`, `From`, `To` and `Date` (RFC 2047 decoded), then the text body (plain text preferred over HTML in `multipart/alternative`); attachments are listed by name only and never decoded |
+
+Legacy binary `.doc .xls .ppt` (and Apple `.pages .numbers .key`) are
+reported as `not indexed (doc)` and so on: there is no small, maintained,
+pure-.NET reader for OLE2 files, and parsing them would add attack surface
+for little gain. Other files (images, binaries, files with no extension such
+as `id_rsa`) are ignored.
+
+**Extraction bounds.** Every file is size-capped (`NEXUS_SEARCH_MAX_FILE_BYTES`,
+4 MiB) and its extracted text capped (4 Mi characters). Zip-based formats
+(docx, xlsx, pptx, odt, ods, odp, epub) are refused when they have more than
+10,000 entries or declare more than 64 MiB unpacked, and every entry is read
+through one shared budget of real decompressed bytes, so headers that lie
+about sizes cannot get past it. XML is read with DTDs prohibited, so there is no
+entity expansion. PDF streams are counted against the same 64 MiB budget, and
+Flate streams are inflated into a counter first, so a compression bomb is
+refused before PdfPig allocates its output; PDFs stop at 2,000 pages. Sheets
+stop at 200,000 cells, and RTF nesting at 512 groups. Each file has a time limit
+(`NEXUS_SEARCH_EXTRACT_SECONDS`, default 30); a slow extractor is cancelled
+and the scan moves on. Any failure on a malformed or hostile file is reported
+as `not indexed (type: unreadable)` (or `too large when unpacked`, `timed
+out`) and never fails the scan. Text is cut into passages of about 1,000
+characters at line breaks; each records its path, mtime, size, character
+offset and lines.
 
 **Storage.** `search.sqlite3` in the state directory (0600 in the 0700
 directory; a symlinked file is refused), separate from history so it can be
@@ -117,7 +149,7 @@ removed, embedded, skipped by reason, with examples) and the last 20 errors;
 `POST /search/reindex` forces every file to be re-read.
 
 **Search.** `POST /search {query, limit, kinds}` (1–512 characters, limit
-1–50, kinds from `text`, `code`, `data`, `document`) takes up to 16 words,
+1–50, kinds from `text`, `code`, `data`, `document`, `mail`) takes up to 16 words,
 quoted so FTS syntax is never interpreted, ranks passages by bm25 and, when
 embeddings exist, by cosine similarity (brute force over stored vectors,
 minimum `NEXUS_SEARCH_MIN_SIMILARITY`, default 0.5), and merges the two by
@@ -139,7 +171,8 @@ file too. Like
 history, this is erasure at the SQLite level; SSD or filesystem copies are
 outside what an application can guarantee.
 
-**Not yet.** Mail, notes, chats and settings as sources; PDF text; an
+**Not yet.** Mailboxes (beyond `.eml` files), notes, chats and settings as
+sources; OCR for scanned PDFs; legacy binary Office files; an
 approximate-nearest-neighbour index for very large collections; and the
 activity journal, which is not merged. The points where search reads should
 be journalled are marked `ACTIVITY JOURNAL HOOK` in `SearchIndexer.cs` (each

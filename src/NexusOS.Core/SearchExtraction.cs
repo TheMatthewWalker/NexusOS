@@ -10,21 +10,42 @@ public static class SearchKinds
     public const string Code = "code";
     public const string Data = "data";
     public const string Document = "document";
-    public static readonly string[] All = [Text, Code, Data, Document];
+    public const string Mail = "mail";
+    public static readonly string[] All = [Text, Code, Data, Document, Mail];
 }
 
 // Result of reading one file. Text is null when the file was skipped, and
-// Skipped then says why in a few words ("not indexed (pdf)", "too large").
+// Skipped then says why in a few words. Extractors give the short reason
+// ("unreadable", "no text layer"); TextExtractorRegistry.Run turns it into
+// the reported form "not indexed (pdf: no text layer)".
 public sealed record ExtractedText(string? Text, string? Skipped, bool Truncated = false)
 {
     public static ExtractedText Skip(string reason) => new(null, reason);
+}
+
+// A file that cannot be read as its type. The message is a short, safe reason.
+public sealed class UnreadableDocumentException(string reason) : Exception(reason);
+
+// Bounds every extractor works within. The time limit is enforced by the
+// registry; the others by the extractors and SafeZip.
+public sealed record ExtractionLimits(
+    long MaxFileBytes,
+    int MaxTextChars,
+    long MaxUnpackedBytes = 64L * 1024 * 1024,
+    int MaxZipEntries = 10_000,
+    int MaxCells = 200_000,
+    int MaxPages = 2_000,
+    int MaxParts = 2_000)
+{
+    public static ExtractionLimits For(long maxFileBytes) =>
+        new(maxFileBytes, (int)Math.Min(maxFileBytes, 4 * 1024 * 1024));
 }
 
 public interface ITextExtractor
 {
     string Kind { get; }
     IReadOnlyCollection<string> Extensions { get; }
-    ExtractedText Extract(Stream file, long maxBytes);
+    ExtractedText Extract(Stream file, ExtractionLimits limits, CancellationToken ct);
 }
 
 public sealed class PlainTextExtractor(string kind, params string[] extensions) : ITextExtractor
@@ -32,111 +53,117 @@ public sealed class PlainTextExtractor(string kind, params string[] extensions) 
     public string Kind { get; } = kind;
     public IReadOnlyCollection<string> Extensions { get; } = extensions;
 
-    public ExtractedText Extract(Stream file, long maxBytes)
+    public ExtractedText Extract(Stream file, ExtractionLimits limits, CancellationToken ct)
     {
-        var bytes = SearchFileReader.ReadBounded(file, maxBytes, out var truncated);
+        var bytes = SearchFileReader.ReadBounded(file, limits.MaxFileBytes, out var truncated);
         // A NUL byte in the first 8 KiB means this is not text, whatever its name says.
         if (bytes.AsSpan(0, Math.Min(bytes.Length, 8192)).Contains((byte)0)) return ExtractedText.Skip("binary content");
-        var offset = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
-        return new ExtractedText(Encoding.UTF8.GetString(bytes, offset, bytes.Length - offset), null, truncated);
+        return new ExtractedText(SearchFileReader.DecodeUtf8(bytes), null, truncated);
     }
 }
 
-// .docx and .odt are zip archives of XML. Reading them needs no external tool:
-// take the main body part and keep only its text runs, with every archive
-// entry and the extracted text bounded so a zip bomb cannot exhaust memory.
-public sealed class OfficeXmlExtractor : ITextExtractor
+// Collects extracted text up to the character limit, and lets long loops
+// notice the time limit.
+public sealed class TextSink(ExtractionLimits limits, CancellationToken ct)
 {
-    private const long MaxXmlBytes = 16 * 1024 * 1024;
-    private readonly string _entry;
-    private readonly string _namespace;
-    private readonly HashSet<string> _containers;
-    private readonly HashSet<string> _paragraphs;
-    public string Kind => SearchKinds.Document;
-    public IReadOnlyCollection<string> Extensions { get; }
+    private readonly StringBuilder _text = new();
+    private int _checks;
+    public bool Full { get; private set; }
+    public int Length => _text.Length;
+    public char Last => _text.Length == 0 ? '\n' : _text[^1];
 
-    private OfficeXmlExtractor(string extension, string entry, string ns, string[] containers, string[] paragraphs)
+    public TextSink Append(string? value)
     {
-        Extensions = [extension];
-        _entry = entry;
-        _namespace = ns;
-        _containers = [.. containers];
-        _paragraphs = [.. paragraphs];
+        if (Full || string.IsNullOrEmpty(value)) return this;
+        if ((++_checks & 0xFF) == 0) ct.ThrowIfCancellationRequested();
+        var room = limits.MaxTextChars - _text.Length;
+        if (value.Length > room) { _text.Append(value, 0, Math.Max(0, room)); Full = true; }
+        else _text.Append(value);
+        return this;
     }
 
-    // Word keeps text in w:t runs inside w:p paragraphs; ODF keeps it directly
-    // inside text:p and text:h (with nested spans).
-    public static OfficeXmlExtractor Docx() => new(".docx", "word/document.xml",
-        "http://schemas.openxmlformats.org/wordprocessingml/2006/main", ["t"], ["p"]);
-    public static OfficeXmlExtractor Odt() => new(".odt", "content.xml",
-        "urn:oasis:names:tc:opendocument:xmlns:text:1.0", ["p", "h"], ["p", "h"]);
+    public TextSink Append(char value) => Append(value.ToString());
 
-    public ExtractedText Extract(Stream file, long maxBytes)
+    // Ends the current line unless it already ended.
+    public TextSink Line()
     {
-        if (file.Length > maxBytes) return ExtractedText.Skip("too large");
-        try
-        {
-            using var zip = new ZipArchive(file, ZipArchiveMode.Read, leaveOpen: true);
-            var entry = zip.GetEntry(_entry);
-            if (entry is null) return ExtractedText.Skip("unreadable document");
-            if (entry.Length > MaxXmlBytes) return ExtractedText.Skip("too large");
-            using var xml = XmlReader.Create(new BoundedStream(entry.Open(), MaxXmlBytes), new XmlReaderSettings
-            {
-                DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, IgnoreComments = true,
-                IgnoreProcessingInstructions = true, MaxCharactersInDocument = MaxXmlBytes
-            });
-            var text = new StringBuilder();
-            var limit = (int)Math.Min(maxBytes, int.MaxValue / 2);
-            var truncated = false;
-            var depth = 0;
-            while (xml.Read())
-            {
-                if (text.Length >= limit) { truncated = true; break; }
-                var ours = xml.NamespaceURI == _namespace;
-                switch (xml.NodeType)
-                {
-                    case XmlNodeType.Element when ours:
-                        if (_containers.Contains(xml.LocalName) && !xml.IsEmptyElement) depth++;
-                        else if (xml.LocalName == "tab") text.Append('\t');
-                        else if (xml.LocalName is "br" or "line-break") text.Append('\n');
-                        else if (xml.LocalName == "s") text.Append(' ');
-                        if (_paragraphs.Contains(xml.LocalName) && xml.IsEmptyElement) text.Append('\n');
-                        break;
-                    case XmlNodeType.EndElement when ours:
-                        if (_containers.Contains(xml.LocalName)) depth = Math.Max(0, depth - 1);
-                        if (_paragraphs.Contains(xml.LocalName)) text.Append('\n');
-                        break;
-                    case XmlNodeType.Text or XmlNodeType.CDATA or XmlNodeType.SignificantWhitespace or XmlNodeType.Whitespace
-                        when depth > 0:
-                        text.Append(xml.Value);
-                        break;
-                }
-            }
-            if (text.Length > limit) { text.Length = limit; truncated = true; }
-            return new ExtractedText(text.ToString(), null, truncated);
-        }
-        catch (Exception ex) when (ex is InvalidDataException or XmlException or IOException or NotSupportedException)
-        {
-            return ExtractedText.Skip("unreadable document");
-        }
+        if (_text.Length > 0 && Last != '\n') Append('\n');
+        return this;
     }
 
-    // Stops reading past a fixed number of decompressed bytes.
-    private sealed class BoundedStream(Stream inner, long max) : Stream
+    public ExtractedText Result() => new(_text.ToString(), null, Full);
+}
+
+// Zip-based formats (docx, xlsx, pptx, odt, ods, odp, epub). Archives are
+// refused when they have too many entries or claim too much unpacked data,
+// and every entry is read through one shared budget of real decompressed
+// bytes, so headers that lie about sizes cannot get past the cap either.
+public sealed class SafeZip : IDisposable
+{
+    private readonly ZipArchive _zip;
+    private readonly CancellationToken _ct;
+    private long _budget;
+
+    public SafeZip(Stream file, ExtractionLimits limits, CancellationToken ct)
     {
-        private long _read;
+        if (file.Length > limits.MaxFileBytes) throw new UnreadableDocumentException("too large");
+        _ct = ct;
+        try { _zip = new ZipArchive(file, ZipArchiveMode.Read, leaveOpen: true); }
+        catch (InvalidDataException) { throw new UnreadableDocumentException("unreadable"); }
+        if (_zip.Entries.Count > limits.MaxZipEntries) throw new UnreadableDocumentException("too many archive entries");
+        if (_zip.Entries.Sum(e => e.Length) > limits.MaxUnpackedBytes) throw new UnreadableDocumentException("too large when unpacked");
+        _budget = limits.MaxUnpackedBytes;
+    }
+
+    public IEnumerable<string> Names => _zip.Entries.Select(e => e.FullName);
+
+    public Stream? Open(string name)
+    {
+        var entry = _zip.GetEntry(name.TrimStart('/'));
+        return entry is null ? null : new BudgetStream(entry.Open(), this);
+    }
+
+    public XmlReader? Xml(string name) => Open(name) is { } stream ? SafeXml.Reader(stream) : null;
+
+    public string? ReadText(string name)
+    {
+        using var stream = Open(name);
+        if (stream is null) return null;
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return SearchFileReader.DecodeUtf8(buffer.ToArray());
+    }
+
+    public void Dispose() => _zip.Dispose();
+
+    // Resolves a relationship target relative to the part that holds it.
+    public static string Resolve(string fromFolder, string target)
+    {
+        if (target.StartsWith('/')) return target.TrimStart('/');
+        var parts = new List<string>(fromFolder.Split('/', StringSplitOptions.RemoveEmptyEntries));
+        foreach (var part in target.Split('/'))
+        {
+            if (part == "..") { if (parts.Count > 0) parts.RemoveAt(parts.Count - 1); }
+            else if (part is not ("." or "")) parts.Add(part);
+        }
+        return string.Join('/', parts);
+    }
+
+    private sealed class BudgetStream(Stream inner, SafeZip owner) : Stream
+    {
         public override int Read(byte[] buffer, int offset, int count)
         {
-            var n = inner.Read(buffer, offset, (int)Math.Min(count, Math.Max(0, max - _read + 1)));
-            _read += n;
-            if (_read > max) throw new IOException("Document part exceeds the size limit.");
+            owner._ct.ThrowIfCancellationRequested();
+            var n = inner.Read(buffer, offset, count);
+            owner._budget -= n;
+            if (owner._budget < 0) throw new UnreadableDocumentException("too large when unpacked");
             return n;
         }
         public override bool CanRead => true;
         public override bool CanSeek => false;
         public override bool CanWrite => false;
         public override long Length => throw new NotSupportedException();
-        public override long Position { get => _read; set => throw new NotSupportedException(); }
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
         public override void Flush() { }
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
@@ -145,12 +172,25 @@ public sealed class OfficeXmlExtractor : ITextExtractor
     }
 }
 
+public static class SafeXml
+{
+    // No DTDs (so no entity expansion), no external resolution.
+    public static XmlReader Reader(Stream stream) => XmlReader.Create(stream, new XmlReaderSettings
+    {
+        DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, IgnoreComments = true,
+        IgnoreProcessingInstructions = true, CloseInput = true
+    });
+}
+
 // The pluggable list of extractors. Types listed in Unsupported are known
 // documents that are reported as "not indexed (type)" rather than ignored.
 public sealed class TextExtractorRegistry
 {
     private readonly Dictionary<string, ITextExtractor> _byExtension = new(StringComparer.OrdinalIgnoreCase);
-    public static readonly string[] Unsupported = [".pdf", ".doc", ".rtf", ".xlsx", ".xls", ".ods", ".pptx", ".ppt", ".odp", ".epub"];
+    // Legacy binary Office formats: there is no small, maintained, pure-.NET
+    // reader for them, and parsing OLE2 compound files would add attack
+    // surface for little gain. They are reported, not read.
+    public static readonly string[] Unsupported = [".doc", ".xls", ".ppt", ".pages", ".numbers", ".key"];
 
     public TextExtractorRegistry(IEnumerable<ITextExtractor> extractors)
     {
@@ -164,13 +204,28 @@ public sealed class TextExtractorRegistry
         new PlainTextExtractor(SearchKinds.Code,
             ".cs", ".fs", ".py", ".js", ".mjs", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".kt", ".c", ".h",
             ".cpp", ".hpp", ".cc", ".rb", ".php", ".sh", ".bash", ".zsh", ".fish", ".nix", ".lua", ".sql",
-            ".swift", ".scala", ".hs", ".ml", ".r", ".jl", ".css", ".scss", ".html", ".vue", ".svelte", ".qml",
+            ".swift", ".scala", ".hs", ".ml", ".r", ".jl", ".css", ".scss", ".vue", ".svelte", ".qml",
             ".el", ".clj", ".ex", ".exs", ".dart", ".pl", ".ps1", ".zig", ".cmake", ".gradle", ".m", ".mm"),
         OfficeXmlExtractor.Docx(),
-        OfficeXmlExtractor.Odt()
+        OfficeXmlExtractor.Odt(),
+        new XlsxExtractor(),
+        new OdsExtractor(),
+        new PptxExtractor(),
+        new OdpExtractor(),
+        new PdfExtractor(),
+        new RtfExtractor(),
+        new EpubExtractor(),
+        new HtmlExtractor(),
+        new EmlExtractor()
     ]);
 
     public ITextExtractor? For(string path) => _byExtension.GetValueOrDefault(Path.GetExtension(path));
+
+    // Kind → extensions, for status and the CLI.
+    public IReadOnlyDictionary<string, string[]> Formats() => _byExtension
+        .GroupBy(x => x.Value.Kind)
+        .OrderBy(g => Array.IndexOf(SearchKinds.All, g.Key))
+        .ToDictionary(g => g.Key, g => g.Select(x => x.Key.ToLowerInvariant()).Order(StringComparer.Ordinal).ToArray());
 
     // null means "not a document type at all": not counted, not reported.
     public static string? UnsupportedReason(string path)
@@ -178,10 +233,45 @@ public sealed class TextExtractorRegistry
         var extension = Path.GetExtension(path).ToLowerInvariant();
         return Unsupported.Contains(extension) ? $"not indexed ({extension.TrimStart('.')})" : null;
     }
+
+    // Runs one extractor on one file within the time limit. Whatever goes
+    // wrong with a malformed or hostile file becomes a reported skip such as
+    // "not indexed (pdf: unreadable)"; it never fails the scan. On a timeout
+    // the scan moves on; the extractor sees its token cancelled and the
+    // caller closes the file under it.
+    public static ExtractedText Run(ITextExtractor extractor, string path, Stream file, ExtractionLimits limits, TimeSpan timeout)
+    {
+        var type = Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
+        using var cts = new CancellationTokenSource(timeout);
+        var work = Task.Run(() => extractor.Extract(file, limits, cts.Token));
+        ExtractedText result;
+        try
+        {
+            if (!work.Wait(timeout + TimeSpan.FromSeconds(2))) return ExtractedText.Skip($"not indexed ({type}: timed out)");
+            result = work.Result;
+        }
+        catch (AggregateException ex)
+        {
+            var reason = ex.InnerException switch
+            {
+                OperationCanceledException => "timed out",
+                UnreadableDocumentException unreadable => unreadable.Message,
+                _ => "unreadable"
+            };
+            return ExtractedText.Skip($"not indexed ({type}: {reason})");
+        }
+        return result.Skipped is null ? result : result with { Skipped = $"not indexed ({type}: {result.Skipped})" };
+    }
 }
 
 public static class SearchFileReader
 {
+    public static string DecodeUtf8(byte[] bytes)
+    {
+        var offset = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
+        return Encoding.UTF8.GetString(bytes, offset, bytes.Length - offset);
+    }
+
     public static byte[] ReadBounded(Stream file, long maxBytes, out bool truncated)
     {
         var buffer = new MemoryStream();

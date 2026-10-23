@@ -221,12 +221,8 @@ public sealed class SearchSourceTests
 
 public sealed class SearchExtractionTests
 {
-    private static ExtractedText Extract(string name, byte[] bytes, long max = 1 << 20)
-    {
-        var extractor = TextExtractorRegistry.Default().For(name)!;
-        using var stream = new MemoryStream(bytes);
-        return extractor.Extract(stream, max);
-    }
+    private static ExtractedText Extract(string name, byte[] bytes, long max = 1 << 20) =>
+        SearchFormatTests.Extract(name, bytes, ExtractionLimits.For(max));
 
     private static byte[] Zip(string entry, string xml)
     {
@@ -246,12 +242,23 @@ public sealed class SearchExtractionTests
     [InlineData("Program.cs", "code")]
     [InlineData("report.docx", "document")]
     [InlineData("essay.odt", "document")]
+    [InlineData("paper.pdf", "document")]
+    [InlineData("budget.xlsx", "data")]
+    [InlineData("budget.ods", "data")]
+    [InlineData("talk.pptx", "document")]
+    [InlineData("talk.odp", "document")]
+    [InlineData("letter.rtf", "document")]
+    [InlineData("novel.epub", "document")]
+    [InlineData("page.html", "document")]
+    [InlineData("page.htm", "document")]
+    [InlineData("message.eml", "mail")]
     public void KnownTypesHaveAnExtractor(string name, string kind) =>
         Assert.Equal(kind, TextExtractorRegistry.Default().For(name)!.Kind);
 
     [Theory]
-    [InlineData("paper.pdf", "not indexed (pdf)")]
     [InlineData("old.doc", "not indexed (doc)")]
+    [InlineData("old.xls", "not indexed (xls)")]
+    [InlineData("old.ppt", "not indexed (ppt)")]
     [InlineData("photo.jpg", null)]
     [InlineData("id_rsa", null)]
     public void OtherTypesAreReportedOrIgnored(string name, string? reason)
@@ -266,7 +273,7 @@ public sealed class SearchExtractionTests
         Assert.Equal("héllo", Extract("a.txt", [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("héllo")]).Text);
         var binary = Extract("a.txt", [0x41, 0x00, 0x42]);
         Assert.Null(binary.Text);
-        Assert.Equal("binary content", binary.Skipped);
+        Assert.Equal("not indexed (txt: binary content)", binary.Skipped);
     }
 
     [Fact]
@@ -313,15 +320,15 @@ public sealed class SearchExtractionTests
     [Fact]
     public void BrokenOrBombedDocumentsAreSkippedNotFatal()
     {
-        Assert.Equal("unreadable document", Extract("x.docx", Encoding.UTF8.GetBytes("not a zip")).Skipped);
-        Assert.Equal("unreadable document", Extract("x.docx", Zip("other.xml", "<a/>")).Skipped);
+        Assert.Equal("not indexed (docx: unreadable)", Extract("x.docx", Encoding.UTF8.GetBytes("not a zip")).Skipped);
+        Assert.Equal("not indexed (docx: unreadable)", Extract("x.docx", Zip("other.xml", "<a/>")).Skipped);
         // A DTD (billion laughs) is refused by the XML reader settings.
-        Assert.Equal("unreadable document", Extract("x.docx", Zip("word/document.xml",
+        Assert.Equal("not indexed (docx: unreadable)", Extract("x.docx", Zip("word/document.xml",
             "<?xml version=\"1.0\"?><!DOCTYPE a [<!ENTITY e \"x\">]><a>&e;</a>")).Skipped);
         // A tiny archive that inflates past the limit stops at the limit.
-        var bomb = Zip("word/document.xml", "<a>" + new string(' ', 20 * 1024 * 1024) + "</a>");
-        Assert.True(bomb.Length < 100_000);
-        Assert.Equal("too large", Extract("x.docx", bomb, max: 1 << 20).Skipped);
+        var bomb = Zip("word/document.xml", "<a>" + new string(' ', 80 * 1024 * 1024) + "</a>");
+        Assert.True(bomb.Length < 200_000);
+        Assert.Equal("not indexed (docx: too large when unpacked)", Extract("x.docx", bomb, max: 1 << 20).Skipped);
     }
 
     [Fact]
@@ -529,14 +536,16 @@ public sealed class SearchIndexingTests
         var outside = f.Write(".ssh/id.txt", "secretword");
         File.CreateSymbolicLink(Path.Combine(f.Home, "Work/link.txt"), outside);
         Directory.CreateSymbolicLink(Path.Combine(f.Home, "Work/linkdir"), Path.GetDirectoryName(outside)!);
-        f.Write("Work/paper.pdf", "%PDF-1.4 secretword");
+        f.Write("Work/paper.doc", "secretword");
+        f.Write("Work/broken.pdf", "%PDF-1.4 secretword");
         f.Write("Work/photo.png", "secretword");
         f.Write("Work/visible.txt", "publicword");
 
         var report = await f.ScanAsync();
         Assert.Equal(1, report.Indexed);
-        Assert.Equal(1, report.Skipped["not indexed (pdf)"]);
-        Assert.Contains(report.SkippedExamples, x => x.Path.EndsWith("paper.pdf") && x.Reason == "not indexed (pdf)");
+        Assert.Equal(1, report.Skipped["not indexed (doc)"]);
+        Assert.Equal(1, report.Skipped["not indexed (pdf: unreadable)"]);
+        Assert.Contains(report.SkippedExamples, x => x.Path.EndsWith("paper.doc") && x.Reason == "not indexed (doc)");
         Assert.Empty((await f.SearchAsync("secretword")).Results);
         Assert.Single((await f.SearchAsync("publicword")).Results);
         Assert.All(f.IndexFiles(), bytes => Assert.DoesNotContain("secretword", Encoding.UTF8.GetString(bytes)));
@@ -655,7 +664,7 @@ public sealed class SearchIndexingTests
     [InlineData("   ", null, null)]
     [InlineData("ok", 0, null)]
     [InlineData("ok", 51, null)]
-    [InlineData("ok", 10, "mail")]
+    [InlineData("ok", 10, "video")]
     public void InvalidQueriesAreRejected(string query, int? limit, string? kind) =>
         Assert.NotNull(SearchQuery.Validate(new SearchRequest(query, limit, kind is null ? null : [kind])));
 
@@ -903,7 +912,7 @@ public sealed class SearchApiTests
     [InlineData("""{"query":""}""")]
     [InlineData("""{"query":"ok","limit":0}""")]
     [InlineData("""{"query":"ok","limit":500}""")]
-    [InlineData("""{"query":"ok","kinds":["mail"]}""")]
+    [InlineData("""{"query":"ok","kinds":["video"]}""")]
     public async Task InvalidSearchRequestsAreRejected(string json)
     {
         using var factory = new CoreApiFactory();

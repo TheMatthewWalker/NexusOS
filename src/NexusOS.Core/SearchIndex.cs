@@ -16,6 +16,7 @@ public sealed class SearchSettings
     public int Workers { get; }
     public int EmbedPerScan { get; }
     public float MinSimilarity { get; }
+    public TimeSpan ExtractTimeout { get; }
 
     public SearchSettings(IConfiguration config)
     {
@@ -26,6 +27,7 @@ public sealed class SearchSettings
         MaxFiles = Int(config, "NEXUS_SEARCH_MAX_FILES", 100_000, 1, 1_000_000);
         MaxChunks = Int(config, "NEXUS_SEARCH_MAX_CHUNKS", 100_000, 1, 1_000_000);
         Workers = Int(config, "NEXUS_SEARCH_WORKERS", 2, 1, 8);
+        ExtractTimeout = TimeSpan.FromSeconds(Int(config, "NEXUS_SEARCH_EXTRACT_SECONDS", 30, 1, 600));
         EmbedPerScan = Int(config, "NEXUS_SEARCH_EMBED_PER_SCAN", 5000, 0, 1_000_000);
         MinSimilarity = float.TryParse(config["NEXUS_SEARCH_MIN_SIMILARITY"], System.Globalization.CultureInfo.InvariantCulture,
             out var similarity) ? Math.Clamp(similarity, -1f, 1f) : 0.5f;

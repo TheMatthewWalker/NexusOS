@@ -7,8 +7,10 @@ public sealed record SearchScanReport(DateTimeOffset StartedAt, DateTimeOffset F
     IReadOnlyDictionary<string, int> Skipped, IReadOnlyList<SearchIndexIssue> SkippedExamples);
 public sealed record SearchSourceStatus(string Path, bool Watching);
 public sealed record SearchEmbeddingStatus(string? Model, bool? Available, string? Reason);
+public sealed record SearchFormats(IReadOnlyDictionary<string, string[]> Indexed, IReadOnlyList<string> ReportedNotIndexed);
 public sealed record SearchStatus(IReadOnlyList<SearchSourceStatus> Sources, long Files, long Chunks, long EmbeddedChunks,
-    bool Running, SearchEmbeddingStatus Embeddings, SearchScanReport? LastRun, IReadOnlyList<SearchIndexIssue> Errors);
+    bool Running, SearchEmbeddingStatus Embeddings, SearchScanReport? LastRun, IReadOnlyList<SearchIndexIssue> Errors,
+    SearchFormats Formats);
 
 // Keeps the index in step with the chosen folders. A scan compares each
 // file's mtime and size with the index, so it is the single path for adds,
@@ -91,7 +93,7 @@ public sealed class SearchIndexer(
         lock (_watchers)
             list = sources.List().Select(s => new SearchSourceStatus(s, _watchers.GetValueOrDefault(s) is not null)).ToArray();
         return new SearchStatus(list, counts.Files, counts.Chunks, counts.EmbeddedChunks, _running, _embedding,
-            _lastRun, _errors.ToArray());
+            _lastRun, _errors.ToArray(), new SearchFormats(extractors.Formats(), TextExtractorRegistry.Unsupported));
     }
 
     public void ResetStatus()
@@ -250,7 +252,8 @@ public sealed class SearchIndexer(
                 {
                     // ACTIVITY JOURNAL HOOK (feature 8): when the journal lands,
                     // record "indexed <path>" here as a file Nexus read. Not merged yet.
-                    var extracted = file.Extractor.Extract(stream, settings.MaxFileBytes);
+                    var extracted = TextExtractorRegistry.Run(file.Extractor, file.Path, stream,
+                        ExtractionLimits.For(settings.MaxFileBytes), settings.ExtractTimeout);
                     if (extracted.Text is null) skipped = extracted.Skipped ?? "unreadable";
                     else
                     {

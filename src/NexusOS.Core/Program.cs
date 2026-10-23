@@ -67,6 +67,7 @@ builder.Services.AddSingleton<AppSuggester>();
 builder.Services.AddSingleton<LocalApiToken>();
 // Fix it and the health report: read-only probes and the fix library (FixIt.cs).
 builder.Services.AddFixIt();
+builder.Services.AddNexusSearch(); // Private search (M8): SearchEndpoints.cs
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -359,6 +360,7 @@ app.MapGet("/system", () => Results.Ok(new
 })); // Deliberately read-only, limited metadata.
 // POST /fixit, POST /fixit/apply, GET /health/report (FixIt.cs).
 app.MapFixIt();
+app.MapNexusSearch();
 app.Run();
 
 // Journal summaries are one short line: drop control characters and truncate.

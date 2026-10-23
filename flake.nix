@@ -32,12 +32,18 @@
 
       nixosConfigurations = {
         nexus-reference = self.lib.mkSystem { modules = [ ./nix/installer/reference.nix ]; };
+        # The same with the NVIDIA driver, so installing on an NVIDIA machine
+        # finds the driver already built on the installer image.
+        nexus-reference-nvidia = self.lib.mkSystem {
+          modules = [ ./nix/installer/reference.nix { nexusos.nvidia.enable = true; } ];
+        };
         installer = nixpkgs.lib.nixosSystem {
           inherit system;
           specialArgs = {
             nexusSource = self;
             nixpkgsSource = nixpkgs.outPath;
             referenceSystem = self.nixosConfigurations.nexus-reference.config.system.build.toplevel;
+            referenceSystemNvidia = self.nixosConfigurations.nexus-reference-nvidia.config.system.build.toplevel;
           };
           modules = [ ./nix/installer/iso.nix ];
         };

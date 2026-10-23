@@ -10,7 +10,7 @@
 set -euo pipefail
 
 source_dir=/etc/nexusos
-disk="" user="" full_name="" password_file="" host="nexus" timezone="" assume_yes=0 extra_module=""
+disk="" user="" full_name="" password_file="" host="nexus" timezone="" assume_yes=0 extra_module="" nvidia=auto
 
 usage() {
   cat <<'EOF'
@@ -23,6 +23,7 @@ Usage: nexus-install [options]
   --timezone ZONE       for example Europe/London (default: detected, else UTC)
   --source DIR          NexusOS source to install (default: /etc/nexusos)
   --extra-module FILE   also include this NixOS module (used by the VM test)
+  --no-nvidia           do not set up the NVIDIA driver, even if a card is found
   --yes                 do not ask for confirmation before erasing the disk
 EOF
 }
@@ -37,6 +38,7 @@ while [ $# -gt 0 ]; do
     --timezone) timezone="$2"; shift 2 ;;
     --source) source_dir="$2"; shift 2 ;;
     --extra-module) extra_module="$2"; shift 2 ;;
+    --no-nvidia) nvidia=off; shift ;;
     --yes) assume_yes=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -96,12 +98,45 @@ if [ -z "$timezone" ]; then
 fi
 [ -e "/etc/zoneinfo/$timezone" ] || [ "$timezone" = UTC ] || fail "unknown time zone $timezone"
 
+# --- Graphics ---------------------------------------------------------------
+# An NVIDIA card needs its own driver. Laptops that also have a built-in Intel
+# or AMD GPU use PRIME offload, which needs both cards' PCI bus IDs.
+# lspci -Dnn lines look like:
+#   0000:01:00.0 VGA compatible controller [0300]: NVIDIA Corporation AD107M [GeForce RTX 4060 Max-Q / Mobile] [10de:28a0] (rev a1)
+nvidia_lines="" nvidia_bus="" intel_bus="" amd_bus="" nvidia_name="" nvidia_open=true nvidia_driver=stable
+bus_id() {  # 0000:01:00.0 -> PCI:1:0:0 (decimal, as NixOS expects)
+  local slot="${1#*:}" bus dev fn
+  bus="${slot%%:*}"; dev="${slot#*:}"; fn="${dev#*.}"; dev="${dev%.*}"
+  printf 'PCI:%d:%d:%d' "$((16#$bus))" "$((16#$dev))" "$((16#$fn))"
+}
+if [ "$nvidia" = auto ]; then
+  gpus="$(lspci -Dnn | grep -E '\[(0300|0302|0380)\]' || true)"
+  nvidia_lines="$(grep -E '\[10de:[0-9a-f]{4}\]' <<<"$gpus" || true)"
+  if [ -n "$nvidia_lines" ]; then
+    first="$(head -n1 <<<"$nvidia_lines")"
+    nvidia_bus="$(bus_id "${first%% *}")"
+    nvidia_name="$(sed -E 's/.*\[([^]]*)\] \[10de:[0-9a-f]{4}\].*/\1/' <<<"$first")"
+    device="$(grep -oE '\[10de:[0-9a-f]{4}\]' <<<"$first" | cut -c7-10)"
+    # NVIDIA's open modules and current driver need Turing (device 0x1e00) or newer.
+    if [ "$((16#$device))" -lt "$((16#1e00))" ]; then nvidia_open=false nvidia_driver=legacy_580; fi
+    intel="$(grep -E '\[8086:[0-9a-f]{4}\]' <<<"$gpus" | head -n1 || true)"
+    amd="$(grep -E '\[1002:[0-9a-f]{4}\]' <<<"$gpus" | head -n1 || true)"
+    [ -n "$intel" ] && intel_bus="$(bus_id "${intel%% *}")"
+    [ -n "$amd" ] && amd_bus="$(bus_id "${amd%% *}")"
+  fi
+fi
+if [ -z "$nvidia_lines" ]; then graphics="no NVIDIA card (built-in drivers)"
+elif [ -n "$intel_bus$amd_bus" ]; then graphics="$nvidia_name, with the built-in GPU running the desktop (PRIME offload)"
+else graphics="$nvidia_name"
+fi
+
 # --- Confirm ----------------------------------------------------------------
 say "Ready to install"
 echo "  Disk:      $disk ($(lsblk -dno SIZE "$disk")) — everything on it will be erased"
 echo "  User:      $user"
 echo "  Computer:  $host"
 echo "  Time zone: $timezone"
+echo "  Graphics:  $graphics"
 if [ "$assume_yes" -ne 1 ]; then
   echo
   read -rp "Type the disk name ($disk) to erase it and install: " answer
@@ -179,6 +214,22 @@ cat > /mnt/etc/nixos/local.nix <<EOF
   time.timeZone = $(nix_string "$timezone");
 }
 EOF
+if [ -n "$nvidia_lines" ]; then
+  # Insert before the closing brace of local.nix.
+  sed -i '$d' /mnt/etc/nixos/local.nix
+  {
+    echo "  # Found by nexus-install: $nvidia_name"
+    echo "  nexusos.nvidia.enable = true;"
+    [ "$nvidia_open" = true ] || echo "  nexusos.nvidia.open = false;"
+    [ "$nvidia_driver" = stable ] || echo "  nexusos.nvidia.driver = \"$nvidia_driver\";"
+    if [ -n "$intel_bus$amd_bus" ]; then
+      echo "  nexusos.nvidia.prime.nvidiaBusId = \"$nvidia_bus\";"
+      [ -z "$intel_bus" ] || echo "  nexusos.nvidia.prime.intelBusId = \"$intel_bus\";"
+      [ -z "$amd_bus" ] || echo "  nexusos.nvidia.prime.amdgpuBusId = \"$amd_bus\";"
+    fi
+    echo "}"
+  } >> /mnt/etc/nixos/local.nix
+fi
 
 # --- Install ----------------------------------------------------------------
 say "Installing NexusOS (this takes a while)"

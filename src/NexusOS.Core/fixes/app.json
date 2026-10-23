@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "app.failed-unit",
+      "area": "app",
+      "priority": 10,
+      "match": [
+        { "probe": "app.failed-units", "where": [ { "field": "active", "equals": "failed" } ] }
+      ],
+      "bind": [
+        {
+          "name": "unit",
+          "probe": "app.failed-units",
+          "where": [ { "field": "active", "equals": "failed" } ],
+          "field": "unit",
+          "pattern": "[A-Za-z0-9][A-Za-z0-9@_.:\\-]{0,120}\\.(service|socket|timer)"
+        }
+      ],
+      "cause": "The background service {unit} has stopped with an error.",
+      "fixes": [
+        { "id": "restart", "kind": "personal", "label": "Restart {unit}", "action": "app.restart-user-unit" }
+      ]
+    }
+  ]
+}

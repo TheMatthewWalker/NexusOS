@@ -19,6 +19,11 @@ carries the binding rules. Then read [design-tokens.json](design-tokens.json),
 | 21 Oct 2026 | **Desktop direction:** a small Nexus at bottom centre is the persistent launcher, with no conventional taskbar. Clicking it opens the full Nexus core and chat. Open applications appear as tiny planets orbiting it, which expand after a delayed hover into a wider orbit of larger, labelled, selectable targets | **Approved, not yet built** |
 | 21 Oct 2026 | **Compositor: Hyprland.** It manages windows (tiling, snapping, workspaces); the SpaceUI shell runs on top of it | **Approved** |
 | 22 Oct 2026 | **Shell technology: Quickshell** (QML, Qt 6) running on Hyprland, chosen after the [shell spike](../spaceui-spike.md); see [ADR-003](../../adr/003-desktop-shell.md) | **Approved** |
+| 22 Oct 2026 | **Window manager: Desktop A, "Orbit dock"** (the current build: tiled windows, the small core launcher with open windows as planets, the top-right system orb), **plus Desktop C's workspace overview** as a quick switcher on Super+Tab: workspaces as cards around the core, with a search bar. Mocks: [canvas](https://claude.ai/artifact/R9EACfTrFZgo8924JqNVTQ) | **Approved** |
+| 22 Oct 2026 | **Settings: B, "Orbital"**: categories as planets around the core, and the chosen one opens a glass panel beside it. It also takes the **search from C, which applies settings straight away** and opens a window listing every change it made, each with Undo. This is limited to reversible personal settings (display, sound, appearance, input); anything that changes the installed system still goes through Guardian (rule 3) | **Approved** |
+| 22 Oct 2026 | **Coding agent: B, "Core timeline"**: the core and the plan on the left, steps as a timeline, and each proposed edit as a diff card with Accept, Reject and Suggest a change | **Approved** |
+| 22 Oct 2026 | **System change approval (Guardian)**: the proposal dialog with a summary (packages, settings, risk), the configuration diff, the checks (policy, signed build, backup, fallback boot) and "Approve and stage" | **Approved** |
+| 22 Oct 2026 | **Image generation: A, "Gallery and inspector"**, as the more practical layout. B's orbit of variations is liked; its refine chips (Warmer light, Wider view…) can carry over into A's inspector | **Approved** |
 | (prototype) | The windowless core, app planets that emerge with intent, a standalone chat bar, the top-right orbital system panel, conventional Files and Settings windows, and magnetic window snapping with a layout chooser | **Approved baseline** (`screens/baseline-*`) |
 | (prototype) | A launcher panel, a workspaces overview and a start menu | **Superseded** (`screens/early-*`), kept for history only |
 
@@ -28,7 +33,10 @@ These come from the brief, plus the NexusOS security model. They are where the
 two meet:
 
 1. **The AI only suggests.** App suggestions never launch apps, and system
-   changes go through Guardian's preview → root approval → staged boot. Keep
+   changes go through Guardian's preview → root approval → staged boot.
+   One exception, approved on 22 Oct: settings search may apply reversible
+   personal settings at once, provided it shows every change it made and
+   each can be undone. Keep
    inputs, inferences, sources, suggested actions and completed actions
    visibly distinct.
 2. **Never fake system status.** Sample data stays labelled as sample data

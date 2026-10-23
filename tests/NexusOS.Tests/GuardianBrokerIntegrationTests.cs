@@ -73,6 +73,16 @@ public sealed class GuardianBrokerIntegrationTests
         using var replay = await client.PostAsJsonAsync("/guardian/review", new { candidateId = id, attestation = harness.Attestation(id) });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, replay.StatusCode);
         Assert.Contains("approval", await replay.Content.ReadAsStringAsync());
+
+        // Each relayed step is journalled as reported, newest first.
+        var journal = (await client.GetFromJsonAsync<JsonElement>("/journal?kind=system")).EnumerateArray()
+            .Select(x => (x.GetProperty("actor").GetString(), x.GetProperty("summary").GetString(), x.GetProperty("ref").GetString()))
+            .ToArray();
+        Assert.Equal([
+            ("guardian", "Guardian refused a review", "candidate:" + id),
+            ("guardian", "Guardian approved a change for staging", "candidate:" + id),
+            ("user", "Sent to Guardian for approval: Enable printing", "candidate:" + id)
+        ], journal);
     }
 
     [Fact]

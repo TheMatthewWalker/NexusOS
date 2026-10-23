@@ -119,6 +119,11 @@ public sealed class CoreApiTests
     [InlineData("POST", "/guardian/preview")]
     [InlineData("GET", "/inference/status")]
     [InlineData("POST", "/inference/unload")]
+    [InlineData("GET", "/journal")]
+    [InlineData("POST", "/journal")]
+    [InlineData("GET", "/journal/today/summary")]
+    [InlineData("POST", "/journal/1/undo")]
+    [InlineData("DELETE", "/journal?day=2026-10-22")]
     public async Task EveryEndpointRequiresTheBearerToken(string method, string path)
     {
         using var factory = new CoreApiFactory();

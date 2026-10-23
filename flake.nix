@@ -11,7 +11,35 @@
         nexus-guardian = pkgs.callPackage ./nix/packages/nexus-guardian.nix { };
         nexus-core = pkgs.callPackage ./nix/packages/nexus-core.nix { };
         nexus-shell = pkgs.callPackage ./nix/packages/nexus-shell.nix { };
+        nexus-install = pkgs.callPackage ./nix/packages/nexus-install.nix { };
+        # The installer image: `nix build .#iso`, then write result/iso/*.iso to a USB stick.
+        iso = self.nixosConfigurations.installer.config.system.build.isoImage;
         default = self.packages.${system}.nexus-core;
+      };
+
+      # lib.mkSystem builds a NexusOS machine from the profile plus the
+      # machine's own modules; the flake that nexus-install writes uses it.
+      lib.mkSystem = { modules ? [ ] }: nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [
+          self.nixosModules.nexusos
+          # Pin `nixpkgs` to the source this system was built from, and keep
+          # that source on disk, so the machine can rebuild itself offline.
+          { nix.registry.nixpkgs.flake = nixpkgs; nix.nixPath = [ "nixpkgs=${nixpkgs}" ]; }
+        ] ++ modules;
+      };
+
+      nixosConfigurations = {
+        nexus-reference = self.lib.mkSystem { modules = [ ./nix/installer/reference.nix ]; };
+        installer = nixpkgs.lib.nixosSystem {
+          inherit system;
+          specialArgs = {
+            nexusSource = self;
+            nixpkgsSource = nixpkgs.outPath;
+            referenceSystem = self.nixosConfigurations.nexus-reference.config.system.build.toplevel;
+          };
+          modules = [ ./nix/installer/iso.nix ];
+        };
       };
 
       # `desktop` builds and tests the Nexus shell (shell/); `spaceui-spike` is the
@@ -39,6 +67,7 @@
         guardian = ./nix/modules/guardian.nix;
         core = ./nix/modules/core.nix;
         desktop = ./nix/modules/desktop.nix;
+        nexusos = ./nix/profiles/nexusos.nix;
       };
 
       checks.${system} = {
@@ -57,6 +86,13 @@
         hyprland-desktop = import ./nix/tests/hyprland-desktop.nix {
           inherit pkgs;
           desktopModule = self.nixosModules.desktop;
+        };
+        nexus-installer = import ./nix/tests/nexus-installer.nix {
+          inherit pkgs;
+          nexusSource = self;
+          nixpkgsSource = nixpkgs.outPath;
+          referenceSystem = self.nixosConfigurations.nexus-reference.config.system.build.toplevel;
+          nexusInstall = self.packages.${system}.nexus-install;
         };
         guardian-trial-boot = import ./nix/tests/guardian-trial-boot.nix {
           inherit pkgs;

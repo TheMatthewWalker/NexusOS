@@ -157,8 +157,10 @@ in
     environment.systemPackages = [ cfg.shellPackage pkgs.gtk3 ]   # gtk3 provides gtk-launch
       ++ lib.optionals cfg.installDefaultApps [ pkgs.kitty pkgs.thunar ];
 
-    fonts.packages = [ pkgs.inter ];
+    fonts.packages = [ pkgs.inter pkgs.jetbrains-mono ];
     fonts.fontconfig.defaultFonts.sansSerif = [ "Inter" ];
+    # Terminals need a monospace font, or they fall back to Inter and space it out.
+    fonts.fontconfig.defaultFonts.monospace = [ "JetBrains Mono" ];
 
     services.greetd = {
       enable = true;

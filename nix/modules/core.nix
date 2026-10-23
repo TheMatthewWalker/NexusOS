@@ -41,6 +41,9 @@ in
     systemd.user.services.nexus-core = {
       description = "Nexus Core (per-user AI daemon)";
       wantedBy = [ "default.target" ];
+      # Only for people: system accounts such as the login screen's greeter
+      # also get a user manager, and have no writable home for Core's state.
+      unitConfig.ConditionUser = "!@system";
       inherit environment;
       serviceConfig = {
         ExecStart = "${cfg.package}/bin/nexus-core";

@@ -75,7 +75,13 @@ next boot:     healthy → confirmed;  failed boot → resets and falls back aut
 - Design: [ADR-002](docs/adr/002-guardian-candidate-model.md). Operations:
   [Guardian deployment](docs/GUARDIAN-DEPLOYMENT.md).
 
+## Install from an image (alpha)
+
+`nix build .#iso` builds a live USB image: a NexusOS desktop that opens the installer when it starts. [docs/INSTALL.md](docs/INSTALL.md) covers writing it to a stick, the install, and what this alpha does not do yet.
+
 ## NixOS
+
+To add NexusOS to an existing NixOS configuration instead:
 
 ```nix
 {
@@ -137,6 +143,6 @@ nix flake check                                          # packages + NixOS VM t
 - [Roadmap](docs/ROADMAP.md) and [evidence](docs/evidence/)
 - [Architecture](docs/ARCHITECTURE.md), [ADR-002: Guardian](docs/adr/002-guardian-candidate-model.md) and [ADR-003: desktop shell](docs/adr/003-desktop-shell.md)
 - [Nexus shell](shell/README.md) and the [SpaceUI design pack](docs/design/spaceui/README.md)
-- [Guardian deployment](docs/GUARDIAN-DEPLOYMENT.md)
+- [Installing NexusOS](docs/INSTALL.md) and [Guardian deployment](docs/GUARDIAN-DEPLOYMENT.md)
 
 Licensed under MIT.

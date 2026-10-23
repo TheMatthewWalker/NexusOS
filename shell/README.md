@@ -41,6 +41,25 @@ The local model and the Nova core share the GPU, and the core gives way:
 | The screen is idle for 60 s, or a window is fullscreen (a game, a video) | The launcher core stops drawing and keeps its last frame |
 | Reduced motion is on | No animation at all |
 | Nexus is closed | The big core is not drawn |
+| A game is fullscreen (game mode) | The model is unloaded, the launcher core stops, and Hyprland blur and animations are off until the game closes |
+
+### Game mode
+
+A fullscreen window counts as a game when its app id matches the list in
+`qml/lib/game.mjs`: Steam and Proton titles (`steam_app_*`), gamescope, Wine
+(`*.exe`), common launchers and emulators. Video players and browsers never
+count. With "treat fullscreen as game" on (`gameMode.anyFullscreen`, or
+`nexus-shell-ipc call nexus fullscreenIsGame true`) any other fullscreen window
+counts too. A game left fullscreen on another workspace keeps game mode on.
+
+When game mode starts, the shell:
+- asks Core to unload the model (bridge op `unload`), which reports the GPU memory Core's telemetry saw come back;
+- runs `hyprctl --batch "keyword decoration:blur:enabled false ; keyword animations:enabled false"`;
+- shows a Hyprland notification, "Game mode: AI paused, GPU free (2.4 GB returned)". The amount appears only when it was measured (NVIDIA today), and "GPU free" only when Core confirmed the unload. Hyprland draws fullscreen windows above the shell's Top layer, so a compositor notification is the only toast that shows over the game without using the Overlay layer.
+
+When the game closes, blur and animations go back to the configured values. The
+model is not preloaded; it loads on the next question. Turn the whole feature
+off with `services.nexus-desktop.gameMode.enable = false;`.
 
 The core needs well under 1 MB of graphics memory (one 528×528 noise texture).
 `scripts/bench/nexus_core_gpu_bench.py` measures what it costs on a real machine
@@ -83,6 +102,7 @@ Actions appear only where they make sense, and use existing mechanisms:
 {"id":1,"op":"chat","prompt":"..."}          -> {"id":1,"type":"delta","text":"..."} … {"id":1,"type":"done","provider":"local"}
 {"id":2,"op":"suggest","prompt":"...","model":false}  -> {"id":2,"type":"suggestions","data":{"apps":[…],"source":"rules"}}
 {"id":3,"op":"apps"} | {"id":4,"op":"health"}
+{"id":5,"op":"unload"}                       -> {"id":5,"type":"unloaded","data":{"vramFreedBytes":2576980378}}  (null when not measured)
 ```
 
 ## Build and run

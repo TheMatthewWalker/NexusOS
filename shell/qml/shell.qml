@@ -34,6 +34,14 @@ ShellRoot {
     property string lastPrompt: ""
     property int suggestId: -1
     property real voice: 0
+    // GPU budget (the local model shares the GPU with the core):
+    // - while the model is generating, the big core caps its frame rate and detail;
+    // - the launcher core stops drawing while the screen is idle or a window is fullscreen.
+    // simulateBusy lets the benchmark hold the busy state without a chat.
+    property bool simulateBusy: false
+    readonly property bool modelBusy: simulateBusy || mode === "thinking" || mode === "responding"
+    readonly property bool fullscreenActive: ToplevelManager.activeToplevel ? ToplevelManager.activeToplevel.fullscreen : false
+    readonly property bool launcherPaused: idle.isIdle || fullscreenActive
     // Provisional dark theme (approved 22 Oct): deep space, light ink, glass surfaces.
     readonly property var dark: ({
         ink: "#E3EAFF", inkSecondary: "#9AA9C9", glass: Qt.rgba(0.04, 0.07, 0.15, 0.80),
@@ -110,8 +118,13 @@ ShellRoot {
     IpcHandler {
         target: "nexus"
         function toggle(): void { root.expanded ? root.collapse() : root.open() }
-        function state(): string { return JSON.stringify({ expanded: root.expanded, online: bridge.online, mode: root.mode, orbit: root.visibleApps() }) }
+        function state(): string {
+            return JSON.stringify({ expanded: root.expanded, online: bridge.online, mode: root.mode, orbit: root.visibleApps(),
+                                    modelBusy: root.modelBusy, launcherPaused: root.launcherPaused })
+        }
+        function simulateBusy(on: bool): void { root.simulateBusy = on }
     }
+    IdleMonitor { id: idle; timeout: 60; respectInhibitors: true }
 
     // Keeps windows clear of the launcher at the bottom edge; draws nothing.
     PanelWindow {
@@ -177,6 +190,7 @@ ShellRoot {
                 radius: root.lay.launcher.diameter * 0.4
                 steps: 24
                 idleFps: 30
+                paused: root.launcherPaused
                 reduced: root.reduced
                 hovered: launcherHover.hovered
             }
@@ -246,6 +260,7 @@ ShellRoot {
                 radius: root.tk.nexus.hitDiameter / 2
                 // Fewer raymarch samples for machines without a capable GPU.
                 steps: Number(Quickshell.env("NEXUS_CORE_STEPS")) || 56
+                busy: root.modelBusy
                 reduced: root.reduced
                 mode: ({ idle: "idle", typing: "listening", thinking: "thinking", responding: "speaking" })[root.mode]
                 voice: root.voice

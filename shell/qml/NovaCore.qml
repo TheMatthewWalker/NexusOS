@@ -14,6 +14,13 @@ Item {
     property vector3d palette: Qt.vector3d(1, 0, 0)   // Nova
     property int steps: 56          // raymarch samples; the small launcher core needs far fewer
     property int idleFps: 0         // 0 = every frame; otherwise the frame rate while idle and not hovered
+    // GPU budget: the local model shares the GPU. While it is generating
+    // (busy), the core draws at most busyFps with at most busySteps samples;
+    // paused stops drawing altogether and leaves the last frame on screen.
+    property bool busy: false
+    property int busyFps: 30
+    property int busySteps: 32
+    property bool paused: false
     signal frame()
 
     function ripple() { live.ripple = 0 }
@@ -78,7 +85,7 @@ Item {
         property real uThink: live.think
         property real uRipple: live.ripple
         property real uAwake: live.awake
-        property real uSteps: core.steps
+        property real uSteps: core.busy ? Math.min(core.steps, core.busySteps) : core.steps
         fragmentShader: "lib/nova.frag.qsb"
         blending: true
     }
@@ -94,13 +101,15 @@ Item {
     }
 
     FrameAnimation {
-        running: core.visible && !core.reduced
+        running: core.visible && !core.reduced && !core.paused
         onTriggered: {
             // While idle, a small core can tick slower than the display: it saves
-            // power and nobody can tell the difference at launcher size.
+            // power and nobody can tell the difference at launcher size. While
+            // the model is busy, the core gives the GPU back by capping its rate.
             live.pending += frameTime;
             const calm = core.idleFps > 0 && core.mode === "idle" && !core.hovered && live.listen < 0.01;
-            if (calm && live.pending < 1 / core.idleFps) return;
+            const cap = core.busy ? core.busyFps : calm ? core.idleFps : 0;
+            if (cap > 0 && live.pending < 1 / cap) return;
             const dt = Math.min(0.05, live.pending);
             live.pending = 0;
             const t = core.targets[core.mode] || core.targets.idle;

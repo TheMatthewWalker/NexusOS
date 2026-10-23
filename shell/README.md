@@ -30,6 +30,21 @@ Super+Space opens and closes Nexus. You can also run
 - **Plain text only.** Model output is rendered as plain text.
 - **No token in the shell.** The shell never holds the Core API token. It talks to Core through the `nexus bridge` command, which authenticates like any CLI call.
 
+## Sharing the GPU with the model
+
+The local model and the Nova core share the GPU, and the core gives way:
+
+| When | What the core does |
+|---|---|
+| The model is thinking or answering | The big core draws at most 30 frames per second, with at most 32 samples per pixel (`busyFps`, `busySteps` in `NovaCore.qml`) |
+| The screen is idle for 60 s, or a window is fullscreen (a game, a video) | The launcher core stops drawing and keeps its last frame |
+| Reduced motion is on | No animation at all |
+| Nexus is closed | The big core is not drawn |
+
+The core needs well under 1 MB of graphics memory (one 528×528 noise texture).
+`scripts/bench/nexus_core_gpu_bench.py` measures what it costs on a real machine
+([M5 evidence](../docs/evidence/M5.md)).
+
 ## The bridge
 
 `nexus bridge` reads one JSON request per line on stdin and writes one JSON event per line on stdout. Each event is tagged with the id of the request it answers:

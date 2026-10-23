@@ -85,6 +85,17 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("Not installed", shell)                    # missing apps are not faked
         self.assertIn("Offline", shell)
 
+    def test_core_gives_the_gpu_back_to_the_model(self):
+        """The local model shares the GPU: the core must throttle and pause."""
+        nova = (self.out / "NovaCore.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        self.assertIn("running: core.visible && !core.reduced && !core.paused", nova)
+        self.assertIn("core.busy ? Math.min(core.steps, core.busySteps) : core.steps", nova)
+        self.assertIn("const cap = core.busy ? core.busyFps", nova)
+        self.assertIn("busy: root.modelBusy", shell)
+        self.assertIn("paused: root.launcherPaused", shell)
+        self.assertIn("IdleMonitor", shell)
+
     def test_orbit_maths(self):
         if not shutil.which("node"):
             self.skipTest("node not installed")

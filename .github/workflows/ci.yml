@@ -60,6 +60,9 @@ jobs:
       - name: Cross-user isolation between two real Linux accounts (#51)
         run: bash scripts/ci/cross-user.sh
 
+      - name: CLI streaming and desktop bridge against a real Core
+        run: python3 -m unittest tests/cli/test_bridge.py -v
+
       - name: Benchmark and user-data backup tests
         run: |
           python3 -m unittest discover -s tests/bench -v

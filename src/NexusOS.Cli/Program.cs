@@ -75,6 +75,13 @@ try
         case "use" when args.Length == 2:
             using (var res = await http.PostAsJsonAsync("/providers/select", new { name = args[1] }))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
+        case "ask" when args.Length > 2 && args[1] == "--stream":
+            return await StreamAnswer(string.Join(' ', args.Skip(2)));
+        case "bridge":
+            return await Bridge();
+        case "suggest" when args.Length > 1:
+            using (var res = await http.PostAsJsonAsync("/suggest", new { prompt = string.Join(' ', args.Skip(1)) }))
+            { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
         case "ask" when args.Length > 1:
             using (var res = await http.PostAsJsonAsync("/chat", new { prompt = string.Join(' ', args.Skip(1)) }))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
@@ -123,4 +130,102 @@ static string ErrorMessage(string raw, HttpResponseMessage response)
         _ => "Request failed."
     };
 }
-static void Usage() => Console.WriteLine("nexus [health|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask <prompt>]");
+// Prints the answer as Core streams it.
+async Task<int> StreamAnswer(string prompt)
+{
+    var ok = true;
+    await foreach (var ev in ChatEvents(prompt))
+    {
+        var type = ev.GetProperty("type").GetString();
+        if (type == "delta") { Console.Write(ev.GetProperty("text").GetString()); Console.Out.Flush(); }
+        else if (type == "error") { Console.Error.WriteLine($"\nnexus: {ev.GetProperty("message").GetString()}"); ok = false; }
+        else if (type == "done") Console.WriteLine();
+    }
+    return ok ? 0 : 1;
+}
+
+// Streams /chat/stream events; an HTTP error becomes a single error event.
+async IAsyncEnumerable<JsonElement> ChatEvents(string prompt)
+{
+    using var request = new HttpRequestMessage(HttpMethod.Post, "/chat/stream") { Content = JsonContent.Create(new { prompt }) };
+    using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+    if (!response.IsSuccessStatusCode)
+    {
+        var raw = await response.Content.ReadAsStringAsync();
+        yield return JsonSerializer.SerializeToElement(new { type = "error", message = ErrorMessage(raw, response) });
+        yield break;
+    }
+    using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
+    while (await reader.ReadLineAsync() is { } line)
+    {
+        if (line.Length == 0) continue;
+        using var doc = JsonDocument.Parse(line);
+        yield return doc.RootElement.Clone();
+    }
+}
+
+// A long-lived channel for the desktop shell: one JSON request per stdin line,
+// one JSON event per stdout line, each tagged with the request's id. The shell
+// never holds the API token itself; this process reads it like any CLI call.
+//   {"id":1,"op":"chat","prompt":"..."}     -> delta events, then done or error
+//   {"id":2,"op":"suggest","prompt":"...","model":false}
+//   {"id":3,"op":"apps"} | {"id":4,"op":"health"}
+async Task<int> Bridge()
+{
+    var output = Console.Out;
+    void Emit(JsonElement? id, object payload)
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(payload))!.AsObject();
+        if (id is { } value) node["id"] = System.Text.Json.Nodes.JsonNode.Parse(value.GetRawText());
+        lock (output) { output.WriteLine(node.ToJsonString()); output.Flush(); }
+    }
+    Emit(null, new { type = "ready" });
+    while (await Console.In.ReadLineAsync() is { } line)
+    {
+        if (line.Length == 0) continue;
+        JsonElement req;
+        try { using var doc = JsonDocument.Parse(line); req = doc.RootElement.Clone(); }
+        catch (JsonException) { Emit(null, new { type = "error", message = "Bridge requests must be one JSON object per line." }); continue; }
+        JsonElement? id = req.TryGetProperty("id", out var i) ? i : null;
+        var op = req.TryGetProperty("op", out var o) ? o.GetString() : null;
+        var prompt = req.TryGetProperty("prompt", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : "";
+        try
+        {
+            switch (op)
+            {
+                case "chat":
+                    await foreach (var ev in ChatEvents(prompt)) Emit(id, ev);
+                    break;
+                case "suggest":
+                    var model = req.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.True;
+                    Emit(id, await Call(HttpMethod.Post, model ? "/suggest/model" : "/suggest", new { prompt }, "suggestions"));
+                    break;
+                case "apps":
+                    Emit(id, await Call(HttpMethod.Get, "/apps", null, "apps"));
+                    break;
+                case "health":
+                    Emit(id, await Call(HttpMethod.Get, "/health", null, "health"));
+                    break;
+                default:
+                    Emit(id, new { type = "error", message = $"Unknown bridge op '{op}'." });
+                    break;
+            }
+        }
+        catch (HttpRequestException) { Emit(id, new { type = "error", message = "Nexus Core is not reachable." }); }
+        catch (TaskCanceledException) { Emit(id, new { type = "error", message = "Nexus Core did not answer in time." }); }
+    }
+    return 0;
+}
+
+async Task<object> Call(HttpMethod method, string path, object? body, string type)
+{
+    using var request = new HttpRequestMessage(method, path);
+    if (body is not null) request.Content = JsonContent.Create(body);
+    using var response = await http.SendAsync(request);
+    var raw = await response.Content.ReadAsStringAsync();
+    if (!response.IsSuccessStatusCode) return new { type = "error", message = ErrorMessage(raw, response) };
+    using var doc = JsonDocument.Parse(raw);
+    return new { type, data = doc.RootElement.Clone() };
+}
+
+static void Usage() => Console.WriteLine("nexus [health|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge]");

@@ -20,6 +20,7 @@ Item {
     signal done(int id, string provider)
     signal failed(int id, string message)
     signal suggestions(int id, var apps, string source)
+    signal unloaded(int id, var vramFreedBytes)     // bytes measured by Core, or null when unknown
 
     function send(op, extra) {
         if (!proc.running) return -1;
@@ -30,6 +31,7 @@ Item {
     }
     function chat(prompt) { return send("chat", { prompt: prompt }) }
     function suggest(prompt, useModel) { return send("suggest", { prompt: prompt, model: !!useModel }) }
+    function unload() { return send("unload") }
 
     function handle(line) {
         let ev;
@@ -41,6 +43,7 @@ Item {
         delete pending[id];
         if (ev.type === "done") done(id, ev.provider);
         else if (ev.type === "suggestions") suggestions(id, ev.data.apps, ev.data.source);
+        else if (ev.type === "unloaded") unloaded(id, ev.data.vramFreedBytes);
         else if (ev.type === "health") { online = true; offlineReason = "" }
         else if (ev.type === "error") {
             if (/not reachable|did not answer/.test(ev.message)) { online = false; offlineReason = ev.message }

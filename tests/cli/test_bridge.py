@@ -93,6 +93,26 @@ class Bridge(unittest.TestCase):
         unknown = next(e for e in events if e.get("id") == 4)
         self.assertEqual(unknown["type"], "error")
 
+    def test_bridge_unload_frees_the_model_and_reports_measured_vram(self):
+        bridge = subprocess.Popen([DOTNET, str(ROOT / "out/cli/NexusOS.Cli.dll"), "bridge"], env=self.env,
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(json.loads(bridge.stdout.readline())["type"], "ready")
+            bridge.stdin.write(json.dumps({"id": 7, "op": "unload"}) + "\n")
+            bridge.stdin.flush()
+            event = json.loads(bridge.stdout.readline())
+        finally:
+            bridge.stdin.close()
+            bridge.wait(10)
+            bridge.stdout.close()
+        self.assertEqual(event["type"], "unloaded", event)
+        self.assertEqual(event["id"], 7)
+        freed = event["data"]["vramFreedBytes"]
+        # Without a readable GPU the amount is unknown, never guessed.
+        self.assertTrue(freed is None or (isinstance(freed, int) and freed > 0), freed)
+        if not shutil.which("nvidia-smi"):
+            self.assertIsNone(freed)
+
 
 if __name__ == "__main__":
     unittest.main()

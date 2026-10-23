@@ -50,9 +50,10 @@ public sealed class SqlitePersistenceSecurityTests
         finally { SqliteStateDatabase.ImportFault = null; }
 
         // Nothing from the failed attempt is visible: no rows, no provider, no completion marker.
+        // (Schema steps commit separately, each with its own marker.)
         Assert.Equal(0, Count(state.Root, "SELECT COUNT(*) FROM history"));
         Assert.Equal(0, Count(state.Root, "SELECT COUNT(*) FROM settings"));
-        Assert.Equal(0, Count(state.Root, "SELECT COUNT(*) FROM metadata"));
+        Assert.Equal(0, Count(state.Root, "SELECT COUNT(*) FROM metadata WHERE key NOT LIKE 'schema_%'"));
 
         var database = new SqliteStateDatabase(state.Paths());
         Assert.Equal(3, Count(state.Root, "SELECT COUNT(*) FROM history"));

@@ -72,6 +72,8 @@ try
             return await PrintGet("/history");
         case "status":
             return await PrintGet("/inference/status");
+        case "rules":
+            return await RulesCommand.RunAsync(http, args[1..], Console.In, Console.Out, Console.Error);
         case "unload":
             using (var res = await http.PostAsync("/inference/unload", null))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }

@@ -15,7 +15,8 @@ own privileged actions.
 | `Nexus.Inference` | Partly implemented (in Core) | Ollama and llama.cpp adapters, managed `llama-server` lifecycle, unload and idle eviction, RAM/VRAM telemetry, benchmark harness. Foreground preemption is open |
 | `Nexus.Guardian` (`scripts/guardian`, `nix/modules/guardian.nix`) | Implemented | Root broker, root approval console, Ed25519 attestation tool, staging executor, boot check |
 | `Nexus.Desktop` (`shell/`, `nix/modules/desktop.nix`) | In progress (M6) | The Hyprland session and the Nexus shell (Quickshell, ADR-003), comprising the wallpaper, launcher, Nova core, app orbit, chat and system panel. It reaches Core only through `nexus bridge` |
-| `Nexus.Search`, `Nexus.Skills` | Not started (M8/M9) | Permission-aware indexing; capability-scoped, signed tools |
+| `Nexus.Search` (in Core, `Search*.cs`) | First version (M8) | Local index over folders the person chooses: SQLite FTS5 plus local Ollama embeddings; see [Local search index](#local-search-index-m8-feature-8) |
+| `Nexus.Skills` | Not started (M9) | Capability-scoped, signed tools |
 
 ## Trust boundaries
 
@@ -58,7 +59,9 @@ the catalogue and falls back to the rules, labelled as such), `GET /apps`,
 `POST /guardian/submit`, `GET /guardian/candidates/{id}`,
 `POST /guardian/review`, `POST|GET|DELETE /journal`,
 `GET /journal/today/summary`, `POST /journal/{id}/undo`, `POST /fixit`, `POST /fixit/apply`,
-`GET /health/report`.
+`GET /health/report`, `GET|POST|DELETE /search/sources`,
+`GET /search/status`, `POST /search/reindex`, `DELETE /search/index`,
+`POST /search`.
 
 ## Activity journal
 
@@ -120,3 +123,127 @@ Design: [features.md](design/features.md) ("Probes", features 2 and 14).
   "needs approval" and are never applied by Core.
 - **`GET /health/report`** runs the health probes and fills fixed templates
   with validated figures, plus any library problems found. No model.
+
+## Local search index (M8, feature 8)
+
+Private search finds files by words and by meaning without anything
+leaving the machine. Code: `SearchSources.cs`, `SearchExtraction.cs`,
+`SearchEmbeddings.cs`, `SearchIndex.cs`, `SearchIndexer.cs`,
+`SearchEndpoints.cs`.
+
+**Only chosen folders.** Nothing is indexed until the person adds a folder
+(`POST /search/sources {paths}`, `nexus search sources add <dir>`). The list
+is stored in Core's settings table. A folder is refused unless it is an
+absolute path inside the user's home that exists, is reached without a
+symbolic link, is not Nexus's state directory, and has no hidden component
+(`.ssh`, `.gnupg`, `.local/share/keyrings`, `.mozilla`, `.config/…`) and no
+credential or browser-profile name (`keyrings`, `google-chrome`, `chromium`,
+`BraveSoftware`, …). One refused path means nothing in the request is added.
+The indexer applies the same rule to every folder it walks, skips hidden
+files, never follows a symbolic link, opens each file with
+`O_NOFOLLOW|O_NONBLOCK` and indexes regular files only (a FIFO cannot block
+it). Each scan re-validates the chosen folders; one that disappears or turns
+into a link has its entries dropped.
+
+**What is indexed.** `GET /search/status` (`formats`) and `nexus search
+formats` list the types. All extractors are pure .NET except PDF, which uses
+[PdfPig](https://github.com/UglyToad/PdfPig) (Apache-2.0, no dependencies on
+net8.0). None touches the network.
+
+| Kind | Types | What is extracted |
+|---|---|---|
+| text | `.txt .md .rst .org .tex .adoc` | The text (UTF-8) |
+| code | about 50 source extensions | The text |
+| data | `.csv .tsv .json .yaml .toml .xml .ini` | The text |
+| data | `.xlsx .xlsm`, `.ods` | Each sheet as `Sheet: name`, one row per line, cells tab-separated; shared strings resolved, cached values used (formulas not evaluated), repeated ODS cells not expanded |
+| document | `.docx`, `.odt` | Paragraph text |
+| document | `.pptx`, `.odp` | `Slide n`, its text in presentation order, then `Notes: …` (speaker notes); slide-number fields skipped |
+| document | `.pdf` | The text layer, page by page in reading order. A PDF with no text (a scan) is reported as `not indexed (pdf: no text layer)` and is never OCR'd; encrypted PDFs as `(pdf: encrypted)` |
+| document | `.rtf` | Text with control words removed; font and colour tables, pictures, metadata, headers, footers and field instructions dropped; `\'hh` and `\u` escapes decoded |
+| document | `.epub` | Title, then each XHTML chapter in spine (reading) order |
+| document | `.html .htm .xhtml` | Visible text; scripts, styles, templates, SVG, objects and comments dropped; charset from a BOM or `<meta charset>` |
+| mail | `.eml` | `Subject`, `From`, `To` and `Date` (RFC 2047 decoded), then the text body (plain text preferred over HTML in `multipart/alternative`); attachments are listed by name only and never decoded |
+
+Legacy binary `.doc .xls .ppt` (and Apple `.pages .numbers .key`) are
+reported as `not indexed (doc)` and so on: there is no small, maintained,
+pure-.NET reader for OLE2 files, and parsing them would add attack surface
+for little gain. Other files (images, binaries, files with no extension such
+as `id_rsa`) are ignored.
+
+**Extraction bounds.** Every file is size-capped (`NEXUS_SEARCH_MAX_FILE_BYTES`,
+4 MiB) and its extracted text capped (4 Mi characters). Zip-based formats
+(docx, xlsx, pptx, odt, ods, odp, epub) are refused when they have more than
+10,000 entries or declare more than 64 MiB unpacked, and every entry is read
+through one shared budget of real decompressed bytes, so headers that lie
+about sizes cannot get past it. XML is read with DTDs prohibited, so there is no
+entity expansion. PDF streams are counted against the same 64 MiB budget, and
+Flate streams are inflated into a counter first, so a compression bomb is
+refused before PdfPig allocates its output; PDFs stop at 2,000 pages. Sheets
+stop at 200,000 cells, and RTF nesting at 512 groups. Each file has a time limit
+(`NEXUS_SEARCH_EXTRACT_SECONDS`, default 30); a slow extractor is cancelled
+and the scan moves on. Any failure on a malformed or hostile file is reported
+as `not indexed (type: unreadable)` (or `too large when unpacked`, `timed
+out`) and never fails the scan. Text is cut into passages of about 1,000
+characters at line breaks; each records its path, mtime, size, character
+offset and lines.
+
+**Storage.** `search.sqlite3` in the state directory (0600 in the 0700
+directory; a symlinked file is refused), separate from history so it can be
+erased alone. Passages are in an FTS5 table (`porter unicode61`, file name
+weighted above body); embeddings are float16 unit vectors keyed by passage.
+`secure_delete` is on, and after deletions FTS5 is optimised so removed words
+leave the file rather than lingering as tombstones.
+
+**Embeddings stay local.** Vectors come from Ollama's `/api/embed` at
+`NEXUS_OLLAMA_URL` (`NEXUS_EMBED_MODEL`, default `nomic-embed-text`; `off`
+disables). The URL passes the same loopback-only guard as the chat provider,
+uses the same no-proxy, no-redirect HTTP client, and the embedder never goes
+through `ModelRouter`, so a cloud chat provider, even with egress consent, is
+never used for indexing or queries. If embeddings fail (Ollama down, model not
+pulled), indexing and search carry on with words alone: `GET /search/status`
+shows `embeddings.available=false` with the reason, search answers
+`mode: "text"` with a notice, and the next scan fills in missing vectors.
+
+**Indexing.** A background service scans on a timer
+(`NEXUS_SEARCH_SCAN_SECONDS`, default 300) and after `FileSystemWatcher`
+(inotify) events, debounced; the watcher only requests a scan, and the scan
+compares mtime and size with the index, so adds, changes and deletes share one
+path and the timer covers anything a watcher misses. Files are processed by
+`NEXUS_SEARCH_WORKERS` (default 2) workers while the walk is streamed, so
+memory is one directory listing plus the set of paths seen. The index is
+capped at `NEXUS_SEARCH_MAX_FILES` (100,000) files and `NEXUS_SEARCH_MAX_CHUNKS`
+(100,000) passages, 2,000 per file; a walk that hits a limit never treats
+unseen files as deleted. Embedding is batched (16) and capped per scan.
+`GET /search/status` gives counts, the last run (indexed, updated, unchanged,
+removed, embedded, skipped by reason, with examples) and the last 20 errors;
+`POST /search/reindex` forces every file to be re-read.
+
+**Search.** `POST /search {query, limit, kinds}` (1–512 characters, limit
+1–50, kinds from `text`, `code`, `data`, `document`, `mail`) takes up to 16 words,
+quoted so FTS syntax is never interpreted, ranks passages by bm25 and, when
+embeddings exist, by cosine similarity (brute force over stored vectors,
+minimum `NEXUS_SEARCH_MIN_SIMILARITY`, default 0.5), and merges the two by
+reciprocal-rank fusion, one result per file. Each result has the path, file
+name, kind, a snippet, the modified time, the lines and a `why` sentence built
+only from what matched: the person's own words that FTS found in the passage,
+and the similarity, for example `Contains "supplier", "prices", in lines
+1–3.` No model writes or summarises results. Search is rate-limited to 60 a
+minute and two at a time.
+
+**Erasure.** `DELETE /search/index` (`nexus search erase`) cancels any scan,
+forgets the chosen folders (so nothing is re-indexed until the person chooses
+again), drops every table and `VACUUM`s, then verifies the tables are empty
+and the file has no free pages; tests check the indexed text no longer
+appears in any `search.sqlite3*` file. Removing a folder
+(`DELETE /search/sources?path=…`, `nexus search sources rm <dir>`) deletes its
+passages and vectors and optimises FTS, and tests check its text has left the
+file too. Like
+history, this is erasure at the SQLite level; SSD or filesystem copies are
+outside what an application can guarantee.
+
+**Not yet.** Mailboxes (beyond `.eml` files), notes, chats and settings as
+sources; OCR for scanned PDFs; legacy binary Office files; an
+approximate-nearest-neighbour index for very large collections; and the
+activity journal, which is not merged. The points where search reads should
+be journalled are marked `ACTIVITY JOURNAL HOOK` in `SearchIndexer.cs` (each
+file read) and `SearchEndpoints.cs` (each search).

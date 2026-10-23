@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
-  <ItemGroup><PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" /></ItemGroup>
+  <ItemGroup><PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" /><PackageReference Include="PdfPig" Version="0.1.16" /></ItemGroup>
   <ItemGroup><InternalsVisibleTo Include="NexusOS.Tests" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../../schema/guardian-options.json" LogicalName="guardian-options.json" /></ItemGroup>
   <ItemGroup><Content Remove="fixes/**" /><EmbeddedResource Include="fixes/*.json" LogicalName="fixes/%(Filename)%(Extension)" /></ItemGroup>

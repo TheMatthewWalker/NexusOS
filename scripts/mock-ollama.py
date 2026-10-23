@@ -1,9 +1,27 @@
 #!/usr/bin/env python3
 """Deterministic Ollama-compatible mock; supports fixed-length and HTTP chunked bodies."""
+import hashlib
 import json
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MAX_REQUEST = 100000
+EMBED_DIMENSIONS = 64
+# Words in one group share a dimension, so "bill" is close to "invoice".
+EMBED_CONCEPTS = [("invoice", "bill", "receipt", "payment"), ("holiday", "vacation", "trip", "travel")]
+
+
+def mock_embedding(text):
+    """Bag-of-words vector: deterministic across runs (no Python hash seed)."""
+    text = re.sub(r"^search_(document|query): ", "", text)
+    vector = [0.0] * EMBED_DIMENSIONS
+    for word in re.findall(r"[a-z0-9]+", text.lower()):
+        slot = next((i for i, group in enumerate(EMBED_CONCEPTS) if word in group), None)
+        if slot is None:
+            digest = hashlib.sha256(word.encode()).digest()
+            slot = len(EMBED_CONCEPTS) + int.from_bytes(digest[:4], "big") % (EMBED_DIMENSIONS - len(EMBED_CONCEPTS))
+        vector[slot] += 1.0
+    return vector
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -44,7 +62,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def do_POST(self):
-        if self.path not in ("/api/generate", "/v1/chat/completions"):
+        if self.path not in ("/api/generate", "/api/embed", "/v1/chat/completions"):
             self.send_error(404)
             return
         try:
@@ -54,7 +72,14 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("stream") is True:
                 self.stream(body)
                 return
-            if self.path == "/v1/chat/completions":
+            if self.path == "/api/embed":
+                inputs = body.get("input")
+                if isinstance(inputs, str):
+                    inputs = [inputs]
+                if not isinstance(inputs, list) or not inputs or not all(isinstance(x, str) for x in inputs):
+                    raise ValueError("Missing input")
+                content = json.dumps({"model": body["model"], "embeddings": [mock_embedding(x) for x in inputs]}).encode()
+            elif self.path == "/v1/chat/completions":
                 message = body.get("messages", [{}])[0].get("content", "")
                 content = json.dumps({"choices":[{"message":{"role":"assistant","content":"Nexus llama mock: " + message}}]}).encode()
             elif body.get("keep_alive") == 0 and "prompt" not in body:

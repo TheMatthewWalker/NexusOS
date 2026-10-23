@@ -3,6 +3,10 @@ using System.Text.Json;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
 
+// `nexus try <app>` runs the sandbox directly and needs no Core; only
+// `nexus try keep <app>` talks to Core, which turns it into a Guardian proposal.
+if (args.Length > 1 && args[0].Equals("try", StringComparison.OrdinalIgnoreCase) && args[1] != "keep")
+    return RunTrial(args[1..]);
 var root = Environment.GetEnvironmentVariable("NEXUS_STATE_DIR");
 if (string.IsNullOrWhiteSpace(root))
 {
@@ -108,6 +112,9 @@ try
             return await Search(args[1..]);
         case "ask" when args.Length > 1:
             using (var res = await http.PostAsJsonAsync("/chat", new { prompt = string.Join(' ', args.Skip(1)) }))
+            { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
+        case "try" when args.Length == 3 && args[1] == "keep":
+            using (var res = await http.PostAsJsonAsync("/try/keep", new { attr = args[2] }))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
         default: Usage(); return 2;
     }
@@ -287,9 +294,160 @@ static string ErrorMessage(string raw, HttpResponseMessage response)
         _ => "Request failed."
     };
 }
+// Prints the answer as Core streams it.
+async Task<int> StreamAnswer(string prompt)
+{
+    var ok = true;
+    await foreach (var ev in ChatEvents(prompt))
+    {
+        var type = ev.GetProperty("type").GetString();
+        if (type == "delta") { Console.Write(ev.GetProperty("text").GetString()); Console.Out.Flush(); }
+        else if (type == "error") { Console.Error.WriteLine($"\nnexus: {ev.GetProperty("message").GetString()}"); ok = false; }
+        else if (type == "done") Console.WriteLine();
+    }
+    return ok ? 0 : 1;
+}
+
+// Streams /chat/stream events; an HTTP error becomes a single error event.
+async IAsyncEnumerable<JsonElement> ChatEvents(string prompt)
+{
+    using var request = new HttpRequestMessage(HttpMethod.Post, "/chat/stream") { Content = JsonContent.Create(new { prompt }) };
+    using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+    if (!response.IsSuccessStatusCode)
+    {
+        var raw = await response.Content.ReadAsStringAsync();
+        yield return JsonSerializer.SerializeToElement(new { type = "error", message = ErrorMessage(raw, response) });
+        yield break;
+    }
+    using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
+    while (await reader.ReadLineAsync() is { } line)
+    {
+        if (line.Length == 0) continue;
+        using var doc = JsonDocument.Parse(line);
+        yield return doc.RootElement.Clone();
+    }
+}
+
+// A long-lived channel for the desktop shell: one JSON request per stdin line,
+// one JSON event per stdout line, each tagged with the request's id. The shell
+// never holds the API token itself; this process reads it like any CLI call.
+//   {"id":1,"op":"chat","prompt":"..."}     -> delta events, then done or error
+//   {"id":2,"op":"suggest","prompt":"...","model":false}
+//   {"id":3,"op":"apps"} | {"id":4,"op":"health"}
+//   {"id":5,"op":"unload"}                  -> {"type":"unloaded","data":{"vramFreedBytes":N|null}}
+async Task<int> Bridge()
+{
+    var output = Console.Out;
+    void Emit(JsonElement? id, object payload)
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(payload))!.AsObject();
+        if (id is { } value) node["id"] = System.Text.Json.Nodes.JsonNode.Parse(value.GetRawText());
+        lock (output) { output.WriteLine(node.ToJsonString()); output.Flush(); }
+    }
+    Emit(null, new { type = "ready" });
+    while (await Console.In.ReadLineAsync() is { } line)
+    {
+        if (line.Length == 0) continue;
+        JsonElement req;
+        try { using var doc = JsonDocument.Parse(line); req = doc.RootElement.Clone(); }
+        catch (JsonException) { Emit(null, new { type = "error", message = "Bridge requests must be one JSON object per line." }); continue; }
+        JsonElement? id = req.TryGetProperty("id", out var i) ? i : null;
+        var op = req.TryGetProperty("op", out var o) ? o.GetString() : null;
+        var prompt = req.TryGetProperty("prompt", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : "";
+        try
+        {
+            switch (op)
+            {
+                case "chat":
+                    await foreach (var ev in ChatEvents(prompt)) Emit(id, ev);
+                    break;
+                case "suggest":
+                    var model = req.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.True;
+                    Emit(id, await Call(HttpMethod.Post, model ? "/suggest/model" : "/suggest", new { prompt }, "suggestions"));
+                    break;
+                case "apps":
+                    Emit(id, await Call(HttpMethod.Get, "/apps", null, "apps"));
+                    break;
+                case "health":
+                    Emit(id, await Call(HttpMethod.Get, "/health", null, "health"));
+                    break;
+                case "unload":
+                    Emit(id, await Unload());
+                    break;
+                default:
+                    Emit(id, new { type = "error", message = $"Unknown bridge op '{op}'." });
+                    break;
+            }
+        }
+        catch (HttpRequestException) { Emit(id, new { type = "error", message = "Nexus Core is not reachable." }); }
+        catch (TaskCanceledException) { Emit(id, new { type = "error", message = "Nexus Core did not answer in time." }); }
+    }
+    return 0;
+}
+
+// Frees the local model's memory and reports how much GPU memory came back,
+// measured by Core's telemetry. vramFreedBytes is null when the GPU cannot be
+// read or nothing measurable was freed; it is never estimated.
+async Task<object> Unload()
+{
+    var before = await FreeVram();
+    using (var response = await http.PostAsync("/inference/unload", null))
+    {
+        if (!response.IsSuccessStatusCode)
+            return new { type = "error", message = ErrorMessage(await response.Content.ReadAsStringAsync(), response) };
+    }
+    long? freed = null;
+    // The backend can take a moment to hand memory back to the driver.
+    for (var attempt = 0; before is not null && attempt < 4; attempt++)
+    {
+        if (attempt > 0) await Task.Delay(500);
+        if (await FreeVram() is { } after && after > before) { freed = after - before; break; }
+    }
+    return new { type = "unloaded", data = new { vramFreedBytes = freed } };
+}
+
+async Task<long?> FreeVram()
+{
+    try
+    {
+        var telemetry = await http.GetFromJsonAsync<JsonElement>("/inference/telemetry");
+        return telemetry.TryGetProperty("vramFreeBytes", out var free) && free.ValueKind == JsonValueKind.Number
+            ? free.GetInt64() : null;
+    }
+    catch (Exception ex) when (ex is HttpRequestException or JsonException) { return null; }
+}
+
+async Task<object> Call(HttpMethod method, string path, object? body, string type)
+{
+    using var request = new HttpRequestMessage(method, path);
+    if (body is not null) request.Content = JsonContent.Create(body);
+    using var response = await http.SendAsync(request);
+    var raw = await response.Content.ReadAsStringAsync();
+    if (!response.IsSuccessStatusCode) return new { type = "error", message = ErrorMessage(raw, response) };
+    using var doc = JsonDocument.Parse(raw);
+    return new { type, data = doc.RootElement.Clone() };
+}
+
+static int RunTrial(string[] trialArgs)
+{
+    var start = new System.Diagnostics.ProcessStartInfo("nexus-try") { UseShellExecute = false };
+    foreach (var arg in trialArgs) start.ArgumentList.Add(arg);
+    try
+    {
+        using var trial = System.Diagnostics.Process.Start(start)!;
+        trial.WaitForExit();
+        return trial.ExitCode;
+    }
+    catch (System.ComponentModel.Win32Exception)
+    {
+        Console.Error.WriteLine("nexus: nexus-try is not installed (services.nexus-desktop.tryApps.enable).");
+        return 1;
+    }
+}
 static void Usage()
 {
-    Console.WriteLine("nexus [health [report]|fixit <problem>|fixit apply <fix id> <token>|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge|journal [--today] [--kind K]|journal forget-today]");
+    Console.WriteLine("nexus [health [report]|fixit <problem>|fixit apply <fix id> <token>|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge|journal [--today] [--kind K]|journal forget-today|try <app> [-- args]|try keep <app>]");
+    Console.WriteLine(RulesCommand.Usage);
     Console.WriteLine("nexus search <query> | search status | search formats | search reindex | search erase");
     Console.WriteLine("nexus search sources [list | add <folder>... | rm <folder>]   (search -- <query> to search for a subcommand word)");
 }

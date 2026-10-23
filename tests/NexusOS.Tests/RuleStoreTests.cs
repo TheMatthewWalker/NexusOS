@@ -18,7 +18,7 @@ public static class RuleSamples
         new(new RuleTrigger(RuleTriggers.TimeDaily, Time: time, Days: days.Length == 0 ? null : days), [], [OpenSpotify]);
 }
 
-[Collection("SchemaMigrationFault")]
+[Collection("SqliteFaultInjection")]
 public sealed class RuleStoreTests
 {
     private static SqliteConnection Raw(TempState state)
@@ -58,9 +58,9 @@ public sealed class RuleStoreTests
     public void FailedMigrationLeavesNoTablesAndRetriesNextStart()
     {
         using var state = new TempState();
-        SchemaMigration.Fault = marker => marker == RuleStore.MigrationMarker;
+        SqliteStateDatabase.MigrationFault = marker => marker == RuleStore.MigrationMarker;
         try { Assert.Throws<IOException>(() => new SqliteStateDatabase(state.Paths())); }
-        finally { SchemaMigration.Fault = null; }
+        finally { SqliteStateDatabase.MigrationFault = null; }
         using (var db = Raw(state))
         {
             Assert.Equal(0, Count(db, "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('rules','rule_runs')"));
@@ -178,6 +178,3 @@ public sealed class RuleStoreTests
         await Assert.ThrowsAsync<RuleLimitException>(() => store.AddAsync(RuleSamples.Headphones(), "r", "", true, default));
     }
 }
-
-[CollectionDefinition("SchemaMigrationFault", DisableParallelization = true)]
-public sealed class SchemaMigrationFaultCollection;

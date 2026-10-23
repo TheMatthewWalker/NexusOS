@@ -65,6 +65,35 @@
       "planId": "192a53baed34a9ceabb2359b",
       "candidateId": "445f03d8999fc01356bb53ba",
       "risk": "elevated"
+    },
+    {
+      "changes": [
+        {
+          "package": "hello"
+        }
+      ],
+      "moduleText": "{ pkgs, ... }:\n{\n  environment.systemPackages = [ pkgs.hello ];\n}\n",
+      "planId": "6653ea9d14d99fa22daff40e",
+      "candidateId": "56881cf60e8f6258b3631149",
+      "risk": "review"
+    },
+    {
+      "changes": [
+        {
+          "package": "python3Packages.requests"
+        },
+        {
+          "option": "services.openssh.enable",
+          "enabled": true
+        },
+        {
+          "package": "gnome-calculator"
+        }
+      ],
+      "moduleText": "{ pkgs, ... }:\n{\n  environment.systemPackages = [ pkgs.gnome-calculator pkgs.python3Packages.requests ];\n  services.openssh.enable = true;\n}\n",
+      "planId": "52cf58be9c97bfb4b611e01d",
+      "candidateId": "2857975119e3985b7679cfb0",
+      "risk": "elevated"
     }
   ],
   "rejected": [
@@ -103,6 +132,96 @@
         "extra": 1
       }
     ],
-    []
+    [],
+    [
+      {
+        "package": "nixpkgs#hello"
+      }
+    ],
+    [
+      {
+        "package": "github:evil/flake#x"
+      }
+    ],
+    [
+      {
+        "package": "/nix/store/11111111111111111111111111111111-hello"
+      }
+    ],
+    [
+      {
+        "package": "../hello"
+      }
+    ],
+    [
+      {
+        "package": "hello; rm -rf /"
+      }
+    ],
+    [
+      {
+        "package": "hello\n"
+      }
+    ],
+    [
+      {
+        "package": "\"hello\""
+      }
+    ],
+    [
+      {
+        "package": "hello.${x}"
+      }
+    ],
+    [
+      {
+        "package": "let"
+      }
+    ],
+    [
+      {
+        "package": "pkgs.or"
+      }
+    ],
+    [
+      {
+        "package": "a.b.c.d.e"
+      }
+    ],
+    [
+      {
+        "package": "0ad"
+      }
+    ],
+    [
+      {
+        "package": ""
+      }
+    ],
+    [
+      {
+        "package": "hello"
+      },
+      {
+        "package": "hello"
+      }
+    ],
+    [
+      {
+        "package": "hello",
+        "enabled": true
+      }
+    ],
+    [
+      {
+        "package": "hello",
+        "option": "services.printing.enable"
+      }
+    ],
+    [
+      {
+        "package": 1
+      }
+    ]
   ]
 }

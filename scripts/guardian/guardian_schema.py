@@ -32,12 +32,36 @@ def load_schema(path=SCHEMA_PATH):
 SCHEMA = load_schema()
 
 
-def normalise(changes, schema=SCHEMA):
-    """Validate a change list and return {option: bool} with strict typing."""
+def package_attr(attr, schema=SCHEMA):
+    """A nixpkgs attribute path such as "hello" or "python3Packages.requests", or ValueError.
+
+    Only plain identifiers are accepted: no flake references, store paths,
+    quoting or Nix syntax, so the rendered module can only select from pkgs.
+    """
+    spec = schema.get("packages")
+    if spec is None or not isinstance(attr, str) or re.fullmatch(spec["attrPattern"], attr, re.ASCII) is None:
+        raise ValueError("Package must be a plain nixpkgs attribute name")
+    if any(segment in spec["reservedWords"] for segment in attr.split(".")):
+        raise ValueError("Package must be a plain nixpkgs attribute name")
+    return attr
+
+
+def split(changes, schema=SCHEMA):
+    """Validate a change list; return ({option: bool}, sorted packages) with strict typing.
+
+    A change is either {"option": <allowlisted option>, "enabled": <bool>}
+    or {"package": <nixpkgs attribute>}.
+    """
     if not isinstance(changes, list) or not 1 <= len(changes) <= schema["maxChanges"]:
         raise ValueError(f"Expected 1 to {schema['maxChanges']} changes")
-    values = {}
+    values, packages = {}, set()
     for change in changes:
+        if isinstance(change, dict) and set(change) == {"package"}:
+            attr = package_attr(change["package"], schema)
+            if attr in packages:
+                raise ValueError("Duplicate package")
+            packages.add(attr)
+            continue
         if not isinstance(change, dict) or set(change) != {"option", "enabled"}:
             raise ValueError("Invalid change shape")
         key, enabled = change["option"], change["enabled"]
@@ -47,13 +71,22 @@ def normalise(changes, schema=SCHEMA):
         if spec["type"] != "bool" or type(enabled) is not bool:
             raise ValueError("Option value has the wrong type")
         values[key] = enabled
-    return values
+    return values, sorted(packages)
+
+
+def normalise(changes, schema=SCHEMA):
+    """Validate a change list and return {option: bool} with strict typing."""
+    return split(changes, schema)[0]
 
 
 def render(changes, schema=SCHEMA):
-    values = normalise(changes, schema)
+    values, packages = split(changes, schema)
     lines = [f"  {key} = {'true' if value else 'false'};" for key, value in sorted(values.items())]
-    return "{\n" + "\n".join(lines) + "\n}\n"
+    if not packages:
+        return "{\n" + "\n".join(lines) + "\n}\n"
+    # Packages come from the host configuration's own pinned nixpkgs.
+    lines.insert(0, "  environment.systemPackages = [ " + " ".join("pkgs." + p for p in packages) + " ];")
+    return "{ pkgs, ... }:\n{\n" + "\n".join(lines) + "\n}\n"
 
 
 def risk(changes, schema=SCHEMA):

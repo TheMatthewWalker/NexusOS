@@ -11,6 +11,9 @@ let
   } // cfg.extraEnvironment;
 in
 {
+  # `nexus try` needs nexus-try; services.nexus-desktop.tryApps.enable turns it off.
+  imports = [ ./try-apps.nix ];
+
   options.services.nexus-core = {
     enable = lib.mkEnableOption "Nexus Core for every user session";
     package = lib.mkOption {

@@ -10,6 +10,11 @@
     "hash": "sha256-YBjY88KAC4ShfcGXcNHL6y1A9NH2xvk4d/qTMfuLuoE="
   },
   {
+    "pname": "PdfPig",
+    "version": "0.1.16",
+    "hash": "sha256-1nFxhG6owo9QNZE3Bl/sRRQmbXoysj6ubF8uvtj/z8Q="
+  },
+  {
     "pname": "SQLitePCLRaw.bundle_e_sqlite3",
     "version": "2.1.6",
     "hash": "sha256-dZD/bZsYXjOu46ZH5Y/wgh0uhHOqIxC+S+0ecKhr718="

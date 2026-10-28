@@ -64,8 +64,9 @@ in
       exec-once = kitty --title "Install NexusOS" ${welcome}/bin/nexus-install-welcome
     '';
   };
-  # The desktop uses NetworkManager; the minimal image's wpa_supplicant would clash.
-  networking.wireless.enable = lib.mkForce false;
+  # Wi-Fi: NetworkManager runs wpa_supplicant under its own control
+  # (networking.wireless.enable with dbusControlled). Turning
+  # networking.wireless off here once left the live system with no Wi-Fi at all.
   # NexusOS installs to ext4; leave ZFS out of the image.
   boot.supportedFilesystems.zfs = lib.mkForce false;
   hardware.enableRedistributableFirmware = true;

@@ -32,5 +32,7 @@ jobs:
         run: nix build .#nexus-install --no-update-lock-file --print-build-logs
       - name: The image evaluates
         run: nix eval --no-update-lock-file .#packages.x86_64-linux.iso.drvPath
+      - name: The image can join Wi-Fi (NetworkManager has wpa_supplicant)
+        run: test "$(nix eval --no-update-lock-file .#nixosConfigurations.installer.config.networking.wireless.enable)" = true
       - name: Install to a blank UEFI disk, then boot it (VM)
         run: nix build .#checks.x86_64-linux.nexus-installer --no-update-lock-file --print-build-logs

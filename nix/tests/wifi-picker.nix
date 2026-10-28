@@ -9,7 +9,7 @@ let
 in
 pkgs.testers.runNixOSTest {
   name = "wifi-picker";
-  nodes.machine = { pkgs, ... }: {
+  nodes.machine = { pkgs, lib, ... }: {
     imports = [ desktopModule ];
     system.stateVersion = "26.05";
     virtualisation.memorySize = 4096;
@@ -31,6 +31,9 @@ pkgs.testers.runNixOSTest {
 
     # Two simulated radios: wlan0 hosts the access points, wlan1 is the laptop's.
     boot.kernelModules = [ "mac80211_hwsim" ];
+    # NixOS test VMs turn wpa_supplicant off (qemu-vm.nix, mkVMOverride); this
+    # test has Wi-Fi, so give NetworkManager its supplicant back.
+    networking.wireless.enable = lib.mkOverride 9 true;
     networking.networkmanager.unmanaged = [ "interface-name:wlan0*" ];
     services.hostapd = {
       enable = true;

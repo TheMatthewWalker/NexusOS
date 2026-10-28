@@ -234,11 +234,13 @@ fi
 # --- Install ----------------------------------------------------------------
 say "Installing NexusOS (this takes a while)"
 # Everything the install needs is on the image. Online, the NixOS cache can
-# still save some building; offline, do not wait on it.
+# still save some building; offline, give up on it quickly. (Do not empty
+# the substituters: nixos-install copies from this USB stick's store through
+# one, and an empty list would make it download nixpkgs from GitHub.)
 offline=()
 if ! curl -sfI --max-time 8 https://cache.nixos.org/nix-cache-info > /dev/null 2>&1; then
   echo "No internet connection: installing from the USB stick only."
-  offline=(--option substituters "")
+  offline=(--option connect-timeout 3)
 fi
 # Lock first: locking inside nixos-install would change the flake mid-build.
 nix --extra-experimental-features "nix-command flakes" flake lock "path:/mnt/etc/nixos" "${offline[@]}"

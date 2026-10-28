@@ -22,9 +22,12 @@ pkgs.testers.runNixOSTest {
       reducedMotion = true;
       blur = false;
       coreDetail = 16;
+      # No key repeat: under software emulation a key can stay "down" long
+      # enough to repeat, which would garble typed passwords.
       extraHyprlandConfig = ''
         input {
           accel_profile = flat
+          repeat_rate = 0
         }
       '';
     };

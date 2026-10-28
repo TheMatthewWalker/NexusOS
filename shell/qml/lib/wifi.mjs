@@ -85,6 +85,10 @@ export function failMessage(reason) {
   }
 }
 
+export function forgotten(name) {
+  return name + " forgotten: its saved password is deleted. Click it to join again.";
+}
+
 export function stateLabel(n) {
   if (n.connected) return "Connected";
   if (n.state === "Connecting") return "Connecting…";

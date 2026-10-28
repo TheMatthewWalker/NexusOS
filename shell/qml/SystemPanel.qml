@@ -433,7 +433,10 @@ PanelWindow {
                                 visible: netRow.modelData.connected && win.selectedNetwork === netRow.modelData.name
                                 spacing: 8; leftPadding: 10
                                 TextButton { theme: win.theme; label: "Disconnect"; onClicked: { win.selectedNetwork = ""; netRow.modelData.network.disconnect() } }
-                                TextButton { id: forgetButton; theme: win.theme; label: "Forget"; onClicked: { win.selectedNetwork = ""; netRow.modelData.network.forget() } }
+                                TextButton { id: forgetButton; theme: win.theme; label: "Forget"
+                                             onClicked: { win.selectedNetwork = ""; win.wifiError = "";
+                                                          win.wifiNote = W.forgotten(netRow.modelData.name);
+                                                          netRow.modelData.network.forget() } }
                             }
                         }
                     }

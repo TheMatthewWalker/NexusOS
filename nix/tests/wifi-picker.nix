@@ -212,10 +212,25 @@ pkgs.testers.runNixOSTest {
         time.sleep(3)
         machine.screenshot("04-details")
         machine.succeed("nmcli -t -f NAME connection show | grep -qx NexusHome")
-        r = until(lambda s: (row(s, "NexusHome") or {}).get("forget"), "no Forget button")
-        r = row(r, "NexusHome")
-        click(*r["forget"])
-        machine.wait_until_succeeds("! nmcli -t -f NAME connection show | grep -q '^NexusHome$'", timeout=120)
+        # Software rendering can drop a click that lands mid-frame: retry until
+        # the panel confirms it.
+        for _ in range(4):
+            state = panel()
+            if "forgotten" in state["note"]:
+                break
+            r = row(state, "NexusHome")
+            if not r["forget"]:
+                click(r["x"], r["y"])
+                state = until(lambda s: (row(s, "NexusHome") or {}).get("forget"), "no Forget button", timeout=60)
+                r = row(state, "NexusHome")
+            click(*r["forget"])
+            time.sleep(5)
+        until(lambda s: "NexusHome forgotten" in s["note"], "the panel never confirmed Forget", timeout=60)
+        try:
+            machine.wait_until_succeeds("! nmcli -t -f NAME connection show | grep -q '^NexusHome$'", timeout=120)
+        except Exception:
+            diagnostics()
+            raise
 
     with subtest("a wrong password says so and asks again"):
         r = row(panel(), "NexusHome")

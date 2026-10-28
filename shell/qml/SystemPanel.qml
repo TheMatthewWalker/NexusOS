@@ -118,7 +118,8 @@ PanelWindow {
                     const p = it.mapToItem(null, it.width / 2, it.height / 2);
                     return [Math.round(win.screenRight - win.width + p.x), Math.round(win.margins.top + p.y)];
                 };
-                const row = win.wifiRows[i];
+                const row = item.row;
+                if (!row.name) continue;
                 const [x, y] = at(item.rowItem);
                 rows.push({ name: row.name, connected: row.connected, known: row.known, state: row.state, security: row.security,
                             x: x, y: y, forget: item.forgetItem.visible ? at(item.forgetItem) : null });
@@ -398,45 +399,50 @@ PanelWindow {
                     }
                     Repeater {
                         id: netRepeater
-                        model: win.wifiRows
+                        // ScriptModel keeps existing rows as the list changes (signal
+                        // strength, order) instead of rebuilding them all; it needs unique
+                        // values, so the model holds the network objects themselves.
+                        model: ScriptModel { values: win.wifiRows.map(r => r.network) }
                         delegate: Column {
                             id: netRow
                             required property var modelData
+                            readonly property var row: win.wifiRows.find(r => r.network === modelData)
+                                || ({ name: "", signal: NaN, security: "unsupported", connected: false, known: false, state: "" })
                             width: parent.width; spacing: 4
                             readonly property Item rowItem: rowRect
                             readonly property Item forgetItem: forgetButton
                             Rectangle {
                                 id: rowRect
                                 width: parent.width; height: 34; radius: 9
-                                color: netHover.hovered || netRow.modelData.connected ? Qt.rgba(0.49, 0.42, 1.0, 0.18) : "transparent"
-                                border.color: netRow.modelData.connected ? win.theme.focus : "transparent"
+                                color: netHover.hovered || netRow.row.connected ? Qt.rgba(0.49, 0.42, 1.0, 0.18) : "transparent"
+                                border.color: netRow.row.connected ? win.theme.focus : "transparent"
                                 Text {
                                     x: 10; anchors.verticalCenter: parent.verticalCenter
                                     width: parent.width - status.width - 30; elide: Text.ElideRight
-                                    text: netRow.modelData.name; textFormat: Text.PlainText
+                                    text: netRow.row.name; textFormat: Text.PlainText
                                     color: win.theme.ink; font.pixelSize: 13
                                 }
                                 Text {
                                     id: status
                                     anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                                    text: [W.stateLabel(netRow.modelData), W.signalLabel(netRow.modelData.signal),
-                                           netRow.modelData.security === "open" ? "Open" : "Secured"].filter(x => x).join(" · ")
+                                    text: [W.stateLabel(netRow.row), W.signalLabel(netRow.row.signal),
+                                           netRow.row.security === "open" ? "Open" : "Secured"].filter(x => x).join(" · ")
                                     color: win.theme.inkSecondary; font.pixelSize: 12
                                 }
                                 HoverHandler { id: netHover }
-                                TapHandler { onTapped: win.wifiClick(netRow.modelData) }
+                                TapHandler { enabled: netRow.row.name !== ""; onTapped: win.wifiClick(netRow.row) }
                                 Accessible.role: Accessible.Button
-                                Accessible.name: netRow.modelData.name + ", " + status.text
-                                Accessible.onPressAction: win.wifiClick(netRow.modelData)
+                                Accessible.name: netRow.row.name + ", " + status.text
+                                Accessible.onPressAction: win.wifiClick(netRow.row)
                             }
                             Row {
-                                visible: netRow.modelData.connected && win.selectedNetwork === netRow.modelData.name
+                                visible: netRow.row.connected && win.selectedNetwork === netRow.row.name
                                 spacing: 8; leftPadding: 10
-                                TextButton { theme: win.theme; label: "Disconnect"; onClicked: { win.selectedNetwork = ""; netRow.modelData.network.disconnect() } }
+                                TextButton { theme: win.theme; label: "Disconnect"; onClicked: { win.selectedNetwork = ""; netRow.row.network.disconnect() } }
                                 TextButton { id: forgetButton; theme: win.theme; label: "Forget"
                                              onClicked: { win.selectedNetwork = ""; win.wifiError = "";
-                                                          win.wifiNote = W.forgotten(netRow.modelData.name);
-                                                          netRow.modelData.network.forget() } }
+                                                          win.wifiNote = W.forgotten(netRow.row.name);
+                                                          netRow.row.network.forget() } }
                             }
                         }
                     }

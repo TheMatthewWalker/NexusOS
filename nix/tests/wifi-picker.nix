@@ -127,6 +127,24 @@ pkgs.testers.runNixOSTest {
         print(machine.execute("nmcli -f all device wifi list ifname wlan1; nmcli device; nmcli connection")[1])
         print(machine.execute("journalctl -b --no-pager -u NetworkManager | tail -40")[1])
 
+    def laid_out(s):
+        """Every row has its own place on screen (none mid-layout)."""
+        return len({r["y"] for r in s["rows"]}) == len(s["rows"])
+
+    def click_row(name, done, what, tries=4):
+        """Click a network's row; retry if software rendering dropped the click."""
+        for _ in range(tries):
+            s = until(lambda s: row(s, name) and laid_out(s), f"{name} is not on screen", timeout=120)
+            r = row(s, name)
+            click(r["x"], r["y"])
+            deadline = time.time() + 20
+            while time.time() < deadline:
+                if done(panel()):
+                    return
+                time.sleep(2)
+        diagnostics()
+        raise AssertionError(what + ": " + json.dumps(panel()))
+
     def until(check, what, timeout=300, every=3, poke=None):
         deadline = time.time() + timeout
         last = None
@@ -170,9 +188,7 @@ pkgs.testers.runNixOSTest {
         machine.screenshot("01-networks")
 
     with subtest("a secured network asks for its password; a short one is refused before sending"):
-        r = row(panel(), "NexusHome")
-        click(r["x"], r["y"])
-        until(lambda s: s["passwordFor"] == "NexusHome", "no password box")
+        click_row("NexusHome", lambda s: s["passwordFor"] == "NexusHome", "no password box")
         type_text("short")
         key(28)                                    # Enter
         until(lambda s: "at least 8" in s["error"], "the short password was not refused")
@@ -194,15 +210,15 @@ pkgs.testers.runNixOSTest {
         machine.fail("grep -rqsF " + repr(PASSWORD) + " /home/alice /run/user/1000")
 
     with subtest("an open network connects with one click"):
-        r = row(panel(), "NexusCafe")
-        click(r["x"], r["y"])
+        click_row("NexusCafe", lambda s: (row(s, "NexusCafe") or {}).get("state") in ("Connecting", "Connected"),
+                  "clicking NexusCafe did nothing")
         until(lambda s: (row(s, "NexusCafe") or {}).get("connected"), "NexusCafe did not connect", timeout=180)
         assert active_ssid() == "NexusCafe", active_ssid()
 
     with subtest("a saved network reconnects without asking again"):
-        r = row(panel(), "NexusHome")
-        assert r["known"], r
-        click(r["x"], r["y"])
+        assert row(panel(), "NexusHome")["known"], panel()
+        click_row("NexusHome", lambda s: (row(s, "NexusHome") or {}).get("state") in ("Connecting", "Connected"),
+                  "clicking NexusHome did nothing")
         until(lambda s: (row(s, "NexusHome") or {}).get("connected"), "NexusHome did not reconnect", timeout=180)
         assert panel()["passwordFor"] == "", "asked for a saved password again"
 
@@ -218,12 +234,10 @@ pkgs.testers.runNixOSTest {
             state = panel()
             if "forgotten" in state["note"]:
                 break
-            r = row(state, "NexusHome")
-            if not r["forget"]:
-                click(r["x"], r["y"])
-                state = until(lambda s: (row(s, "NexusHome") or {}).get("forget"), "no Forget button", timeout=60)
-                r = row(state, "NexusHome")
-            click(*r["forget"])
+            if not (row(state, "NexusHome") or {}).get("forget"):
+                click_row("NexusHome", lambda s: (row(s, "NexusHome") or {}).get("forget"), "no Forget button")
+                state = panel()
+            click(*row(state, "NexusHome")["forget"])
             time.sleep(5)
         until(lambda s: "NexusHome forgotten" in s["note"], "the panel never confirmed Forget", timeout=60)
         try:
@@ -233,9 +247,7 @@ pkgs.testers.runNixOSTest {
             raise
 
     with subtest("a wrong password says so and asks again"):
-        r = row(panel(), "NexusHome")
-        click(r["x"], r["y"])
-        until(lambda s: s["passwordFor"] == "NexusHome", "no password box after forgetting")
+        click_row("NexusHome", lambda s: s["passwordFor"] == "NexusHome", "no password box after forgetting")
         type_text("not the password")
         key(28)
         until(lambda s: "password" in s["error"].lower() and s["passwordFor"] == "NexusHome",

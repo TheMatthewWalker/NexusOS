@@ -164,6 +164,14 @@ pkgs.testers.runNixOSTest {
     def row(state, name):
         return next((r for r in state["rows"] if r["name"] == name), None)
 
+    def screenshot(name, still):
+        """Software rendering draws a second or two behind: wait, take the
+        picture, then check the state it should show still holds."""
+        time.sleep(6)
+        machine.screenshot(name)
+        state = panel()
+        assert still(state), f"{name}: the state changed before the screenshot: {state}"
+
     def open_panel():
         move(*MARK)
         until(lambda s: s["expanded"], "the panel did not open on hover", timeout=120, poke=lambda: move(*MARK))
@@ -185,7 +193,7 @@ pkgs.testers.runNixOSTest {
                       "the networks never appeared", poke=lambda: move(*MARK))
         assert row(state, "NexusHome")["security"] == "password", state
         assert row(state, "NexusCafe")["security"] == "open", state
-        machine.screenshot("01-networks")
+        screenshot("01-networks", lambda s: row(s, "NexusHome") and row(s, "NexusCafe"))
 
     with subtest("a secured network asks for its password; a short one is refused before sending"):
         click_row("NexusHome", lambda s: s["passwordFor"] == "NexusHome", "no password box")
@@ -193,7 +201,7 @@ pkgs.testers.runNixOSTest {
         key(28)                                    # Enter
         until(lambda s: "at least 8" in s["error"], "the short password was not refused")
         assert active_ssid() == "", "connected with a short password"
-        machine.screenshot("02-short-password")
+        screenshot("02-short-password", lambda s: "at least 8" in s["error"])
 
     with subtest("the right password connects through NetworkManager"):
         key(29, 30)                                # Ctrl+A: select what is there, then replace it
@@ -202,7 +210,7 @@ pkgs.testers.runNixOSTest {
         until(lambda s: (row(s, "NexusHome") or {}).get("connected"), "NexusHome did not connect", timeout=180)
         assert active_ssid() == "NexusHome", active_ssid()
         machine.succeed("ip -4 addr show wlan1 | grep -q 'inet 192.168.60.'")
-        machine.screenshot("03-connected")
+        screenshot("03-connected", lambda s: (row(s, "NexusHome") or {}).get("connected"))
 
     with subtest("the password is kept by NetworkManager, not logged or kept by the shell"):
         machine.succeed("grep -rqs " + repr("psk=" + PASSWORD) + " /etc/NetworkManager/system-connections/")
@@ -225,8 +233,7 @@ pkgs.testers.runNixOSTest {
     with subtest("Forget removes the saved password"):
         r = row(panel(), "NexusHome")
         click(r["x"], r["y"])                      # a connected network shows Disconnect and Forget
-        time.sleep(3)
-        machine.screenshot("04-details")
+        screenshot("04-details", lambda s: (row(s, "NexusHome") or {}).get("forget"))
         machine.succeed("nmcli -t -f NAME connection show | grep -qx NexusHome")
         # Software rendering can drop a click that lands mid-frame: retry until
         # the panel confirms it.
@@ -253,6 +260,6 @@ pkgs.testers.runNixOSTest {
         until(lambda s: "password" in s["error"].lower() and s["passwordFor"] == "NexusHome",
               "a wrong password was not reported", timeout=240)
         assert active_ssid() != "NexusHome", "connected with a wrong password"
-        machine.screenshot("05-wrong-password")
+        screenshot("05-wrong-password", lambda s: s["passwordFor"] == "NexusHome" and "password" in s["error"].lower())
   '';
 }

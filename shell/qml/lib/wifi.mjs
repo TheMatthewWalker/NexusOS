@@ -85,6 +85,14 @@ export function failMessage(reason) {
   }
 }
 
+// The security word on a row. A saved network can report an unknown type, so
+// only say "Secured" when the network is known to need credentials.
+export function securityLabel(kind) {
+  if (kind === "open") return "Open";
+  if (kind === "password" || kind === "enterprise") return "Secured";
+  return "";
+}
+
 export function forgotten(name) {
   return name + " forgotten: its saved password is deleted. Click it to join again.";
 }

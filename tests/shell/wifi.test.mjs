@@ -1,7 +1,7 @@
 // Copied next to the built wifi.mjs by tests/shell/test_shell_build.py.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { securityKind, signalLabel, rows, clickAction, explanation, passwordProblem, failMessage, stateLabel, forgotten } from "./wifi.mjs";
+import { securityKind, signalLabel, rows, clickAction, explanation, passwordProblem, failMessage, stateLabel, forgotten, securityLabel } from "./wifi.mjs";
 
 const net = (name, extra = {}) => ({ name, signal: 0.5, security: "password", connected: false, known: false, state: "Disconnected", ...extra });
 
@@ -70,4 +70,8 @@ test("failures and states read as plain sentences", () => {
   assert.equal(stateLabel(net("Home", { known: true })), "Saved");
   assert.equal(stateLabel(net("Home")), "");
   assert.match(forgotten("Home"), /^Home forgotten/);
+  assert.equal(securityLabel("open"), "Open");
+  assert.equal(securityLabel("password"), "Secured");
+  assert.equal(securityLabel("enterprise"), "Secured");
+  assert.equal(securityLabel("unsupported"), "");    // e.g. a saved open network reporting Unknown
 });

@@ -426,7 +426,7 @@ PanelWindow {
                                     id: status
                                     anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
                                     text: [W.stateLabel(netRow.row), W.signalLabel(netRow.row.signal),
-                                           netRow.row.security === "open" ? "Open" : "Secured"].filter(x => x).join(" · ")
+                                           W.securityLabel(netRow.row.security)].filter(x => x).join(" · ")
                                     color: win.theme.inkSecondary; font.pixelSize: 12
                                 }
                                 HoverHandler { id: netHover }

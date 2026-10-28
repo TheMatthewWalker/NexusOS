@@ -31,6 +31,9 @@ let
 in
 pkgs.testers.runNixOSTest {
   name = "nexus-installer";
+  # Installing builds the hardware-specific parts with no network, which takes
+  # under an hour with KVM but longer under software emulation.
+  globalTimeout = 4 * 3600;
   # installation-device.nix adds a nixpkgs overlay.
   node.pkgsReadOnly = false;
   nodes.installer = { modulesPath, lib, pkgs, ... }: {

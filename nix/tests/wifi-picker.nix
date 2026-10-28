@@ -69,6 +69,17 @@ pkgs.testers.runNixOSTest {
         dhcp-range = [ "192.168.60.10,192.168.60.50,1h" "192.168.61.10,192.168.61.50,1h" ];
       };
     };
+    # The access points and the laptop's radio share this one machine, so let
+    # DHCP through the firewall, and accept replies that come from one of the
+    # machine's own addresses (the access point's), which Linux drops by default.
+    networking.firewall.trustedInterfaces = [ "wlan0" "wlan0-1" "wlan1" ];
+    networking.firewall.checkReversePath = false;
+    boot.kernel.sysctl = {
+      "net.ipv4.conf.all.accept_local" = 1;
+      "net.ipv4.conf.default.accept_local" = 1;
+      "net.ipv4.conf.all.rp_filter" = 0;
+      "net.ipv4.conf.default.rp_filter" = 0;
+    };
     systemd.services.dnsmasq.after = [ "hostapd.service" ];
     systemd.services.dnsmasq.wants = [ "hostapd.service" ];
 

@@ -13,6 +13,21 @@ let
     virtualisation.cores = 4;
     virtualisation.useEFIBoot = true;
   };
+  # A tiny stand-in for the model the image can carry (nix/packages/ollama-model.nix):
+  # a real Ollama layout and manifest, with small blobs.
+  blob = text: { digest = "sha256:" + builtins.hashString "sha256" text; size = builtins.stringLength text; file = pkgs.writeText "blob" text; };
+  modelConfig = blob (builtins.toJSON { model_format = "gguf"; model_family = "llama"; model_families = [ "llama" ]; model_type = "1M"; file_type = "Q4_K_M"; });
+  modelWeights = blob "not really a model";
+  testModel = (pkgs.callPackage ../packages/ollama-model.nix { }).build {
+    name = "nexus-test"; tag = "tiny";
+    manifest = builtins.toJSON {
+      schemaVersion = 2;
+      mediaType = "application/vnd.docker.distribution.manifest.v2+json";
+      config = { mediaType = "application/vnd.docker.container.image.v1+json"; inherit (modelConfig) digest size; };
+      layers = [ { mediaType = "application/vnd.ollama.image.model"; inherit (modelWeights) digest size; } ];
+    };
+    blobs = { ${modelConfig.digest} = modelConfig.file; ${modelWeights.digest} = modelWeights.file; };
+  };
 in
 pkgs.testers.runNixOSTest {
   name = "nexus-installer";
@@ -31,6 +46,7 @@ pkgs.testers.runNixOSTest {
     hardware.enableAllFirmware = lib.mkForce false;
 
     environment.etc."nexusos".source = nexusSource;
+    environment.etc."nexusos-model".source = testModel;
     environment.systemPackages = [ nexusInstall ];
     nix.settings = {
       experimental-features = [ "nix-command" "flakes" ];
@@ -38,17 +54,9 @@ pkgs.testers.runNixOSTest {
       hashed-mirrors = null;
       connect-timeout = 1;
     };
-    # What the parts built for this machine's hardware need, from nixpkgs'
-    # installer test, plus the installed system itself and nixpkgs' source.
-    system.extraDependencies = with pkgs; [
-      referenceSystem nixpkgsSource
-      stdenv bintools brotli brotli.dev brotli.lib desktop-file-utils docbook5 docbook_xsl_ns
-      kbd.dev kmod.dev libarchive.dev libxml2.bin libxslt.bin nixos-rebuild-ng ntp
-      perlPackages.ConfigIniFiles perlPackages.FileSlurp perlPackages.JSON perlPackages.ListCompare
-      perlPackages.XMLLibXML (python3.withPackages (p: [ p.mistune ])) shared-mime-info sudo
-      switch-to-configuration-ng texinfo unionfs-fuse lndir shellcheck-minimal systemdMinimal.out
-      curl zstd.bin mypy bootspec
-    ];
+    # The same store contents as the installer image (nix/installer/iso.nix):
+    # the installed system, nixpkgs' source and the offline build tools.
+    system.extraDependencies = [ referenceSystem nixpkgsSource ] ++ import ../installer/offline-deps.nix pkgs;
   };
 
   nodes.target = { lib, ... }: {
@@ -89,6 +97,7 @@ pkgs.testers.runNixOSTest {
             timeout=7200)
         installer.succeed("test -f /mnt/etc/nixos/flake.lock && test -f /mnt/etc/nixos/nexusos/flake.nix")
         installer.succeed("grep -q 'nexusos.user = \"alice\"' /mnt/etc/nixos/local.nix")
+        installer.succeed("test -f /mnt/var/lib/nexus-model-seed/manifests/registry.ollama.ai/library/nexus-test/tiny")
         installer.succeed("umount -R /mnt")
         installer.succeed("sync")
         installer.shutdown()
@@ -114,6 +123,16 @@ pkgs.testers.runNixOSTest {
         target.succeed("test -f /etc/nexus/hyprland.conf")
         # The login screen's greeter account is a system user: Core must not run for it.
         target.fail("journalctl -b --no-pager | grep -q 'nexus-core.*Unhandled exception'")
+
+    with subtest("the model from the image is handed to Ollama, with no download"):
+        target.wait_until_succeeds("journalctl -b -u nexus-model-pull | grep -q 'Moved the model from the installer'", timeout=600)
+        target.succeed("test ! -e /var/lib/nexus-model-seed")
+        manifest = "/var/lib/ollama/models/manifests/registry.ollama.ai/library/nexus-test/tiny"
+        target.succeed(f"test -f {manifest}")
+        # Owned by Ollama's (dynamic) user, so Ollama can add and remove models later.
+        assert target.succeed(f"stat -L -c %u {manifest}") == target.succeed("stat -L -c %u /var/lib/ollama"), "wrong owner"
+        assert target.succeed("stat -L -c %u /var/lib/ollama").strip() != "0", "Ollama's directory is owned by root"
+        target.wait_until_succeeds("OLLAMA_HOST=127.0.0.1:11434 ollama list | grep -q 'nexus-test:tiny'", timeout=300)
 
     with subtest("the machine can rebuild itself from /etc/nixos"):
         target.succeed("nix --extra-experimental-features 'nix-command flakes' eval --raw /etc/nixos#nixosConfigurations.nexus.config.networking.hostName | grep -qx nexus-test")

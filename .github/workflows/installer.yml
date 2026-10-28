@@ -11,6 +11,7 @@ on:
       - 'flake.nix'
       - 'flake.lock'
       - 'tests/installer/**'
+      - 'scripts/models/**'
       - '.github/workflows/installer.yml'
 permissions:
   contents: read

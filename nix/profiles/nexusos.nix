@@ -78,6 +78,18 @@ in
         RestartSec = 60;
       };
       script = ''
+        # A model copied from the installer image (nexus-install): move it into
+        # Ollama's models directory, owned by Ollama, before deciding to download.
+        seed=/var/lib/nexus-model-seed
+        if [ -d "$seed/manifests" ]; then
+          models=${lib.escapeShellArg config.services.ollama.models}
+          owner=$(stat -L -c %u:%g ${lib.escapeShellArg config.services.ollama.home})
+          mkdir -p "$models"
+          cp -r --no-preserve=ownership,mode "$seed/." "$models/"
+          chown -R "$owner" "$models"
+          rm -rf "$seed"
+          echo "Moved the model from the installer into $models"
+        fi
         model=${lib.escapeShellArg config.services.nexus-core.ollamaModel}
         if ${config.services.ollama.package}/bin/ollama show "$model" > /dev/null 2>&1; then
           echo "$model is already present"

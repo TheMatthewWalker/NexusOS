@@ -8,6 +8,7 @@ import Quickshell.Networking
 import Quickshell.Bluetooth
 import "lib/tokens.mjs" as T
 import "lib/describe.mjs" as D
+import "lib/wifi.mjs" as W
 
 // The top-right orbital system panel (design pack: orbital-control.css). It is a
 // small Nexus icon until hovered or clicked, then an orbit of system planets
@@ -17,6 +18,8 @@ import "lib/describe.mjs" as D
 // configuration goes through Guardian, never from here (binding rule 3).
 // Hovering a planet shows one plain sentence (feature 3), built by
 // lib/describe.mjs from the same readings; an unknown reading is left out.
+// With Wi-Fi on, the quick controls list nearby networks (lib/wifi.mjs);
+// connecting goes to NetworkManager, which keeps the password, never the shell.
 PanelWindow {
     id: win
     property var theme
@@ -32,6 +35,8 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "nexus-system-panel"
+    // While open, a click gives the panel the keyboard (for a Wi-Fi password).
+    WlrLayershell.keyboardFocus: expanded ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
     // ---- live state ----
     readonly property var sink: Pipewire.defaultAudioSink
@@ -52,6 +57,93 @@ PanelWindow {
         return "";
     }
     readonly property bool wired: netDevices.some(d => d.type === DeviceType.Wired && d.connected)
+
+    // ---- Wi-Fi networks ----
+    readonly property var wifiDevice: netDevices.find(d => d.type === DeviceType.Wifi) || null
+    readonly property bool wifiOn: hasWifi && Networking.wifiEnabled
+    // Scan only while the panel is open, so a closed panel costs no radio time.
+    Binding { when: win.wifiDevice !== null; target: win.wifiDevice; property: "scannerEnabled"; value: win.expanded && win.wifiOn }
+    readonly property var securityNames: ({
+        [WifiSecurityType.Open]: "Open", [WifiSecurityType.Owe]: "Owe", [WifiSecurityType.WpaPsk]: "WpaPsk",
+        [WifiSecurityType.Wpa2Psk]: "Wpa2Psk", [WifiSecurityType.Sae]: "Sae", [WifiSecurityType.WpaEap]: "WpaEap",
+        [WifiSecurityType.Wpa2Eap]: "Wpa2Eap", [WifiSecurityType.Wpa3SuiteB192]: "Wpa3SuiteB192",
+        [WifiSecurityType.Leap]: "Leap", [WifiSecurityType.DynamicWep]: "DynamicWep", [WifiSecurityType.StaticWep]: "StaticWep"
+    })
+    readonly property var stateNames: ({ [ConnectionState.Connecting]: "Connecting", [ConnectionState.Connected]: "Connected",
+                                         [ConnectionState.Disconnecting]: "Disconnecting", [ConnectionState.Disconnected]: "Disconnected" })
+    readonly property var failNames: ({
+        [ConnectionFailReason.NoSecrets]: "NoSecrets", [ConnectionFailReason.WifiClientDisconnected]: "WifiClientDisconnected",
+        [ConnectionFailReason.WifiClientFailed]: "WifiClientFailed", [ConnectionFailReason.WifiAuthTimeout]: "WifiAuthTimeout",
+        [ConnectionFailReason.WifiNetworkLost]: "WifiNetworkLost"
+    })
+    readonly property var wifiRows: !wifiOn || !wifiDevice || !wifiDevice.networks ? [] : W.rows(wifiDevice.networks.values.map(n => ({
+        name: n.name, signal: n.signalStrength, securityName: securityNames[n.security] || "Unknown",
+        security: W.securityKind(securityNames[n.security]), connected: n.connected, known: n.known,
+        state: stateNames[n.state] || "Unknown", network: n })))
+    property string selectedNetwork: ""     // a connected network whose Disconnect and Forget are showing
+    property string passwordFor: ""         // the network whose password box is open
+    property string passwordSecurity: ""
+    property string wifiError: ""
+    property string wifiNote: ""
+    function wifiClick(row) {
+        wifiError = ""; wifiNote = "";
+        switch (W.clickAction(row)) {
+        case "details": selectedNetwork = selectedNetwork === row.name ? "" : row.name; break;
+        case "connect": passwordFor = ""; row.network.connect(); break;
+        case "password": passwordFor = row.name; passwordSecurity = row.securityName; break;
+        default: wifiNote = W.explanation(row);
+        }
+    }
+    function submitPassword(text) {
+        const problem = W.passwordProblem(text, passwordSecurity);
+        if (problem) { wifiError = problem; return false; }
+        const row = wifiRows.find(r => r.name === passwordFor);
+        if (row) row.network.connectWithPsk(text);
+        passwordFor = ""; wifiError = "";
+        return true;
+    }
+    // Read-only state for tests and scripts: `nexus-shell-ipc call systempanel wifi`.
+    // Each row's x and y are its centre on screen, so a test can click it with real input.
+    IpcHandler {
+        target: "systempanel"
+        function wifi(): string {
+            const rows = [];
+            for (let i = 0; i < netRepeater.count; i++) {
+                const item = netRepeater.itemAt(i);
+                if (!item) continue;
+                const at = it => {
+                    const p = it.mapToItem(null, it.width / 2, it.height / 2);
+                    return [Math.round(win.screenRight - win.width + p.x), Math.round(win.margins.top + p.y)];
+                };
+                const row = win.wifiRows[i];
+                const [x, y] = at(item.rowItem);
+                rows.push({ name: row.name, connected: row.connected, known: row.known, state: row.state, security: row.security,
+                            x: x, y: y, forget: item.forgetItem.visible ? at(item.forgetItem) : null });
+            }
+            return JSON.stringify({ expanded: win.expanded, wifiOn: win.wifiOn, passwordFor: win.passwordFor,
+                                    error: win.wifiError, note: win.wifiNote, rows: rows });
+        }
+    }
+    readonly property real screenRight: (win.screen ? win.screen.width : 0) - win.margins.right
+    // Failures are watched on Quickshell's own network list, whose objects
+    // outlive the rebuilt rows above.
+    Instantiator {
+        model: win.wifiDevice ? win.wifiDevice.networks : null
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onConnectionFailed(reason) {
+                win.wifiFailed({ name: modelData.name, securityName: win.securityNames[modelData.security] || "Unknown",
+                                 security: W.securityKind(win.securityNames[modelData.security]) }, reason)
+            }
+        }
+    }
+    function wifiFailed(row, reason) {
+        const name = failNames[reason] || "Unknown";
+        // A saved network whose password changed, or a first try that was wrong: ask (again).
+        if (row.security === "password" && name !== "WifiNetworkLost") { passwordFor = row.name; passwordSecurity = row.securityName; }
+        wifiError = row.name + ": " + W.failMessage(name);
+    }
     readonly property string connectivity: Networking.canCheckConnectivity && Networking.connectivityCheckEnabled
         ? ({ [NetworkConnectivity.Full]: "full", [NetworkConnectivity.Limited]: "limited",
              [NetworkConnectivity.Portal]: "portal", [NetworkConnectivity.None]: "none" })[Networking.connectivity] || "unknown"
@@ -133,7 +225,8 @@ PanelWindow {
     }
 
     onExpandedChanged: if (!expanded) focusId = ""
-    Timer { id: leave; interval: win.oc.leaveDelay; onTriggered: win.expanded = false }
+    // Stay open while a password is being typed, even if the pointer wanders off.
+    Timer { id: leave; interval: win.oc.leaveDelay; onTriggered: if (win.passwordFor === "") win.expanded = false }
     HoverHandler {
         onHoveredChanged: hovered ? (leave.stop(), win.expanded = true) : leave.restart()
     }
@@ -288,6 +381,102 @@ PanelWindow {
                             Accessible.checked: modelData.on
                             Accessible.name: modelData.label
                         }
+                    }
+                }
+                // Wi-Fi networks: click one to connect; a secured one asks for its password first.
+                Column {
+                    visible: win.wifiOn
+                    width: parent.width; spacing: 4
+                    Text { text: "Wi-Fi networks"; color: win.theme.ink; font.pixelSize: 13; font.weight: 600 }
+                    Text {
+                        visible: win.wifiRows.length === 0
+                        text: "Looking for networks…"
+                        color: win.theme.inkSecondary; font.pixelSize: 13
+                    }
+                    Repeater {
+                        id: netRepeater
+                        model: win.wifiRows
+                        delegate: Column {
+                            id: netRow
+                            required property var modelData
+                            width: parent.width; spacing: 4
+                            readonly property Item rowItem: rowRect
+                            readonly property Item forgetItem: forgetButton
+                            Rectangle {
+                                id: rowRect
+                                width: parent.width; height: 34; radius: 9
+                                color: netHover.hovered || netRow.modelData.connected ? Qt.rgba(0.49, 0.42, 1.0, 0.18) : "transparent"
+                                border.color: netRow.modelData.connected ? win.theme.focus : "transparent"
+                                Text {
+                                    x: 10; anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width - status.width - 30; elide: Text.ElideRight
+                                    text: netRow.modelData.name; textFormat: Text.PlainText
+                                    color: win.theme.ink; font.pixelSize: 13
+                                }
+                                Text {
+                                    id: status
+                                    anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                                    text: [W.stateLabel(netRow.modelData), W.signalLabel(netRow.modelData.signal),
+                                           netRow.modelData.security === "open" ? "Open" : "Secured"].filter(x => x).join(" · ")
+                                    color: win.theme.inkSecondary; font.pixelSize: 12
+                                }
+                                HoverHandler { id: netHover }
+                                TapHandler { onTapped: win.wifiClick(netRow.modelData) }
+                                Accessible.role: Accessible.Button
+                                Accessible.name: netRow.modelData.name + ", " + status.text
+                                Accessible.onPressAction: win.wifiClick(netRow.modelData)
+                            }
+                            Row {
+                                visible: netRow.modelData.connected && win.selectedNetwork === netRow.modelData.name
+                                spacing: 8; leftPadding: 10
+                                TextButton { theme: win.theme; label: "Disconnect"; onClicked: { win.selectedNetwork = ""; netRow.modelData.network.disconnect() } }
+                                TextButton { id: forgetButton; theme: win.theme; label: "Forget"; onClicked: { win.selectedNetwork = ""; netRow.modelData.network.forget() } }
+                            }
+                        }
+                    }
+                    // The password box, outside the list: the list is rebuilt as signal strengths
+                    // change, which must not lose what is being typed. The text goes straight to
+                    // NetworkManager and is cleared.
+                    Column {
+                        visible: win.passwordFor !== ""
+                        readonly property string network: win.passwordFor
+                        onNetworkChanged: password.text = ""
+                        width: parent.width; spacing: 6; leftPadding: 10
+                        onVisibleChanged: if (visible) password.forceActiveFocus(); else password.text = ""
+                        Rectangle {
+                            width: parent.width - 10; height: 32; radius: 9
+                            color: "transparent"; border.color: password.activeFocus ? win.theme.focus : win.theme.glassBorder
+                            TextInput {
+                                id: password
+                                x: 10; width: parent.width - 20; anchors.verticalCenter: parent.verticalCenter
+                                echoMode: reveal.checked ? TextInput.Normal : TextInput.Password
+                                color: win.theme.ink; font.pixelSize: 13; clip: true
+                                inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
+                                onAccepted: if (win.submitPassword(text)) text = ""
+                                Keys.onEscapePressed: win.passwordFor = ""
+                                Text {
+                                    visible: password.text.length === 0
+                                    text: "Password for " + win.passwordFor; textFormat: Text.PlainText
+                                    color: win.theme.inkSecondary; font.pixelSize: 13
+                                }
+                                Accessible.role: Accessible.EditableText
+                                Accessible.passwordEdit: !reveal.checked
+                                Accessible.name: "Password for " + win.passwordFor
+                            }
+                        }
+                        Row {
+                            spacing: 8
+                            TextButton { theme: win.theme; label: "Connect"; onClicked: if (win.submitPassword(password.text)) password.text = "" }
+                            TextButton { id: reveal; theme: win.theme; property bool checked: false
+                                         label: checked ? "Hide" : "Show"; onClicked: checked = !checked }
+                            TextButton { theme: win.theme; label: "Cancel"; onClicked: { win.passwordFor = ""; win.wifiError = "" } }
+                        }
+                    }
+                    Text {
+                        visible: win.wifiError !== "" || win.wifiNote !== ""
+                        width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                        text: win.wifiError || win.wifiNote
+                        color: win.wifiError ? win.theme.error : win.theme.inkSecondary; font.pixelSize: 13
                     }
                 }
                 // Storage: free space on / and /home, with a suggestion only when space is low.

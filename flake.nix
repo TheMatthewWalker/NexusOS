@@ -6,6 +6,12 @@
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
+      ollamaModel = pkgs.callPackage ./nix/packages/ollama-model.nix { };
+      # The local model the installer image carries, once pinned with
+      # `nix run .#lock-model` (nix/models/). Without the lock file the image
+      # leaves the model to download after installation.
+      modelLock = ./nix/models/llama3.2-3b.json;
+      bundledModel = if builtins.pathExists modelLock then ollamaModel.fromLock modelLock else null;
     in {
       packages.${system} = {
         nexus-guardian = pkgs.callPackage ./nix/packages/nexus-guardian.nix { };
@@ -16,6 +22,16 @@
         iso = self.nixosConfigurations.installer.config.system.build.isoImage;
         nexus-try = pkgs.callPackage ./nix/packages/nexus-try.nix { };
         default = self.packages.${system}.nexus-core;
+      } // pkgs.lib.optionalAttrs (bundledModel != null) {
+        bundled-model = bundledModel;
+      };
+
+      # `nix run .#lock-model [-- name:tag]` pins a model for the installer image.
+      apps.${system}.lock-model = {
+        type = "app";
+        program = "${pkgs.writeShellScript "lock-model" ''
+          PATH=${pkgs.git}/bin:$PATH exec ${pkgs.python3}/bin/python3 ${./scripts/models/lock-model.py} "$@"
+        ''}";
       };
 
       # lib.mkSystem builds a NexusOS machine from the profile plus the
@@ -44,6 +60,7 @@
             nixpkgsSource = nixpkgs.outPath;
             referenceSystem = self.nixosConfigurations.nexus-reference.config.system.build.toplevel;
             referenceSystemNvidia = self.nixosConfigurations.nexus-reference-nvidia.config.system.build.toplevel;
+            inherit bundledModel;
           };
           modules = [ ./nix/installer/iso.nix ];
         };
@@ -92,6 +109,10 @@
         nexus-core = self.packages.${system}.nexus-core;
         nexus-shell = self.packages.${system}.nexus-shell;
         hyprland-desktop = import ./nix/tests/hyprland-desktop.nix {
+          inherit pkgs;
+          desktopModule = self.nixosModules.desktop;
+        };
+        wifi-picker = import ./nix/tests/wifi-picker.nix {
           inherit pkgs;
           desktopModule = self.nixosModules.desktop;
         };

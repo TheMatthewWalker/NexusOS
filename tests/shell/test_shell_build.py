@@ -154,6 +154,7 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('import "lib/wifi.mjs" as W', panel)
         self.assertIn("connectWithPsk(text)", panel)              # the password goes to NetworkManager
         self.assertIn("network.forget()", panel)
+        self.assertIn("d.type === DeviceType.Wifi && d.nmManaged", panel)   # not an unmanaged adapter
         self.assertIn("function onConnectionFailed(reason)", panel)
         # The password box sits outside the rebuilt list, so typing survives a rescan.
         self.assertLess(panel.index("id: netRepeater"), panel.index("id: password"))

@@ -59,7 +59,10 @@ PanelWindow {
     readonly property bool wired: netDevices.some(d => d.type === DeviceType.Wired && d.connected)
 
     // ---- Wi-Fi networks ----
-    readonly property var wifiDevice: netDevices.find(d => d.type === DeviceType.Wifi) || null
+    // The Wi-Fi adapter NetworkManager manages. A machine can have others it
+    // leaves alone (one running as an access point, say), which have no list.
+    readonly property var wifiDevice: netDevices.find(d => d.type === DeviceType.Wifi && d.nmManaged)
+        || netDevices.find(d => d.type === DeviceType.Wifi) || null
     readonly property bool wifiOn: hasWifi && Networking.wifiEnabled
     // Scan only while the panel is open, so a closed panel costs no radio time.
     Binding { when: win.wifiDevice !== null; target: win.wifiDevice; property: "scannerEnabled"; value: win.expanded && win.wifiOn }

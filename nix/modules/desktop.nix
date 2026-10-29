@@ -106,6 +106,7 @@ let
     bind = SUPER, G, global, nexus:images
     bind = SUPER, S, global, nexus:search
     bind = SUPER, Tab, global, nexus:overview
+    bind = SUPER SHIFT, slash, global, nexus:explain
     # The screen reader, on and off.
     bind = SUPER ALT, S, exec, ${pkgs.procps}/bin/pkill -x orca || ${pkgs.orca}/bin/orca --replace
     bind = SUPER, L, exec, ${config.programs.hyprlock.package}/bin/hyprlock --config /etc/nexus/hyprlock.conf
@@ -300,9 +301,11 @@ in
     environment.etc."nexus/hyprlock.conf".source = hyprlockConf;
     environment.etc."nexus/desktop-apps.json".text = builtins.toJSON cfg.apps;
     # gtk3 provides gtk-launch; Settings uses hyprsunset (night light),
-    # brightnessctl, lspci (About) and xdg-open (Open folder).
+    # brightnessctl, lspci (About) and xdg-open (Open folder). Explain mode
+    # points with slurp, takes the area's picture with grim and reads the
+    # selected text with wl-paste (wl-clipboard).
     environment.systemPackages = [ cfg.shellPackage pkgs.gtk3 pkgs.hyprsunset pkgs.brightnessctl pkgs.pciutils pkgs.xdg-utils
-                                   pkgs.orca pkgs.adwaita-icon-theme ]
+                                   pkgs.orca pkgs.adwaita-icon-theme pkgs.grim pkgs.slurp pkgs.wl-clipboard ]
       ++ lib.optionals cfg.installDefaultApps [ pkgs.kitty pkgs.thunar ];
 
     fonts.packages = [ pkgs.inter pkgs.jetbrains-mono ];

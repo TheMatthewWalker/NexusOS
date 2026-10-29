@@ -44,6 +44,8 @@ Keyboard shortcuts
 - Super+C: Code, the coding agent
 - Super+G: Images, making pictures from a description
 - Super+I: Settings
+- Super+? (Super+Shift+/): Explain mode; select text, then click its window
+  or drag over it, and Nexus explains it (text only for now)
 - Super+S: Search, which finds text in the person's files by words or
   meaning; only folders chosen in Settings, Search are read
 - Super+Q: close the window

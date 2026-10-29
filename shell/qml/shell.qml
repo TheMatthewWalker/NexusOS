@@ -175,6 +175,8 @@ ShellRoot {
     Search { id: searchWin; theme: root.dark; bridge: bridge; onChooseFolders: settings.open("search", "") }
     Overview { id: overview; theme: root.dark; bridge: bridge; apps: apps; reduced: root.reduced }
     FirstRun { id: firstRun; theme: root.dark; bridge: bridge; desktop: desktop }
+    Explain { id: explainCard; theme: root.dark; bridge: bridge; onFixIt: problem => fixItWin.open(problem)
+              onTellMeMore: { root.open(); input.text = "Tell me more about that."; root.ask(input.text) } }
     Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }
     Images { id: imagesWin; theme: root.dark; bridge: bridge; onSwitchToCode: codeWin.open("")
              onUseAsWallpaper: path => wallpaper.set(path) }
@@ -212,6 +214,8 @@ ShellRoot {
     GlobalShortcut { appid: "nexus"; name: "search"; onPressed: searchWin.visible ? searchWin.visible = false : searchWin.open() }
     // Super+Tab (bind = SUPER, Tab, global, nexus:overview): every workspace around the core.
     GlobalShortcut { appid: "nexus"; name: "overview"; onPressed: overview.open ? overview.hide() : overview.show() }
+    // Super+? (bind = SUPER SHIFT, slash, global, nexus:explain): point at something to have it explained.
+    GlobalShortcut { appid: "nexus"; name: "explain"; onPressed: explainCard.start() }
     IpcHandler {
         target: "nexus"
         function toggle(): void { root.expanded ? root.collapse() : root.open() }

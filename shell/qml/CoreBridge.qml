@@ -84,6 +84,7 @@ Item {
         }
     }
     Timer { id: restart; onTriggered: proc.running = true }
-    // While online, a cheap health probe notices Core going away between requests.
-    Timer { id: health; interval: 15000; repeat: true; running: proc.running; onTriggered: bridge.send("health") }
+    // A cheap health probe notices Core going away between requests, and while
+    // Core is away it asks more often, so Nexus is back as soon as Core is.
+    Timer { id: health; interval: bridge.online ? 15000 : 3000; repeat: true; running: proc.running; onTriggered: bridge.send("health") }
 }

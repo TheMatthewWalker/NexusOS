@@ -172,7 +172,8 @@ pkgs.testers.runNixOSTest {
         wait_drawn("05-offline", *CORE, r=20, threshold=450)
         open_from_orbit("terminal", 1)
         alice("XDG_RUNTIME_DIR=/run/user/1000 systemctl --user start nexus-core")
-        wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":true'", 60)
+        # Core takes a while to start under software emulation.
+        wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":true'", 180)
 
     with subtest("the lock screen covers the shell"):
         before = shot("06-before-lock")

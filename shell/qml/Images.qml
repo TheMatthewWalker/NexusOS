@@ -48,6 +48,8 @@ FloatingWindow {
         statusId = bridge.send("images-status");
         listId = bridge.send("images-list");
     }
+    // From Nexus (an action card, or `images make`): open and start on the description.
+    function make(text) { open(); prompt.text = text; generate(text) }
     function generate(text, seedOverride) {
         if (working || !text.trim()) return;
         error = ""; working = true; pendingCount = count; batch = [];
@@ -77,7 +79,7 @@ FloatingWindow {
     IpcHandler {
         target: "images"
         function open(): void { win.open() }
-        function make(text: string): void { win.open(); prompt.text = text; win.generate(text) }
+        function make(text: string): void { win.make(text) }
         function state(): string {
             return JSON.stringify({ visible: win.visible, working: win.working, status: win.status, batch: win.batch.map(i => i.name),
                                     gallery: win.gallery.length, error: win.error })

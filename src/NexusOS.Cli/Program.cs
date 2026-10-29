@@ -304,6 +304,9 @@ async Task<int> StreamAnswer(string prompt)
         if (type == "delta") { Console.Write(ev.GetProperty("text").GetString()); Console.Out.Flush(); }
         else if (type == "error") { Console.Error.WriteLine($"\nnexus: {ev.GetProperty("message").GetString()}"); ok = false; }
         else if (type == "done") Console.WriteLine();
+        // Actions wait for the person's click in the Nexus window; the command line only says what was offered.
+        else if (type == "action")
+            Console.Error.WriteLine($"\nNexus offers to: {ev.GetProperty("summary").GetString()}. Ask in Nexus (Super+Space) to do it.");
     }
     return ok ? 0 : 1;
 }
@@ -333,7 +336,8 @@ async IAsyncEnumerable<JsonElement> StreamEvents(string path, object body)
 // A long-lived channel for the desktop shell: one JSON request per stdin line,
 // one JSON event per stdout line, each tagged with the request's id. The shell
 // never holds the API token itself; this process reads it like any CLI call.
-//   {"id":1,"op":"chat","prompt":"..."}     -> delta events, then done or error
+//   {"id":1,"op":"chat","prompt":"..."}     -> delta, tool and action events, then done or error
+//   (an action card's "Do it": {"op":"api","method":"POST","path":"/actions/<id>/confirm"})
 //   {"id":2,"op":"suggest","prompt":"...","model":false}
 //   {"id":3,"op":"apps"} | {"id":4,"op":"health"}
 //   {"id":5,"op":"unload"}                  -> {"type":"unloaded","data":{"vramFreedBytes":N|null}}
@@ -550,7 +554,7 @@ static class BridgeApi
 {
     private static readonly string[] Prefixes =
         ["/journal", "/fixit", "/health/report", "/search", "/rules", "/events", "/guardian/propose", "/guardian/preview",
-         "/try/keep", "/settings/plan", "/workspaces", "/history", "/system"];
+         "/try/keep", "/settings/plan", "/workspaces", "/history", "/system", "/actions"];
 
     public static bool Allowed(string method, string path) =>
         method is "GET" or "POST" or "DELETE" && path.StartsWith('/') && !path.Contains("..") &&

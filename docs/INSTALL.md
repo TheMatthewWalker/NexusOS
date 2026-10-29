@@ -84,6 +84,8 @@ Open **Settings, Network**: click the Wi-Fi icon in the top bar, the Network pla
 
 Nexus reads a built-in guide to NexusOS with every question, plus any notes you write. Put text or Markdown files in `~/.config/nexusos/assistant/` (**Settings, Privacy and AI, Open folder**): who you are, what you use the computer for, how you like answers. They are read each time, so a change takes effect on the next question. Nothing is uploaded or used to retrain the model.
 
+Nexus can also do things for you, but only from a fixed list of actions, never by running commands. Looking something up (your computer's state, its health, your files, your apps, today's activity) happens at once. Anything that changes something (opening an app, night light or volume, installing an app from Flathub, an automation, a picture) appears under the answer as a card saying what it will do: nothing happens until you press **Do it**, and changes to your settings can be undone in **Settings, Timeline**. Changes to the system itself (software for every account, services) are sent to Guardian with **Review the change**, and happen only once you approve them there. A cloud model, if you turn one on, is never given your files or your activity.
+
 ## NVIDIA graphics
 
 The installer finds an NVIDIA card and sets up its driver; the summary before the install shows what it found ("Graphics: …"). You do not need to do anything. It sets:

@@ -148,6 +148,9 @@ pkgs.testers.runNixOSTest {
         print(machine.execute("journalctl -b --no-pager -t nexus-shell | tail -60")[1])
         print(machine.execute("nmcli -f all device wifi list ifname wlan1; nmcli device; nmcli connection")[1])
         print(machine.execute("journalctl -b --no-pager -u NetworkManager | tail -40")[1])
+        print(hypr("clients") + hypr("layers") + hypr("cursorpos"))
+        print(ipc("controls state"))
+        machine.screenshot("diagnostics")
 
     def laid_out(s):
         """Every row has its own place on screen (none mid-layout)."""

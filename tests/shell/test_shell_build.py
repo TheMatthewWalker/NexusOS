@@ -37,7 +37,7 @@ class ShellBuild(unittest.TestCase):
 
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
-                     "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "Images.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
+                     "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "Images.qml", "ActionCards.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
                      *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About"]],
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
@@ -221,6 +221,42 @@ class ShellBuild(unittest.TestCase):
         self.assertNotIn("maximumLineCount: 6", shell)
         self.assertIn("onContentHeightChanged: if (follow) contentY = Math.max(0, contentHeight - height)", shell)
         self.assertIn("Nebula { anchors.fill: parent; z: -2", shell)
+
+    def test_nexus_actions_wait_for_the_persons_click(self):
+        """Action cards (NexusActions.cs): the shell performs only what Core hands back after "Do it"."""
+        cards = (self.out / "ActionCards.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        bridge = (self.out / "CoreBridge.qml").read_text()
+        self.assertIn('bridge.api("POST", "/actions/" + card.id + "/" + verb', cards)
+        self.assertIn('label: modelData.safety === "system" ? "Review the change" : "Do it"', cards)
+        self.assertIn('label: "Not now"', cards)
+        self.assertIn("textFormat: Text.PlainText", cards)       # the summary is never rich text
+        self.assertEqual(cards.count("cards.perform("), 1)        # only in answer to a confirm...
+        self.assertIn('if (data.status === "perform")', cards)   # ...that Core said to perform
+        self.assertNotIn("sudo", cards)
+        self.assertIn("desktop.set(p.key, p.value)", cards)      # journalled with undo by DesktopSettings.set
+        self.assertIn('ref: "sound:volume"', cards)
+        self.assertIn('ref === "sound:volume"', (self.out / "Settings.qml").read_text())
+        self.assertIn('"apt install \\"$1\\"', cards)              # apt runs in a terminal the person sees
+        self.assertIn("guardianWin.open(", shell)                 # the Guardian dialog, where there is one
+        self.assertIn("ActionCards {", shell)
+        self.assertIn('pending[id] === "chat" && ev.type === "action"', bridge)
+        self.assertIn("id: ev.actionId", cards)                    # the bridge replaces "id" with its request id
+        cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
+        self.assertIn('"/actions"]', cli)
+
+    def test_nexus_actions_name_what_the_shell_has(self):
+        """The Settings pages and roles Core offers the model are the shell's own."""
+        actions = (ROOT / "src/NexusOS.Core/NexusActions.cs").read_text()
+        def strings(name):
+            body = re.search(name + r" =\s*\[([^\]]*)\]", actions).group(1)
+            return re.findall(r'"([a-z_]+)"', body)
+        pages = re.findall(r'\{ id: "([a-z]+)", label:', (self.out / "Settings.qml").read_text())
+        self.assertEqual(strings("SettingsPages"), pages)
+        self.assertEqual(set(strings("Roles")), {"files", "browser", "terminal", "settings", "studio"})
+        cards = (self.out / "ActionCards.qml").read_text()
+        for op in re.findall(r'Perform\("([a-z.]+)"', (ROOT / "src/NexusOS.Core/NexusChat.cs").read_text()) + ["desktop.set", "volume.set"]:
+            self.assertIn(f'case "{op}":', cards, op)
 
     def run_node_test(self, name):
         if not shutil.which("node"):

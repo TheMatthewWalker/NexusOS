@@ -35,6 +35,7 @@ FloatingWindow {
     property int runId: -1
     property int actionId: -1
     property string pendingFolder: ""
+    property string pendingTask: ""    // a task from Nexus's chat, sent once the folder is open
 
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
     function open(dir) {
@@ -48,6 +49,11 @@ FloatingWindow {
         if (!bridge.online) { error = "Nexus Core is not running: " + bridge.offlineReason; return }
         pendingFolder = dir;
         startId = bridge.send("code-start", { folder: dir });
+    }
+    // From a Nexus action card ("Do it"): open the folder, then ask.
+    function start(dir, task) {
+        pendingTask = task || "";
+        open(dir);
     }
     function ask(text) {
         if (!session || working || !text.trim()) return;
@@ -71,6 +77,7 @@ FloatingWindow {
                 win.session = data.id; win.folder = data.folder; win.tests = data.tests || "";
                 win.conversation = []; win.files = []; win.canUndo = false;
                 prompt.forceActiveFocus();
+                if (win.pendingTask) { const task = win.pendingTask; win.pendingTask = ""; win.ask(task) }
             } else if (id === win.actionId) {
                 if (data.type === "accepted") { win.files = []; win.canUndo = true;
                     win.updateAgent(a => a.note = "Saved " + data.files.length + " file" + (data.files.length === 1 ? "" : "s") + ".") }

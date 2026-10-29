@@ -10,7 +10,9 @@ using System.Text.Json;
 //    (NEXUS_ASSISTANT_NOTES), read on every question, so editing one takes effect at once;
 //  - this computer: date, time, machine, memory, the apps set up for each role;
 //  - the last few exchanges, so follow-up questions make sense.
-// The model is only told things; it gets no tools and runs nothing.
+// The model runs nothing itself: in /chat/stream it can ask for the fixed,
+// validated actions in NexusActions.cs, and anything that changes something
+// waits for the person's click.
 public sealed record ChatMessage(string Role, string Content);
 
 // Json asks the model for a JSON object (the coding agent's actions).
@@ -59,7 +61,8 @@ public sealed class AssistantContextBuilder
 
     public static string Guide => BuiltInGuide.Value;
 
-    public async Task<ChatContext> BuildAsync(string prompt, CancellationToken ct)
+    // reserveChars: room other parts of the request take (the actions' definitions).
+    public async Task<ChatContext> BuildAsync(string prompt, CancellationToken ct, int reserveChars = 0)
     {
         var system = new StringBuilder(Guide);
         system.Append("\n\nThis computer\n").Append(Facts());
@@ -69,7 +72,7 @@ public sealed class AssistantContextBuilder
 
         // Whatever is left of the input budget after the guide and the question
         // goes to earlier exchanges, newest first; the oldest are dropped first.
-        var budget = (int)(_tokens.Budget.MaxInputTokens * CharsPerToken) - system.Length - prompt.Length;
+        var budget = (int)(_tokens.Budget.MaxInputTokens * CharsPerToken) - system.Length - prompt.Length - reserveChars;
         var earlier = new List<ChatMessage>();
         var recent = await _history.RecentAsync(MaxEarlierTurns, ct);
         var cutoff = _time.GetUtcNow() - EarlierWindow;

@@ -11,8 +11,9 @@ using Xunit;
 // POST /try/keep turns a trialled app into a normal Guardian install proposal.
 public sealed class TryKeepTests
 {
-    // Records every framed request and answers like a broker that accepted a submit.
-    private sealed class RecordingBroker : IDisposable
+    // Records every framed request and answers like a broker that accepted a submit
+    // (also used by NexusActionsTests).
+    internal sealed class RecordingBroker : IDisposable
     {
         private readonly Socket _listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         private readonly CancellationTokenSource _stop = new();

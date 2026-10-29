@@ -33,6 +33,11 @@ public interface IModelProvider
     // Yields the answer in pieces as the engine produces it. Same bounds and
     // error rules as AskAsync; an empty stream is an error.
     IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct, ChatContext? context = null);
+    // One chat turn that may ask for actions (NexusActions.cs): text pieces as
+    // they come, then any tool calls. With no tools, or a backend that refuses
+    // them, the turn is text only.
+    IAsyncEnumerable<TurnPiece> StreamTurnAsync(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools,
+        InferenceTokenBudget budget, CancellationToken ct);
     // null means the provider is deliberately not probed (for example, cloud egress).
     Task<bool?> IsAvailableAsync(CancellationToken ct);
     Task UnloadAsync(CancellationToken ct);
@@ -96,16 +101,73 @@ public static class ProviderHttp
         Func<CancellationToken, Task<HttpResponseMessage>> send, Func<string, (string? Text, bool Done)> parse,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct, string? notFoundHint = null)
     {
+        var any = false;
+        await foreach (var line in StreamLinesAsync(label, send, ct, notFoundHint, withTools: false))
+        {
+            var (text, done) = ParseLine(label, parse, line);
+            if (!string.IsNullOrEmpty(text)) { any = true; yield return text; }
+            if (done) break;
+        }
+        if (!any) throw new ProviderException($"{label} returned an empty answer.", 502);
+    }
+
+    // A turn that may call tools: text as it streams, then the calls the
+    // parser collected. A turn with only tool calls is not empty.
+    public static async IAsyncEnumerable<TurnPiece> StreamTurnAsync(string label,
+        Func<CancellationToken, Task<HttpResponseMessage>> send, ITurnParser parser, bool withTools,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct, string? notFoundHint = null)
+    {
+        var any = false;
+        await foreach (var line in StreamLinesAsync(label, send, ct, notFoundHint, withTools))
+        {
+            var (text, done) = ParseLine(label, parser.Feed, line);
+            if (!string.IsNullOrEmpty(text)) { any = true; yield return new TurnPiece(text, null); }
+            if (done) break;
+        }
+        foreach (var call in parser.Calls) { any = true; yield return new TurnPiece(null, call); }
+        if (!any) throw new ProviderException($"{label} returned an empty answer.", 502);
+    }
+
+    // Starts a turn with tools; if the backend refuses them before answering
+    // (a model without tool support, llama-server without --jinja), the same
+    // turn is asked again without tools.
+    public static async IAsyncEnumerable<TurnPiece> WithToolFallback(Func<bool, IAsyncEnumerable<TurnPiece>> start, bool tools,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        var pieces = start(tools).GetAsyncEnumerator(ct);
+        bool more;
+        try { more = await pieces.MoveNextAsync(); }
+        catch (ToolsRefusedException)
+        {
+            await pieces.DisposeAsync();
+            pieces = start(false).GetAsyncEnumerator(ct);
+            more = await pieces.MoveNextAsync();
+        }
+        try
+        {
+            while (more) { yield return pieces.Current; more = await pieces.MoveNextAsync(); }
+        }
+        finally { await pieces.DisposeAsync(); }
+    }
+
+    // The bounded line reader under both: one timeout for the whole answer and
+    // the same size limit as a full response.
+    private static async IAsyncEnumerable<string> StreamLinesAsync(string label,
+        Func<CancellationToken, Task<HttpResponseMessage>> send,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct, string? notFoundHint, bool withTools)
+    {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(StreamTimeout);
         var response = await SendForStreamAsync(label, send, ct, timeout.Token);
         using (response)
         {
+            if (withTools && response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.InternalServerError
+                    or HttpStatusCode.UnprocessableEntity or HttpStatusCode.NotImplemented)
+                throw new ToolsRefusedException();
             if (!response.IsSuccessStatusCode)
                 throw StatusError(label, response.StatusCode, notFoundHint);
             using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token), Encoding.UTF8);
             long total = 0;
-            var any = false;
             while (true)
             {
                 var line = await ReadLineAsync(label, reader, ct, timeout.Token);
@@ -114,11 +176,8 @@ public static class ProviderHttp
                 if (total > ModelResponseGuard.MaxResponseBytes || line.Length > MaxStreamLineBytes)
                     throw new ProviderException($"{label} response exceeded the allowed size.", 502);
                 if (line.Length == 0) continue;
-                var (text, done) = ParseLine(label, parse, line);
-                if (!string.IsNullOrEmpty(text)) { any = true; yield return text; }
-                if (done) break;
+                yield return line;
             }
-            if (!any) throw new ProviderException($"{label} returned an empty answer.", 502);
         }
     }
 
@@ -265,6 +324,26 @@ public sealed class OllamaProvider : IModelProvider
                     Endpoint + "/api/chat", ChatBody(prompt, context, budget, stream: true), token),
                 ProviderHttp.ParseOllamaChatLine, ct, Missing);
 
+    // qwen3 and other tool-capable models take "tools" on /api/chat and answer
+    // with message.tool_calls; a model without tool support gets text only.
+    public IAsyncEnumerable<TurnPiece> StreamTurnAsync(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools,
+        InferenceTokenBudget budget, CancellationToken ct) =>
+        ProviderHttp.WithToolFallback(withTools => ProviderHttp.StreamTurnAsync("Local Ollama",
+            token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"), Endpoint + "/api/chat",
+                TurnBody(messages, withTools ? tools : [], budget), token),
+            new OllamaTurnParser(), withTools, ct, Missing), tools.Count > 0, ct);
+
+    private Dictionary<string, object> TurnBody(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools, InferenceTokenBudget budget)
+    {
+        var body = new Dictionary<string, object>
+        {
+            ["model"] = Model, ["messages"] = ModelTools.OllamaMessages(messages), ["stream"] = true,
+            ["think"] = Think, ["options"] = Options(budget)
+        };
+        if (tools.Count > 0) body["tools"] = ModelTools.Wire(tools);
+        return body;
+    }
+
     private Dictionary<string, object> ChatBody(string prompt, ChatContext context, InferenceTokenBudget budget, bool stream)
     {
         var body = new Dictionary<string, object>
@@ -332,6 +411,31 @@ public sealed class LlamaCppProvider : IModelProvider
                                      max_tokens = budget.ReservedOutputTokens }, token),
                            ProviderHttp.ParseSseLine, ct))
             yield return piece;
+    }
+
+    // llama-server takes OpenAI-style tools when started with --jinja; without it
+    // the request is refused and the turn falls back to text only.
+    public async IAsyncEnumerable<TurnPiece> StreamTurnAsync(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools,
+        InferenceTokenBudget budget, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        if (_process is not null) await _process.EnsureRunningAsync(ct);
+        await foreach (var piece in ProviderHttp.WithToolFallback(withTools => ProviderHttp.StreamTurnAsync("Local llama.cpp server",
+                           token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"), Endpoint + "/v1/chat/completions",
+                               OpenAiTurnBody(Model, messages, withTools ? tools : [], budget), token),
+                           new OpenAiTurnParser(), withTools, ct), tools.Count > 0, ct))
+            yield return piece;
+    }
+
+    internal static Dictionary<string, object> OpenAiTurnBody(string model, IReadOnlyList<TurnMessage> messages,
+        IReadOnlyList<ToolSpec> tools, InferenceTokenBudget budget)
+    {
+        var body = new Dictionary<string, object>
+        {
+            ["model"] = model, ["messages"] = ModelTools.OpenAiMessages(messages), ["stream"] = true,
+            ["max_tokens"] = budget.ReservedOutputTokens
+        };
+        if (tools.Count > 0) body["tools"] = ModelTools.Wire(tools);
+        return body;
     }
 
     public async Task<bool?> IsAvailableAsync(CancellationToken ct) =>
@@ -404,6 +508,26 @@ public sealed class OpenAiCompatibleProvider : IModelProvider
             yield return piece;
     }
 
+    // Each request of a turn is journalled before it is sent, like AskAsync.
+    // The chat never offers private look-ups (files, the journal) to a cloud
+    // provider (NexusActions.ToolsFor).
+    public async IAsyncEnumerable<TurnPiece> StreamTurnAsync(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools,
+        InferenceTokenBudget budget, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        var token = await RequireCredentialAsync(ct);
+        await foreach (var piece in ProviderHttp.WithToolFallback(withTools => ProviderHttp.StreamTurnAsync("Cloud provider",
+                           async innerCt =>
+                           {
+                               if (_journal is not null)
+                                   await _journal.RecordEgressAsync(Name, new Uri(Endpoint).Host, _store?.SelectedAt, innerCt);
+                               return await ProviderHttp.PostStreamAsync(_factory.CreateClient("cloud"), Endpoint + "/chat/completions",
+                                   LlamaCppProvider.OpenAiTurnBody(Model, messages, withTools ? tools : [], budget), innerCt,
+                                   new AuthenticationHeaderValue("Bearer", token));
+                           },
+                           new OpenAiTurnParser(), withTools, ct), tools.Count > 0, ct))
+            yield return piece;
+    }
+
     // Consent first, then the keyring: no credential is read for a prompt that may not leave the machine.
     private async Task<string> RequireCredentialAsync(CancellationToken ct)
     {
@@ -450,5 +574,12 @@ public sealed class ModelRouter
     {
         var provider = Current;
         return (provider.StreamAsync(prompt, _tokens.Budget, ct, context), provider.Name);
+    }
+
+    public (IAsyncEnumerable<TurnPiece> Pieces, string Provider) StreamTurn(IReadOnlyList<TurnMessage> messages,
+        IReadOnlyList<ToolSpec> tools, CancellationToken ct)
+    {
+        var provider = Current;
+        return (provider.StreamTurnAsync(messages, tools, _tokens.Budget, ct), provider.Name);
     }
 }

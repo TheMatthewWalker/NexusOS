@@ -22,7 +22,7 @@ pkgs.testers.runNixOSTest {
 
   testScript = ''
     def journal():
-        print(machine.execute("journalctl -b --no-pager | grep -iE 'greet|quickshell|cage|pam' | tail -80")[1])
+        print(machine.execute("journalctl -b --no-pager | grep -iE 'greet|quickshell|cage|pam' | tail -120")[1])
 
     machine.start()
     machine.wait_for_unit("greetd.service")

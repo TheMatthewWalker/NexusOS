@@ -127,7 +127,8 @@ let
     export XDG_CACHE_HOME="''${XDG_RUNTIME_DIR:-/tmp}/cache"
     export WLR_NO_HARDWARE_CURSORS=1
     started=$(date +%s)
-    ${pkgs.cage}/bin/cage -s -m last -- ${cfg.shellPackage}/bin/nexus-greeter
+    # Its messages go to the journal: journalctl -t nexus-greeter
+    ${pkgs.systemd}/bin/systemd-cat -t nexus-greeter ${pkgs.cage}/bin/cage -s -m last -- ${cfg.shellPackage}/bin/nexus-greeter
     if [ $(( $(date +%s) - started )) -gt 5 ]; then exit 0; fi
     echo "nexus-greeter did not start; using the text login" >&2
     exec ${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd ${lib.escapeShellArg hyprland}

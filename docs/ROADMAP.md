@@ -18,7 +18,7 @@ Older dated progress notes are kept in [history](evidence/history.md).
 | M4 | Guardian rollback | **VM DONE; hardware open** | One-time trial boots on a real GRUB disk. A healthy trial is confirmed; a broken trial panics and falls back unattended. User-data snapshots are separate from OS generations ([M4](evidence/M4.md)). Physical-hardware drill outstanding |
 | M5 | Inference manager | **IN PROGRESS: tooling done, hardware open** | Provider registry, managed llama.cpp (start on demand, stop on unload), token budgets, RAM/VRAM telemetry, benchmark through Core, CI CPU run ([M5](evidence/M5.md)). 8 GB and 24 GB GPU runs and the gaming-reclaim test outstanding |
 | M6 | Desktop alpha | **IN PROGRESS: desktop built and passing its VM test** | `nixosModules.desktop` logs into Hyprland running the Nexus shell (SpaceUI, Quickshell): Nova core, app orbit from Core suggestions, streamed answers, open windows as launcher planets, a real system panel, offline mode, and a lock screen that covers the shell. Covered end to end by the `hyprland-desktop` VM test ([M6](evidence/M6.md)). Still needs your input on Settings, Files and the dark colour set |
-| M7 | OS alpha image | **IN PROGRESS: installer image built** | `nix build .#iso` makes a live USB image that installs NexusOS with `nexus-install` ([INSTALL](INSTALL.md)), covered by the `nexus-installer` VM test. Graphical onboarding, disk encryption, Guardian on installed systems and the hardware matrix are still to do |
+| M7 | OS alpha image | **IN PROGRESS: installer image built** | `nix build .#iso` makes a live USB image that installs NexusOS with `nexus-install` ([INSTALL](INSTALL.md)), covered by the `nexus-installer` VM test. Guardian is on in installed systems, with a local builder key made at first boot and the desktop's System change dialog. Disk encryption and the hardware matrix are still to do |
 | M8 | Context and search | TODO | |
 | M9 | Automation and skills | TODO | |
 | M10 | Voice and vision | TODO | |
@@ -62,7 +62,7 @@ These cannot be completed from CI or a VM. Each has a written procedure.
 - [x] Boot-failure rollback exercised after an intentionally broken deployment, unattended (VM).
 - [x] Home-directory snapshots handled separately from OS generations.
 - [ ] Physical-hardware recovery drill. **Hardware gate.**
-- [ ] Desktop-user approval delegation (for example polkit), so approval doesn't need a root console. Design input needed; see ADR-002.
+- [x] Desktop-user approval through polkit (password every time), with a local builder and systemd-boot trial boots ([ADR-002](adr/002-guardian-candidate-model.md#desktop-approval)). Needs the VM runs and a real-hardware approval drill.
 
 ## M5 — M7 — AI-native distribution
 

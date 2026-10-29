@@ -5,7 +5,68 @@ approval, a signed build attestation and a one-time trial boot. Design and
 rationale: [ADR-002](adr/002-guardian-candidate-model.md). Evidence:
 [M3](evidence/M3.md), [M4](evidence/M4.md).
 
-## Enable
+## On an installed NexusOS
+
+Guardian is on by default (`nix/profiles/nexusos.nix`), with nothing to set
+up. The person sees changes in the desktop's **System change** dialog
+(`shell/qml/Guardian.qml`): Nexus, First run or "Keep it" proposes a change;
+the person chooses **Approve and stage**; Guardian builds and tests it; the
+person enters their password; it is used from the next restart.
+
+| Piece | Runs as | What it may do |
+|---|---|---|
+| `nexus-guardian` (broker) | root, no capabilities, no network | Decide, as before. Unchanged |
+| `nexus-guardian-keys` | root oneshot, every boot | Make this computer's Ed25519 builder key once (`/var/lib/nexus-guardian-builder/builder.key`, 0600 in a 0700 root directory, never replaced) and write the broker's trusted keys: the configured `trustedBuilderKeys` plus this key |
+| `nexus-guardian-builder` | root, no capabilities, no network, writes only its work directory | For a change on the running system: evaluate the host's own configuration with the candidate overlay (`scripts/guardian/candidate-build.nix`), build it through the Nix daemon, boot it once in a throwaway VM (multi-user.target and `staging.requiredUnits` must start), and sign what it saw. Never activates anything |
+| `nexus-guardian-desktop-approve` | root, run only by polkit | Register the same single-use, 120-second approval as the root console, for the person polkit authorised (`PKEXEC_UID`) and only for a candidate they submitted |
+| `nexus-guardian-stage` | root, no network | Stage the caller's own permitted, unstaged decision (`stage_executor.py`), and report the boot outcome |
+| `nexus-guardian-boot-check` | root oneshot, every boot | Confirm or roll back a trial, as before |
+
+### Approval without a root console
+
+The person approves with an administrator's password through polkit, as
+designed in [ADR-002](adr/002-guardian-candidate-model.md#desktop-approval):
+
+1. Approve and stage: Core submits the plan to the broker and asks the
+   builder to check it (`POST /guardian/proposals/{id}/check`).
+2. When the checks pass, the dialog runs
+   `pkexec /run/current-system/sw/bin/nexus-guardian-desktop-approve <candidateId>`.
+   The polkit action `org.nexusos.guardian.approve` is `auth_admin` for the
+   active session only (never `_keep`), so every approval asks for the
+   password. The shell is the session's polkit agent, so the password is
+   typed in the dialog; it goes to polkit's own helper, not to Core.
+3. The dialog then asks for the usual review: `POST /guardian/review` with
+   the builder's attestation. The broker decides, as before.
+4. If eligible: `POST /guardian/stage {decision}`, then **Restart now**.
+
+A compromised Core or stolen API token still cannot approve: approving needs
+the password at polkit's prompt. A polkit rule that grants wheel everything
+without a password (some people add one) would remove that step; do not
+add such a rule on a NexusOS machine.
+
+### Trial boots on systemd-boot
+
+Installed systems boot with systemd-boot. Staging keeps the baseline as the
+EFI default (`bootctl set-default`) and makes the candidate a one-shot entry
+(`bootctl set-oneshot`); entries are found by their exact `init=` path. With
+`panic=N boot.panic_on_fail`, a trial that fails resets and systemd-boot
+starts the baseline. The boot check then removes the EFI default (confirmed:
+loader.conf's newest entry is the candidate) or restores the baseline profile.
+`staging.bootloader` picks GRUB or systemd-boot from the configuration.
+
+Note: with `boot.panic_on_fail`, any failed boot resets instead of stopping
+at an emergency shell; earlier versions stay in the boot menu.
+
+### Status for the desktop
+
+`GET /guardian/proposals` lists proposals and their state (waiting, checking,
+ready, approved, staged, applied, rolled-back, declined, failed), with every
+changed item's before and after; the fields are documented at the top of
+`shell/qml/Guardian.qml`. `POST /guardian/propose` (Nexus) and
+`POST /guardian/proposals` (a typed plan) add one; neither submits anything.
+
+## Enable on other NixOS hosts
+
 
 Import `nexusos.nixosModules.guardian` (see the README) and set:
 
@@ -13,8 +74,10 @@ Import `nexusos.nixosModules.guardian` (see the README) and set:
 |---|---|
 | `services.nexus-guardian.allowedUsers` | Users whose Core may submit and review. Root is never a client |
 | `services.nexus-guardian.hostConfig` | This host's flake configuration, e.g. `path:/etc/nixos#nixosConfigurations.host` |
-| `services.nexus-guardian.trustedBuilderKeys` | Base64 Ed25519 public keys of trusted builders |
-| `services.nexus-guardian.staging.enable` | GRUB trial boots: sets `boot.loader.grub.default = "saved"` and `panic=N boot.panic_on_fail`, and enables the boot check |
+| `services.nexus-guardian.trustedBuilderKeys` | Base64 Ed25519 public keys of trusted builders (may be empty with `localBuilder.enable`) |
+| `services.nexus-guardian.localBuilder.enable` | This host builds, VM-tests and signs candidates itself, with a key made at first boot |
+| `services.nexus-guardian.desktopApproval.enable` | Approval with a password through polkit, and the staging service for the person's own decisions |
+| `services.nexus-guardian.staging.enable` | Trial boots (GRUB or systemd-boot, `staging.bootloader`): sets `panic=N boot.panic_on_fail` (and `boot.loader.grub.default = "saved"` on GRUB), and enables the boot check |
 | `services.nexus-guardian.staging.requiredUnits` | Units that must be active before a trial is confirmed |
 
 **Never** list the lab key in `nix/tests/lab-builder.pub`: it is public.

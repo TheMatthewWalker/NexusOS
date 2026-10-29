@@ -28,11 +28,13 @@ ShellRoot {
         if (busy || !user) return;
         busy = true; failed = false; message = "";
         pending = password;
+        console.info("nexus-greeter: starting a session for " + user);
         Greetd.createSession(user);
     }
     Connections {
         target: Greetd
         function onAuthMessage(text, error, responseRequired, echoResponse) {
+            console.info("nexus-greeter: greetd asks: " + text + (responseRequired ? " (needs an answer)" : ""));
             if (responseRequired) {
                 // The first secret prompt is the password; anything else is shown and answered with it too.
                 Greetd.respond(root.pending);
@@ -40,13 +42,18 @@ ShellRoot {
             } else if (text) root.message = text;
         }
         function onAuthFailure(text) {
+            console.info("nexus-greeter: login refused: " + text);
             root.busy = false; root.failed = true; root.pending = "";
             root.message = "That password did not work. Try again.";
             password.text = "";
             password.forceActiveFocus();
         }
-        function onReadyToLaunch() { Greetd.launch(root.session, [], true) }
+        function onReadyToLaunch() {
+            console.info("nexus-greeter: starting " + root.session.join(" "));
+            Greetd.launch(root.session, [], true);
+        }
         function onError(text) {
+            console.warn("nexus-greeter: greetd error: " + text);
             root.busy = false; root.pending = "";
             root.message = "Could not log in: " + text;
         }
@@ -148,6 +155,7 @@ ShellRoot {
                     Text { visible: !password.text; text: root.busy ? "Logging in…" : "Password"
                            color: root.theme.inkSecondary; font.pixelSize: 15 }
                     onAccepted: { if (root.askUser) root.user = userField.text.trim(); root.login(text) }
+                    onActiveFocusChanged: console.info("nexus-greeter: password box " + (activeFocus ? "has" : "lost") + " the keyboard")
                     Accessible.role: Accessible.EditableText
                     Accessible.passwordEdit: true
                     Accessible.name: "Password"

@@ -21,6 +21,9 @@ pkgs.testers.runNixOSTest {
   };
 
   testScript = ''
+    def journal():
+        print(machine.execute("journalctl -b --no-pager | grep -iE 'greet|quickshell|cage|pam' | tail -80")[1])
+
     machine.start()
     machine.wait_for_unit("greetd.service")
 
@@ -39,7 +42,12 @@ pkgs.testers.runNixOSTest {
 
     with subtest("the right password starts the desktop"):
         machine.send_chars("nexus-login\n")
-        machine.wait_until_succeeds("pgrep -u alice -f start-hyprland", timeout=300)
+        try:
+            machine.wait_until_succeeds("pgrep -u alice -f start-hyprland", timeout=300)
+        except Exception:
+            machine.screenshot("03-failed")
+            journal()
+            raise
         machine.wait_until_succeeds("pgrep -u alice -f 'nexus-shell/shell.qml'", timeout=600)
         machine.wait_until_fails("pgrep -f 'quickshell.*greeter.qml'", timeout=120)
         machine.sleep(30)

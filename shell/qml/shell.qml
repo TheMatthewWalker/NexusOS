@@ -170,7 +170,7 @@ ShellRoot {
         onFixIt: problem => fixItWin.open(problem)
         onOpenWelcome: firstRun.open()
     }
-    Apps { id: appsWin; theme: root.dark }
+    Apps { id: appsWin; theme: root.dark; bridge: bridge }
     FixIt { id: fixItWin; theme: root.dark; bridge: bridge }
     Search { id: searchWin; theme: root.dark; bridge: bridge; onChooseFolders: settings.open("search", "") }
     Overview { id: overview; theme: root.dark; bridge: bridge; apps: apps; reduced: root.reduced }

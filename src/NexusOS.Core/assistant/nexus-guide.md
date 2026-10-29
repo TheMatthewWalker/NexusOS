@@ -105,8 +105,9 @@ Images (Super+G, or Studio in the Nexus orbit) makes pictures from a
 description with a local image model, saved in ~/Pictures/Nexus. The model
 (about 7 GB) downloads once the computer is online.
 
-To try a program once without installing it: nexus try <name>, or
-nix-shell -p <package>.
+To try a program once without installing it: Apps, System apps, Try it
+(a sandbox that cannot see their files and keeps nothing), or in a
+terminal: nexus try <name>. Keep it there asks Guardian to install it.
 Never suggest sudo apt, apt-get on the system, curl | sh installers, or
 editing files under /nix: they do not work on NexusOS or bypass Guardian.
 

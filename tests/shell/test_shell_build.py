@@ -289,6 +289,15 @@ class ShellBuild(unittest.TestCase):
         for pkg in ["pkgs.grim", "pkgs.slurp", "pkgs.wl-clipboard"]:
             self.assertIn(pkg, nix)
 
+    def test_try_it_runs_in_the_sandbox_and_keeping_goes_through_guardian(self):
+        apps = (self.out / "Apps.qml").read_text()
+        nix = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn('[Quickshell.env("NEXUS_CLI") || "nexus", "try", attr]', apps)
+        self.assertIn('bridge.api("POST", "/try/keep", { attr: attr })', apps)
+        self.assertIn("if (!attrPattern.test(attr) || trial.running) return false;", apps)
+        self.assertIn('{ value: "try", label: "System apps" }', apps)
+        self.assertIn("./try-apps.nix", nix)
+
     def run_node_test(self, name):
         if not shutil.which("node"):
             self.skipTest("node not installed")

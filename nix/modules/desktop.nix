@@ -171,7 +171,8 @@ let
   '';
 in
 {
-  imports = [ ./core.nix ];
+  # try-apps: nexus-try and bubblewrap, for Try it in Apps (services.nexus-desktop.tryApps).
+  imports = [ ./core.nix ./try-apps.nix ];
 
   options.services.nexus-desktop = {
     enable = lib.mkEnableOption "the NexusOS desktop (Hyprland with the Nexus shell)";

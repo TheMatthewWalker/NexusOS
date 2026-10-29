@@ -49,6 +49,9 @@ Keyboard shortcuts
 - Super+Q: close the window
 - Super+F: fullscreen; Super+M: maximise
 - Super+T: switch the window between floating and tiled
+- Super+Tab: every workspace and its windows; drag a window to move it.
+  "..." on a card names a workspace and Remembers its apps; Restore
+  reopens them there
 - Super+1 to Super+5: go to a workspace; Super+Shift+number: move the window there
 - Super+drag: move a window; Super+right-drag: resize it
 - Super+L: lock the screen; Super+Shift+E: log out

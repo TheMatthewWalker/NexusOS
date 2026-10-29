@@ -103,6 +103,7 @@ let
     bind = SUPER, C, global, nexus:code
     bind = SUPER, G, global, nexus:images
     bind = SUPER, S, global, nexus:search
+    bind = SUPER, Tab, global, nexus:overview
     # The screen reader, on and off.
     bind = SUPER ALT, S, exec, ${pkgs.procps}/bin/pkill -x orca || ${pkgs.orca}/bin/orca --replace
     bind = SUPER, L, exec, ${config.programs.hyprlock.package}/bin/hyprlock --config /etc/nexus/hyprlock.conf

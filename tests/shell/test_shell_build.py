@@ -38,7 +38,7 @@ class ShellBuild(unittest.TestCase):
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
                      "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "Images.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
-                     "Search.qml",
+                     "Search.qml", "Overview.qml",
                      *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About", "Search"]],
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
@@ -237,6 +237,21 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('bridge.api("DELETE", "/search/index")', page)
         self.assertIn('search: "SearchPage"', settings)
         self.assertIn('{ id: "search", label: "Search"', settings)
+
+    def test_workspaces_overview_uses_hyprland_and_core_only_keeps_records(self):
+        """Super+Tab overview: Hyprland's own workspaces and windows; Core keeps names, the shell relaunches."""
+        ov = (self.out / "Overview.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        nix = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn("Hyprland.workspaces.values", ov)
+        self.assertIn('"movetoworkspacesilent " + id + ",address:"', ov)
+        self.assertIn('bridge.api("POST", "/workspaces"', ov)
+        self.assertIn('"exec [workspace " + rec.workspace + " silent] " + command.map(quote).join(" ")', ov)
+        self.assertIn("WlrLayershell.layer: WlrLayer.Top", ov)
+        self.assertNotIn("WlrLayer.Overlay", ov)
+        self.assertIn('target: "workspaces"', ov)
+        self.assertIn('name: "overview"', shell)
+        self.assertIn("bind = SUPER, Tab, global, nexus:overview", nix)
 
     def run_node_test(self, name):
         if not shutil.which("node"):

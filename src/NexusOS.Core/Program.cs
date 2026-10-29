@@ -76,6 +76,7 @@ builder.Services.AddSingleton<LocalApiToken>();
 // Fix it and the health report: read-only probes and the fix library (FixIt.cs).
 builder.Services.AddFixIt();
 builder.Services.AddNexusSearch(); // Private search (M8): SearchEndpoints.cs
+builder.Services.AddWorkspaces(); // Workspaces that remember: Workspaces.cs
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -374,6 +375,7 @@ app.MapGet("/system", () => Results.Ok(new
 // POST /fixit, POST /fixit/apply, GET /health/report (FixIt.cs).
 app.MapFixIt();
 app.MapNexusSearch();
+app.MapWorkspaces();
 app.MapCoding();
 app.MapImages();
 app.Run();

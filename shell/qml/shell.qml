@@ -172,6 +172,7 @@ ShellRoot {
     Apps { id: appsWin; theme: root.dark }
     FixIt { id: fixItWin; theme: root.dark; bridge: bridge }
     Search { id: searchWin; theme: root.dark; bridge: bridge; onChooseFolders: settings.open("search", "") }
+    Overview { id: overview; theme: root.dark; bridge: bridge; apps: apps; reduced: root.reduced }
     Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }
     Images { id: imagesWin; theme: root.dark; bridge: bridge; onSwitchToCode: codeWin.open("")
              onUseAsWallpaper: path => wallpaper.set(path) }
@@ -207,6 +208,8 @@ ShellRoot {
     GlobalShortcut { appid: "nexus"; name: "apps"; onPressed: appsWin.visible ? appsWin.visible = false : appsWin.open("all") }
     // Super+S (bind = SUPER, S, global, nexus:search): private search over the chosen folders.
     GlobalShortcut { appid: "nexus"; name: "search"; onPressed: searchWin.visible ? searchWin.visible = false : searchWin.open() }
+    // Super+Tab (bind = SUPER, Tab, global, nexus:overview): every workspace around the core.
+    GlobalShortcut { appid: "nexus"; name: "overview"; onPressed: overview.open ? overview.hide() : overview.show() }
     IpcHandler {
         target: "nexus"
         function toggle(): void { root.expanded ? root.collapse() : root.open() }

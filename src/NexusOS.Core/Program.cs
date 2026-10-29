@@ -70,6 +70,8 @@ builder.Services.AddRules();
 builder.Services.AddHostedService<IdleModelEvictionService>();
 builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianBrokerClient>();
+// System changes waiting for the person, for the Guardian dialog (GuardianProposals.cs).
+builder.Services.AddGuardianProposals();
 builder.Services.AddSingleton<GuardianProposer>();
 builder.Services.AddSingleton<AppSuggester>();
 builder.Services.AddSingleton<LocalApiToken>();
@@ -217,8 +219,10 @@ app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
 });
 // The model may only *propose* a typed plan; the response is a preview the
 // user must explicitly submit. Invalid model output is rejected outright.
+// A plan is also recorded as a proposal for the Guardian dialog ("waiting":
+// nothing is sent to the broker until the person chooses Approve there).
 app.MapPost("/guardian/propose", async (GuardianProposeRequest request, GuardianProposer proposer,
-    InferenceConcurrencyGate concurrency, ActivityJournal journal, CancellationToken ct) =>
+    InferenceConcurrencyGate concurrency, ActivityJournal journal, GuardianProposals proposals, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Request) || request.Request.Length > GuardianProposer.MaxRequestLength)
         return Results.BadRequest(new { error = $"Request must be 1-{GuardianProposer.MaxRequestLength} characters." });
@@ -230,10 +234,13 @@ app.MapPost("/guardian/propose", async (GuardianProposeRequest request, Guardian
         if (proposal.Plan is { } proposed)
             await journal.AppendAsync(new JournalRecord(JournalKinds.System, "nexus",
                 Summary("Nexus proposed a system change: ", proposed.Description), Ref: "plan:" + proposed.Id), ct);
-        return proposal.Plan is null
-            ? Results.Ok(new { proposed = false, refusal = proposal.Refusal, provider = proposal.Provider })
-            : Results.Ok(new { proposed = true, plan = proposal.Plan, provider = proposal.Provider,
-                               submitted = false, next = "Review the plan, then POST it to /guardian/submit." });
+        if (proposal.Plan is null)
+            return Results.Ok(new { proposed = false, refusal = proposal.Refusal, provider = proposal.Provider });
+        object? waiting = null;
+        try { waiting = GuardianProposals.View(await proposals.AddAsync(proposal.Plan, "nexus", request.Request, ct)); }
+        catch (ArgumentException) { }  // Too many waiting already: still a preview.
+        return Results.Ok(new { proposed = true, plan = proposal.Plan, provider = proposal.Provider, proposal = waiting,
+                                submitted = false, next = "The person reviews it in the Guardian dialog; nothing changes unless they approve it there." });
     }
     catch (ProposalRejectedException ex) { return Results.Problem(ex.Message, statusCode: 422); }
     catch (ProviderException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
@@ -278,7 +285,7 @@ app.MapGet("/guardian/candidates/{candidateId}", async (string candidateId, Guar
     catch (GuardianBrokerException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
 });
 app.MapPost("/guardian/review", async (GuardianReviewRequest request, GuardianBrokerClient broker, ActivityJournal journal,
-    CancellationToken ct) =>
+    GuardianProposals proposals, CancellationToken ct) =>
 {
     if (request.CandidateId is not { Length: 24 } || !request.CandidateId.All(Uri.IsHexDigit) ||
         request.Attestation.ValueKind != System.Text.Json.JsonValueKind.Object)
@@ -292,6 +299,8 @@ app.MapPost("/guardian/review", async (GuardianReviewRequest request, GuardianBr
         await journal.AppendAsync(new JournalRecord(JournalKinds.System, "guardian",
             eligible ? "Guardian approved a change for staging" : "Guardian found a change not eligible for staging",
             Ref: "candidate:" + request.CandidateId), ct);
+        var hash = decision.TryGetProperty("decision", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.String ? d.GetString() : null;
+        await proposals.RecordReviewAsync(request.CandidateId, eligible, hash, null, ct);
         return Results.Ok(decision);
     }
     catch (GuardianBrokerException ex)
@@ -299,6 +308,9 @@ app.MapPost("/guardian/review", async (GuardianReviewRequest request, GuardianBr
         if (ex.StatusCode == 422)
             await journal.AppendAsync(new JournalRecord(JournalKinds.System, "guardian", "Guardian refused a review",
                 Ref: "candidate:" + request.CandidateId), ct);
+        if (ex.StatusCode == 422)
+            await proposals.RecordReviewAsync(request.CandidateId, false, null,
+                "Not approved: your approval was missing or ran out (it lasts two minutes). Approve again.", ct);
         return Results.Problem(ex.Message, statusCode: ex.StatusCode);
     }
 });
@@ -348,6 +360,7 @@ app.MapDelete("/journal", async (string? day, ActivityJournal journal, Cancellat
     return Results.Ok(new { day, erased = await journal.ForgetDayAsync(date, ct) });
 }).RequireRateLimiting("journal");
 app.MapTryApps();
+app.MapGuardianProposals();
 app.MapGet("/inference/telemetry", async (MemoryTelemetry telemetry, CancellationToken ct) =>
     Results.Ok(await telemetry.ReadAsync(ct)));
 // /rules, /rules/parse, /events and /rules/pending-actions (RuleEndpoints.cs).

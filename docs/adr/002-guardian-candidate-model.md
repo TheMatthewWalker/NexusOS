@@ -78,6 +78,28 @@ Before this decision, Guardian had two disconnected implementations:
   Rotate a key by removing it from `trustedBuilderKeys`.
 - Hosts must be defined by a flake so `hostConfig` is reproducible. The
   VM lab uses `nix/guardian#nixosConfigurations.guardian-bootloader-lab`.
-- Still open, and tracked: desktop approval delegation (for example a
-  polkit-backed prompt), and verifying TTY presence against a compromised
+- Still open, and tracked: verifying TTY presence against a compromised
   root account.
+
+## Desktop approval
+
+**Added 2026-10-29.** A person at their own computer approves without a root
+console, with the least new privilege:
+
+- **Approval is polkit's.** `nexus-guardian-desktop-approve` runs only as the
+  polkit action `org.nexusos.guardian.approve` (`auth_admin`, active session,
+  never remembered). It registers exactly the console's approval: one
+  candidate, one UID (polkit's `PKEXEC_UID`, never root), 120 seconds, used
+  up by the next review, and only for a candidate that UID submitted. The
+  broker's review, ledger and checks are unchanged.
+- **The builder is local.** Each computer makes its own Ed25519 key at first
+  boot (root only). A separate root service with no network builds the
+  overlay through the Nix daemon, boots it in a VM and signs the result; the
+  broker still holds public keys only and checks store paths and derivers.
+  A stolen local key still cannot approve or stage.
+- **Staging is asked for, not granted.** A staging service stages only the
+  caller's own permitted, unstaged decision, once. It cannot create a
+  permitted decision.
+- **Core records, never decides.** Core keeps the proposals the dialog shows
+  and forwards requests; it cannot approve (no password), review in its own
+  favour (the broker decides), or stage anything not already permitted.

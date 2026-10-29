@@ -179,14 +179,17 @@ ShellRoot {
     FixIt { id: fixItWin; theme: root.dark; bridge: bridge }
     Search { id: searchWin; theme: root.dark; bridge: bridge; onChooseFolders: settings.open("search", "") }
     Overview { id: overview; theme: root.dark; bridge: bridge; apps: apps; reduced: root.reduced }
-    FirstRun { id: firstRun; theme: root.dark; bridge: bridge; desktop: desktop; onMoveIn: moveInWin.open() }
+    FirstRun { id: firstRun; theme: root.dark; bridge: bridge; desktop: desktop; onMoveIn: moveInWin.open()
+               onProposeSystem: plan => guardianWin.openPlan(plan, "user") }
     MoveIn { id: moveInWin; theme: root.dark }
     Explain { id: explainCard; theme: root.dark; bridge: bridge; onFixIt: problem => fixItWin.open(problem)
               onTellMeMore: { root.open(); input.text = "Tell me more about that."; root.ask(input.text) } }
     Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }
     Images { id: imagesWin; theme: root.dark; bridge: bridge; onSwitchToCode: codeWin.open("")
              onUseAsWallpaper: path => wallpaper.set(path) }
-    TopBar { theme: root.dark; settings: settings; onOpenNexus: root.expanded ? root.collapse() : root.open()
+    // System changes waiting for approval, and how they are going (Guardian.qml).
+    Guardian { id: guardianWin; theme: root.dark; bridge: bridge }
+    TopBar { theme: root.dark; settings: settings; guardian: guardianWin; onOpenNexus: root.expanded ? root.collapse() : root.open()
              onOpenApps: appsWin.open("all") }
     OrbitalControls { theme: root.dark; settings: settings; reduced: root.reduced }
     Process { id: hypr }

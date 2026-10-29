@@ -2,10 +2,12 @@
 """Post-boot Guardian assessment: confirm a healthy trial boot or restore the baseline.
 
 Runs once per boot (nexus-guardian-boot-check.service). With a pending trial:
-  - running the candidate and healthy  -> make it the GRUB default; confirmed
+  - running the candidate and healthy  -> make it the bootloader default; confirmed
   - running the candidate but unhealthy -> restore the baseline for next boot
-  - running the baseline                -> the trial failed and GRUB fell back;
-                                           restore the baseline profile
+  - running the baseline                -> the trial failed and the bootloader fell
+                                           back; restore the baseline profile
+The bootloader is the one recorded when the trial was staged (GRUB unless the
+record says systemd-boot).
 """
 import argparse
 import json
@@ -30,30 +32,43 @@ def system_health(required_units):
     return True, "healthy"
 
 
-def restore_baseline(baseline, runner, grub_editenv, grubenv):
+def follow_profile(bootloader, runner, grub_editenv, grubenv, bootctl):
+    """Let the bootloader's default follow the system profile again."""
+    if bootloader == "systemd-boot":
+        # Without the EFI override, loader.conf's default (the profile's newest generation) applies.
+        runner([bootctl, "set-default", ""])
+    else:
+        runner([grub_editenv, grubenv, "set", "saved_entry=0"])
+
+
+def restore_baseline(baseline, runner, follow):
     runner(["nix-env", "--profile", PROFILE, "--set", baseline])
     runner([os.path.join(baseline, "bin", "switch-to-configuration"), "boot"])
-    runner([grub_editenv, grubenv, "set", "saved_entry=0"])
+    follow()
 
 
 def check(state_dir, *, current=None, health=None, runner=run, grub_editenv="grub-editenv", grubenv=GRUBENV,
-          required_units=()):
+          bootctl="bootctl", required_units=()):
     pending_path = Path(state_dir) / "pending-boot.json"
     if not pending_path.exists():
         return "nothing-pending"
     pending = json.loads(pending_path.read_text(encoding="utf-8"))
+    bootloader = pending.get("bootloader", "grub")
+
+    def follow():
+        follow_profile(bootloader, runner, grub_editenv, grubenv, bootctl)
     current = current if current is not None else os.path.realpath("/run/current-system")
     if current == pending["toplevel"]:
         ok, reason = (health or system_health)(required_units)
         if ok:
-            runner([grub_editenv, grubenv, "set", "saved_entry=0"])  # Default entry now follows the new profile.
+            follow()  # Default entry now follows the new profile.
             outcome = "confirmed"
         else:
-            restore_baseline(pending["baseline"], runner, grub_editenv, grubenv)
+            restore_baseline(pending["baseline"], runner, follow)
             outcome = "rolled-back"
         record(state_dir, {"event": outcome, "decision": pending["decision"], "reason": reason})
     elif current == pending["baseline"]:
-        restore_baseline(pending["baseline"], runner, grub_editenv, grubenv)
+        restore_baseline(pending["baseline"], runner, follow)
         outcome = "fell-back"
         record(state_dir, {"event": outcome, "decision": pending["decision"], "reason": "trial boot did not complete"})
     else:

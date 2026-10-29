@@ -13,6 +13,7 @@ PanelWindow {
     id: bar
     property var theme
     property var settings
+    property var guardian: null      // Guardian.qml: a system change waiting, under way, or needing a restart
     signal openNexus()
     signal openApps()
 
@@ -141,6 +142,20 @@ PanelWindow {
                 icon: "battery"; page: "power"
                 label: bar.hasBattery ? Math.round(bar.battery.percentage * 100) + "%" : ""
                 name: "Battery " + label
+            }
+            // Guardian: shown only while a system change needs the person or is under way.
+            Row {
+                readonly property var g: bar.guardian
+                readonly property string label: !g ? "" : g.attention ? "Change waiting" : g.busy ? "Checking a change…"
+                                              : g.restartNeeded ? "Restart to finish" : ""
+                visible: label !== ""; spacing: 6
+                Image { width: 16; height: 16; sourceSize: Qt.size(32, 32); source: "icons/guardian.svg"; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: parent.label; color: parent.g && parent.g.attention ? bar.theme.ink : bar.theme.inkSecondary; font.pixelSize: 12
+                       anchors.verticalCenter: parent.verticalCenter }
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: bar.guardian.open() }
+                Accessible.role: Accessible.Button
+                Accessible.name: "System change: " + label
             }
             Status { icon: "settings"; page: ""; name: "Settings" }
         }

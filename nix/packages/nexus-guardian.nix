@@ -1,6 +1,6 @@
 # Guardian broker, approval console and attestation tool, with the shared
 # option schema. The Python unit and protocol suite runs as the check phase.
-{ lib, stdenvNoCC, python3, makeWrapper, nix, grub2 }:
+{ lib, stdenvNoCC, python3, makeWrapper, nix, grub2, systemd }:
 let
   python = python3.withPackages (ps: [ ps.cryptography ]);
   root = ../..;
@@ -32,14 +32,23 @@ stdenvNoCC.mkDerivation {
       --add-flags "-E -s $share/scripts/guardian/attestation.py"
     makeWrapper ${python}/bin/python3 $out/bin/nexus-guardian-client \
       --add-flags "-E -s $share/scripts/guardian/broker_client.py"
+    # On a desktop: this computer's builder (it runs nix build, never a
+    # switch), and the approval helper that polkit runs after the password.
+    makeWrapper ${python}/bin/python3 $out/bin/nexus-guardian-builder \
+      --add-flags "-E -s $share/scripts/guardian/local_builder.py"
+    makeWrapper ${python}/bin/python3 $out/bin/nexus-guardian-desktop-approve \
+      --add-flags "-E -s $share/scripts/guardian/desktop_approve.py"
     # Staging and boot assessment are the only tools that touch the system
     # profile and bootloader; they get exactly the binaries they need.
     makeWrapper ${python}/bin/python3 $out/bin/nexus-guardian-stage \
       --add-flags "-E -s $share/scripts/guardian/stage_executor.py" \
-      --prefix PATH : ${lib.makeBinPath [ nix grub2 ]}
+      --prefix PATH : ${lib.makeBinPath [ nix grub2 systemd ]}
+    makeWrapper ${python}/bin/python3 $out/bin/nexus-guardian-stage-service \
+      --add-flags "-E -s $share/scripts/guardian/stage_service.py" \
+      --prefix PATH : ${lib.makeBinPath [ nix grub2 systemd ]}
     makeWrapper ${python}/bin/python3 $out/bin/nexus-guardian-boot-check \
       --add-flags "-E -s $share/scripts/guardian/boot_check.py" \
-      --prefix PATH : ${lib.makeBinPath [ nix grub2 ]}
+      --prefix PATH : ${lib.makeBinPath [ nix grub2 systemd ]}
     runHook postInstall
   '';
   meta = {

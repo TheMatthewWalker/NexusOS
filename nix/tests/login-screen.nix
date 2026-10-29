@@ -13,6 +13,8 @@ pkgs.testers.runNixOSTest {
     users.users.alice = { isNormalUser = true; uid = 1000; password = "nexus-login"; description = "Alice Example"; };
     services.nexus-desktop = {
       enable = true;
+      # No Welcome window over the desktop the test drives.
+      firstRun = false;
       reducedMotion = true;
       blur = false;
       coreDetail = 16;

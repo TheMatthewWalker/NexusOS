@@ -60,6 +60,8 @@ let
     env = NEXUS_BRIGHTNESSCTL,${pkgs.brightnessctl}/bin/brightnessctl
     env = NEXUS_LOCK,${config.programs.hyprlock.package}/bin/hyprlock --config /etc/nexus/hyprlock.conf
     env = NEXUS_TERMINAL,${terminal}
+    # First-run setup: the Welcome window opens once, after the first login.
+    ${lib.optionalString cfg.firstRun "env = NEXUS_FIRST_RUN,1"}
     # The shell logs to the journal: journalctl --user -t nexus-shell
     exec-once = ${pkgs.systemd}/bin/systemd-cat -t nexus-shell ${cfg.shellPackage}/bin/nexus-shell
 
@@ -266,6 +268,15 @@ in
         Treat any fullscreen window as a game, except video players and
         browsers. Can also be switched at run time with
         `nexus-shell-ipc call nexus fullscreenIsGame true`.
+      '';
+    };
+    firstRun = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Open the Welcome window once after each person's first login: it asks
+        what the computer is mostly for and suggests apps and settings from the
+        curated bundles (nix/bundles). It can be reopened from Settings, About.
       '';
     };
     keyboardLayout = lib.mkOption {

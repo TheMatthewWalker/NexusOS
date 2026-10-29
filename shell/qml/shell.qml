@@ -168,11 +168,13 @@ ShellRoot {
         theme: root.dark; bridge: bridge; desktop: desktop; reduced: root.reduced
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
         onFixIt: problem => fixItWin.open(problem)
+        onOpenWelcome: firstRun.open()
     }
     Apps { id: appsWin; theme: root.dark }
     FixIt { id: fixItWin; theme: root.dark; bridge: bridge }
     Search { id: searchWin; theme: root.dark; bridge: bridge; onChooseFolders: settings.open("search", "") }
     Overview { id: overview; theme: root.dark; bridge: bridge; apps: apps; reduced: root.reduced }
+    FirstRun { id: firstRun; theme: root.dark; bridge: bridge; desktop: desktop }
     Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }
     Images { id: imagesWin; theme: root.dark; bridge: bridge; onSwitchToCode: codeWin.open("")
              onUseAsWallpaper: path => wallpaper.set(path) }

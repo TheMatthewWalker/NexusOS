@@ -21,6 +21,8 @@ FloatingWindow {
     property bool reduced: false
     signal askNexus(string text)
     signal fixIt(string problem)
+    signal openWelcome()
+    signal moveIn()
 
     title: "Settings"
     visible: false
@@ -84,6 +86,8 @@ FloatingWindow {
         ["health", "", "Health", "health report problems disk smart updates check status"],
         ["about", "name", "Computer name", "about computer name hostname version"],
         ["about", "storage", "Storage", "storage disk space full free files"],
+        ["about", "welcome", "Welcome setup", "welcome first run setup bundles start again apps for studying gaming office coding"],
+        ["about", "movein", "Bring files from Windows or macOS", "move in old computer windows mac macos transfer copy files documents photos drive"],
         ["about", "generations", "Earlier versions", "rollback undo update generation boot earlier version"]
     ]
     function search(text) {

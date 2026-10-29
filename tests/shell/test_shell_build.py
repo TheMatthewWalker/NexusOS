@@ -38,7 +38,7 @@ class ShellBuild(unittest.TestCase):
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
                      "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "Images.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
-                     "Search.qml", "Overview.qml",
+                     "Search.qml", "Overview.qml", "FirstRun.qml", "lib/firstrun.mjs", "lib/bundles.mjs",
                      *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About", "Search"]],
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
@@ -252,6 +252,24 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('target: "workspaces"', ov)
         self.assertIn('name: "overview"', shell)
         self.assertIn("bind = SUPER, Tab, global, nexus:overview", nix)
+
+    def test_first_run_bundles_and_matching(self):
+        self.run_node_test("firstrun.test.mjs")
+
+    def test_first_run_installs_per_person_and_sends_system_items_to_guardian(self):
+        """Apps for the person only; system items as one typed plan for approval; shown once."""
+        fr = (self.out / "FirstRun.qml").read_text()
+        nix = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn("flatpak install --user --noninteractive", fr)
+        self.assertIn('bridge.api("POST", "/guardian/preview", sys)', fr)
+        self.assertIn("first-run-done", fr)
+        self.assertIn('Quickshell.env("NEXUS_FIRST_RUN") === "1"', fr)
+        self.assertIn('env = NEXUS_FIRST_RUN,1', nix)
+        for word in ["sudo", "pkexec", "nixos-rebuild"]:
+            self.assertNotIn(word, fr)
+        self.assertIn('target: "firstrun"', fr)
+        for test in ["hyprland-desktop", "login-screen", "wifi-picker"]:
+            self.assertIn("firstRun = false;", (ROOT / f"nix/tests/{test}.nix").read_text(), test)
 
     def run_node_test(self, name):
         if not shutil.which("node"):

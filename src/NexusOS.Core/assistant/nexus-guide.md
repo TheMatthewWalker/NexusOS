@@ -64,6 +64,8 @@ box at the top to search them.
   are set up in a terminal with: nmtui
 - Sound: output volume and microphone. Display: brightness and night light.
 - Desktop: floating or tiled windows, motion and blur.
+- About: Welcome setup (suggests apps and settings for studying, gaming,
+  office, coding or creative work) and bringing files from Windows or macOS.
 - Privacy and AI: which model answers, whether a cloud model may be used
   (off by default), and clearing conversation history.
 

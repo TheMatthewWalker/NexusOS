@@ -335,6 +335,15 @@ class ShellBuild(unittest.TestCase):
         cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
         self.assertIn('"/actions"]', cli)
 
+    def test_every_desktop_instruction_core_sends_is_handled(self):
+        """Each Perform("op") in NexusChat.cs has a case in ActionCards.perform, so no "Do it" falls through."""
+        chat = (ROOT / "src/NexusOS.Core/NexusChat.cs").read_text()
+        cards = (self.out / "ActionCards.qml").read_text()
+        ops = set(re.findall(r'Perform\("([a-z.]+)"', chat))
+        self.assertGreaterEqual(len(ops), 10)
+        for op in ops:
+            self.assertIn(f'case "{op}":', cards, op)
+
     def test_nexus_actions_name_what_the_shell_has(self):
         """The Settings pages and roles Core offers the model are the shell's own."""
         actions = (ROOT / "src/NexusOS.Core/NexusActions.cs").read_text()

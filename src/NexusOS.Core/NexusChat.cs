@@ -315,6 +315,25 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 return pending.Add(action, args, $"Ask Code to work in {folder}: “{NexusActions.Clean(task, 80)}”",
                     Perform("code.start", ("folder", folder), ("task", task)));
             }
+            case "remember_workspace":
+            {
+                var name = Str(args, "name");
+                return pending.Add(action, args, $"Remember this workspace as “{NexusActions.Clean(name, 40)}”", Perform("workspace.save", ("name", name)));
+            }
+            case "restore_workspace":
+            {
+                var name = Str(args, "name");
+                return pending.Add(action, args, $"Bring back the “{NexusActions.Clean(name, 40)}” workspace", Perform("workspace.restore", ("name", name)));
+            }
+            case "try_app":
+            {
+                var package = Str(args, "package");
+                return pending.Add(action, args, $"Try {NexusActions.Clean(package, 60)} without installing it", Perform("app.try", ("package", package)));
+            }
+            case "open_move_in":
+                return pending.Add(action, args, "Open Move in, to bring files over from an old drive", Perform("movein.open"));
+            case "open_welcome":
+                return pending.Add(action, args, "Open the welcome setup", Perform("welcome.open"));
             case "open_fix_it":
             {
                 var problem = Str(args, "problem");

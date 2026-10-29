@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Services.Pipewire
 import "settings"
 
@@ -25,6 +26,9 @@ Column {
     property var imagesWin
     property var codeWin
     property var fixItWin
+    property var overview
+    property var moveInWin
+    property var firstRun
     property var cardList: []    // [{ id, action, safety, summary, plan, state, message }]
     property var calls: ({})     // bridge request id -> [card id, "confirm" | "decline"]
     readonly property string terminal: Quickshell.env("NEXUS_TERMINAL") || "kitty"
@@ -125,6 +129,16 @@ Column {
         case "images.make": imagesWin.make(p.prompt); cards.opened(); return { ok: true, message: "Making it in Images…" };
         case "code.start": codeWin.start(p.folder, p.task); cards.opened(); return { ok: true, message: "Started in Code." };
         case "fixit.open": fixItWin.open(p.problem); cards.opened(); return { ok: true, message: "Checking in Fix it…" };
+        case "workspace.save": {
+            const ws = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 1;
+            return overview.remember(ws, p.name) ? { ok: true, message: "Remembered. Say “open " + p.name + "” to bring it back." }
+                                                 : { ok: false, message: overview.message || "Could not remember it." };
+        }
+        case "workspace.restore":
+            return overview.restore(p.name) ? { ok: true, message: "Bringing it back…" } : { ok: false, message: overview.message || "No workspace by that name." };
+        case "app.try": appsWin.open("try"); appsWin.tryApp(p.package); cards.opened(); return { ok: true, message: "Starting it in a sandbox…" };
+        case "movein.open": moveInWin.open(); cards.opened(); return { ok: true, message: "Opened." };
+        case "welcome.open": firstRun.open(); cards.opened(); return { ok: true, message: "Opened." };
         default: return { ok: false, message: "This desktop cannot do that yet." };
         }
     }

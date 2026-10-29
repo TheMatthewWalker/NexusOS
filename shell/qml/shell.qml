@@ -598,6 +598,7 @@ ShellRoot {
                             width: parent.width
                             theme: root.dark; bridge: bridge; apps: apps; settings: settings; desktop: desktop
                             appsWin: appsWin; imagesWin: imagesWin; codeWin: codeWin; fixItWin: fixItWin
+                            overview: overview; moveInWin: moveInWin; firstRun: firstRun
                             onOpened: root.collapse()
                             onOpenRole: role => root.openApp(role)
                             // The Guardian approval dialog, where the desktop has one (Guardian.qml).

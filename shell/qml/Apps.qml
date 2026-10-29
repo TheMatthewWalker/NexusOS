@@ -5,24 +5,30 @@ import Quickshell.Hyprland
 import "settings"
 
 // Apps: every installed app (and a search box, so it doubles as the app
-// launcher), getting new ones from Flathub, and apt in the Ubuntu container.
+// launcher), getting new ones from Flathub, system apps from nixpkgs to try
+// first, and apt in the Ubuntu container.
 // Flathub apps install for this person only (flatpak --user): no password
 // and no system change. Software for the whole system goes through Guardian
 // (/etc/nixos/local.nix); this window says so rather than doing it.
+// Try before you install (feature 13, "Feat-TryIt"): Try it runs a nixpkgs
+// app with `nexus try` in a throwaway bubblewrap sandbox (no access to your
+// files; nothing kept when it closes); Keep it asks Core (/try/keep) for a
+// normal Guardian install proposal, which still needs approval.
 // Opened by Super+A, the top bar, Nexus, or `nexus-shell-ipc call apps open [tab]`.
 FloatingWindow {
     id: win
     property var theme
+    property var bridge
     title: "Apps"
     visible: false
     implicitWidth: 1040; implicitHeight: 720
     minimumSize: Qt.size(760, 560)
     color: "#05071A"
 
-    property string tab: "all"          // all | get | apt
+    property string tab: "all"          // all | get | try | apt
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
     function open(t) {
-        if (["all", "get", "apt"].includes(t)) tab = t;
+        if (["all", "get", "try", "apt"].includes(t)) tab = t;
         if (visible) Quickshell.execDetached([hyprctl, "dispatch", "focuswindow", "title:^(Apps)$"]);
         visible = true;
         query.forceActiveFocus();
@@ -34,8 +40,13 @@ FloatingWindow {
         function search(text: string): void { win.open(""); query.text = text }
         function state(): string {
             return JSON.stringify({ visible: win.visible, tab: win.tab, flathub: win.flathub, results: win.results.map(r => r.id),
-                                    installed: win.installedIds, busy: win.busy, message: win.message })
+                                    installed: win.installedIds, busy: win.busy, message: win.message,
+                                    trial: win.trialAttr, trialRunning: trial.running, trialNote: win.trialNote })
         }
+        // Try before you install: a nixpkgs app in a throwaway sandbox, and keeping it (a Guardian proposal).
+        function tryApp(attr: string): bool { win.open("try"); return win.tryApp(attr) }
+        function keepApp(attr: string): bool { return win.keepApp(attr) }
+        function stopTrial(): void { win.stopTrial() }
     }
 
     // ---- installed apps (desktop entries) ----
@@ -128,6 +139,71 @@ FloatingWindow {
     }
     onVisibleChanged: if (visible) listInstalled.running = true
 
+    // ---- system apps, tried first (nixpkgs) ----
+    // A curated list, so this works offline and needs no search service; any
+    // other nixpkgs name can be typed. Trials fetch the app once online.
+    readonly property var systemApps: [
+        { attr: "krita", name: "Krita", summary: "Digital painting" },
+        { attr: "gimp", name: "GIMP", summary: "Edit photos and images" },
+        { attr: "inkscape", name: "Inkscape", summary: "Vector graphics" },
+        { attr: "blender", name: "Blender", summary: "3D creation" },
+        { attr: "audacity", name: "Audacity", summary: "Record and edit audio" },
+        { attr: "kdePackages.kdenlive", name: "Kdenlive", summary: "Edit videos" },
+        { attr: "obs-studio", name: "OBS Studio", summary: "Record and stream your screen" },
+        { attr: "shotwell", name: "Shotwell", summary: "Organise photos" },
+        { attr: "xournalpp", name: "Xournal++", summary: "Handwritten notes and marking up PDFs" },
+        { attr: "zotero", name: "Zotero", summary: "References and citations" },
+        { attr: "foliate", name: "Foliate", summary: "Read e-books" },
+        { attr: "kdePackages.kate", name: "Kate", summary: "Text and code editor" },
+        { attr: "gnome-chess", name: "Chess", summary: "Play chess" },
+        { attr: "superTuxKart", name: "SuperTuxKart", summary: "Kart racing game" }
+    ]
+    // Same rule as nexus-try and Guardian: a plain nixpkgs attribute, nothing else.
+    readonly property var attrPattern: /^[A-Za-z_][A-Za-z0-9_-]{0,63}(\.[A-Za-z_][A-Za-z0-9_-]{0,63}){0,3}$/
+    function systemMatches() {
+        const q = query.text.trim().toLowerCase();
+        const found = systemApps.filter(a => !q || (a.name + " " + a.summary + " " + a.attr).toLowerCase().includes(q));
+        if (q && attrPattern.test(query.text.trim()) && !found.some(a => a.attr === query.text.trim()))
+            found.push({ attr: query.text.trim(), name: query.text.trim(), summary: "From nixpkgs, by its package name" });
+        return found;
+    }
+    property string trialAttr: ""
+    property string trialNote: ""
+    property int keepId: -1
+    function trialName(attr) { const a = systemApps.find(x => x.attr === attr); return a ? a.name : attr }
+    function tryApp(attr) {
+        if (!attrPattern.test(attr) || trial.running) return false;
+        trialAttr = attr; trialNote = "Getting " + trialName(attr) + " ready. The first time, it downloads (nothing is installed)…";
+        trial.command = [Quickshell.env("NEXUS_CLI") || "nexus", "try", attr];
+        trial.running = true;
+        return true;
+    }
+    function stopTrial() { if (trial.running) { trial.running = false; trialNote = "Closed. Everything the trial made is gone." } }
+    function keepApp(attr) {
+        if (!attrPattern.test(attr)) return false;
+        if (!bridge || !bridge.online) { trialNote = "Nexus Core is not running, so keeping an app cannot be asked for now."; return false }
+        trialAttr = attr; trialNote = "Asking Guardian to install " + trialName(attr) + "…";
+        keepId = bridge.api("POST", "/try/keep", { attr: attr });
+        return true;
+    }
+    Process {
+        id: trial
+        stderr: SplitParser { onRead: line => { if (line.trim()) win.trialNote = line.trim().replace(/^nexus-try: /, "").slice(0, 200) } }
+        onExited: code => {
+            if (code === 0) win.trialNote = win.trialName(win.trialAttr) + " closed. Nothing was kept.";
+            else if (!/^Closed/.test(win.trialNote)) win.trialNote = "The trial stopped: " + win.trialNote;
+        }
+    }
+    Connections {
+        target: win.bridge
+        ignoreUnknownSignals: true
+        function onResult(id, type, data) {
+            if (id === win.keepId) win.trialNote = "Sent for approval: install " + win.trialName(win.trialAttr) + " for every account. " +
+                "Nothing is installed until you approve it as a system change; it then installs on the next trial boot and can be rolled back.";
+        }
+        function onFailed(id, message) { if (id === win.keepId) win.trialNote = "Keeping it did not work: " + message }
+    }
+
     // ---- the window ----
     Rectangle {
         anchors.fill: parent
@@ -144,7 +220,8 @@ FloatingWindow {
             Text { text: "Apps"; color: win.theme.ink; font.pixelSize: 26; font.weight: 600; anchors.verticalCenter: parent.verticalCenter }
             Choice {
                 theme: win.theme; name: "Show"; current: win.tab; anchors.verticalCenter: parent.verticalCenter
-                options: [{ value: "all", label: "All apps" }, { value: "get", label: "Get apps" }, { value: "apt", label: "Ubuntu (apt)" }]
+                options: [{ value: "all", label: "All apps" }, { value: "get", label: "Get apps" }, { value: "try", label: "System apps" },
+                          { value: "apt", label: "Ubuntu (apt)" }]
                 onChose: v => { win.tab = v; if (v === "get") win.searchFlathub() }
             }
         }
@@ -158,14 +235,16 @@ FloatingWindow {
                 x: 42; width: parent.width - 56; anchors.verticalCenter: parent.verticalCenter
                 color: win.theme.ink; font.pixelSize: 14; clip: true
                 Text { visible: !query.text; color: win.theme.inkSecondary; font.pixelSize: 14
-                       text: win.tab === "get" ? "Search Flathub, e.g. spotify" : "Search your apps" }
+                       text: win.tab === "get" ? "Search Flathub, e.g. spotify" : win.tab === "try" ? "Find a system app, or type its nixpkgs name"
+                             : "Search your apps" }
                 onTextEdited: if (win.tab === "get") searchDelay.restart()
                 // Enter opens the first app, like a launcher.
                 onAccepted: {
                     if (win.tab === "all") {
                         const first = win.allApps.find(e => win.matches(e, text.trim()));
                         if (first) { first.execute(); win.visible = false; text = "" }
-                    } else win.searchFlathub();
+                    } else if (win.tab === "try") { const first = win.systemMatches()[0]; if (first) win.tryApp(first.attr) }
+                    else win.searchFlathub();
                 }
                 Keys.onEscapePressed: { if (text) text = ""; else win.visible = false }
                 Accessible.role: Accessible.EditableText
@@ -238,6 +317,70 @@ FloatingWindow {
                          enabled: win.busy === ""; onClicked: win.uninstall(modelData.id) }
                 Button { theme: win.theme; visible: !installed; primary: true; label: win.busy === modelData.id ? "Installing…" : "Install"
                          enabled: win.busy === "" && win.flathub; onClicked: win.install(modelData.id) }
+            }
+        }
+    }
+
+    // System apps: try first in a sandbox, keep through Guardian.
+    Column {
+        id: tryHead
+        visible: win.tab === "try"
+        x: 32; y: 160; width: parent.width - 64
+        spacing: 10
+        Text {
+            width: parent.width; wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 13
+            text: "Apps from NixOS itself. Try it opens the app straight away in a sandbox: it cannot see your files, " +
+                  "and nothing is kept when you close it. Keep it installs it for every account, as a system change that waits for your approval."
+        }
+        // The running (or last) trial.
+        Rectangle {
+            visible: win.trialAttr !== ""
+            width: parent.width; height: trialCol.implicitHeight + 28; radius: 14
+            color: "#0E1630"; border.color: trial.running ? "#FFA65C" : win.theme.glassBorder
+            Column {
+                id: trialCol
+                x: 16; y: 14; width: parent.width - 32; spacing: 8
+                Row {
+                    spacing: 10
+                    Rectangle {
+                        visible: trial.running
+                        width: trialTag.implicitWidth + 20; height: 24; radius: 12; color: "#2A1A0C"; border.color: "#FFA65C"
+                        Text { id: trialTag; anchors.centerIn: parent; text: "Trial"; color: "#FFC48F"; font.pixelSize: 12; font.weight: 500 }
+                    }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: win.trialName(win.trialAttr); color: win.theme.ink; font.pixelSize: 14; font.weight: 500 }
+                    Text { anchors.verticalCenter: parent.verticalCenter; visible: trial.running
+                           text: "Sandboxed · throwaway home folder"; color: win.theme.inkSecondary; font.pixelSize: 12 }
+                }
+                Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                       text: win.trialNote; color: win.theme.inkSecondary; font.pixelSize: 12 }
+                Row {
+                    spacing: 8
+                    Button { theme: win.theme; visible: trial.running; label: "Close and discard"; onClicked: win.stopTrial() }
+                    Button { theme: win.theme; label: "Keep it · Review"; onClicked: win.keepApp(win.trialAttr) }
+                }
+            }
+        }
+        Text {
+            width: parent.width; wrapMode: Text.Wrap; color: win.theme.muted; font.pixelSize: 12
+            text: "A trial can use its own window, keyboard, pointer, sound and the network; no camera, microphone, other apps or your files. " +
+                  "To hand it one file: nexus try --file <file> <name>"
+        }
+    }
+    ListView {
+        id: tryList
+        visible: win.tab === "try"
+        x: 32; y: tryHead.y + tryHead.height + 12; width: parent.width - 64; height: parent.height - y - 20
+        clip: true; spacing: 8
+        model: win.systemMatches()
+        delegate: SettingRow {
+            required property var modelData
+            theme: win.theme; width: tryList.width
+            label: modelData.name; detail: modelData.summary + " · " + modelData.attr
+            Row {
+                spacing: 8
+                Button { theme: win.theme; label: "Keep it"; onClicked: win.keepApp(modelData.attr) }
+                Button { theme: win.theme; primary: true; label: trial.running && win.trialAttr === modelData.attr ? "Running…" : "Try it"
+                         enabled: !trial.running; onClicked: win.tryApp(modelData.attr) }
             }
         }
     }

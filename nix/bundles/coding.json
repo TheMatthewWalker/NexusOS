@@ -1,0 +1,59 @@
+{
+  "id": "coding",
+  "label": "Coding",
+  "order": 4,
+  "keywords": [
+    "code",
+    "coding",
+    "programming",
+    "program",
+    "developer",
+    "development",
+    "python",
+    "javascript",
+    "java",
+    "rust",
+    "web",
+    "software",
+    "scripts",
+    "git",
+    "learning to code"
+  ],
+  "apps": [
+    {
+      "flathub": "org.gnome.meld",
+      "name": "Meld",
+      "detail": "Compare files and folders"
+    },
+    {
+      "flathub": "org.sqlitebrowser.sqlitebrowser",
+      "name": "DB Browser for SQLite",
+      "detail": "Look inside databases"
+    }
+  ],
+  "system": [
+    {
+      "package": "git",
+      "name": "Git",
+      "detail": "Version control, for every account"
+    },
+    {
+      "package": "python3",
+      "name": "Python 3",
+      "detail": "For scripts and notebooks"
+    },
+    {
+      "package": "nodejs",
+      "name": "Node.js",
+      "detail": "JavaScript outside the browser"
+    }
+  ],
+  "settings": [
+    {
+      "key": "windows",
+      "value": "tiling",
+      "name": "Tiled windows",
+      "detail": "Editor and terminal side by side; change it in Settings, Desktop"
+    }
+  ]
+}

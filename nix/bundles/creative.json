@@ -1,0 +1,59 @@
+{
+  "id": "creative",
+  "label": "Creative",
+  "order": 5,
+  "keywords": [
+    "creative",
+    "art",
+    "drawing",
+    "draw",
+    "painting",
+    "photo",
+    "photos",
+    "photography",
+    "design",
+    "video",
+    "videos",
+    "editing",
+    "music",
+    "audio",
+    "3d",
+    "animation",
+    "streaming",
+    "illustration"
+  ],
+  "apps": [
+    {
+      "flathub": "org.gimp.GIMP",
+      "name": "GIMP",
+      "detail": "Edit photos and images"
+    },
+    {
+      "flathub": "org.kde.krita",
+      "name": "Krita",
+      "detail": "Digital painting"
+    },
+    {
+      "flathub": "org.inkscape.Inkscape",
+      "name": "Inkscape",
+      "detail": "Vector graphics"
+    },
+    {
+      "flathub": "org.blender.Blender",
+      "name": "Blender",
+      "detail": "3D and animation"
+    },
+    {
+      "flathub": "org.audacityteam.Audacity",
+      "name": "Audacity",
+      "detail": "Record and edit audio"
+    },
+    {
+      "flathub": "com.obsproject.Studio",
+      "name": "OBS Studio",
+      "detail": "Record and stream your screen"
+    }
+  ],
+  "system": [],
+  "settings": []
+}

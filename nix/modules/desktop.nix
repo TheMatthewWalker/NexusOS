@@ -60,6 +60,8 @@ let
     env = NEXUS_BRIGHTNESSCTL,${pkgs.brightnessctl}/bin/brightnessctl
     env = NEXUS_LOCK,${config.programs.hyprlock.package}/bin/hyprlock --config /etc/nexus/hyprlock.conf
     env = NEXUS_TERMINAL,${terminal}
+    # First-run setup: the Welcome window opens once, after the first login.
+    ${lib.optionalString cfg.firstRun "env = NEXUS_FIRST_RUN,1"}
     # The shell logs to the journal: journalctl --user -t nexus-shell
     exec-once = ${pkgs.systemd}/bin/systemd-cat -t nexus-shell ${cfg.shellPackage}/bin/nexus-shell
 
@@ -102,6 +104,9 @@ let
     bind = SUPER, A, global, nexus:apps
     bind = SUPER, C, global, nexus:code
     bind = SUPER, G, global, nexus:images
+    bind = SUPER, S, global, nexus:search
+    bind = SUPER, Tab, global, nexus:overview
+    bind = SUPER SHIFT, slash, global, nexus:explain
     # The screen reader, on and off.
     bind = SUPER ALT, S, exec, ${pkgs.procps}/bin/pkill -x orca || ${pkgs.orca}/bin/orca --replace
     bind = SUPER, L, exec, ${config.programs.hyprlock.package}/bin/hyprlock --config /etc/nexus/hyprlock.conf
@@ -166,7 +171,8 @@ let
   '';
 in
 {
-  imports = [ ./core.nix ];
+  # try-apps: nexus-try and bubblewrap, for Try it in Apps (services.nexus-desktop.tryApps).
+  imports = [ ./core.nix ./try-apps.nix ];
 
   options.services.nexus-desktop = {
     enable = lib.mkEnableOption "the NexusOS desktop (Hyprland with the Nexus shell)";
@@ -266,6 +272,15 @@ in
         `nexus-shell-ipc call nexus fullscreenIsGame true`.
       '';
     };
+    firstRun = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Open the Welcome window once after each person's first login: it asks
+        what the computer is mostly for and suggests apps and settings from the
+        curated bundles (nix/bundles). It can be reopened from Settings, About.
+      '';
+    };
     keyboardLayout = lib.mkOption {
       type = lib.types.str;
       default = "us";
@@ -287,9 +302,11 @@ in
     environment.etc."nexus/hyprlock.conf".source = hyprlockConf;
     environment.etc."nexus/desktop-apps.json".text = builtins.toJSON cfg.apps;
     # gtk3 provides gtk-launch; Settings uses hyprsunset (night light),
-    # brightnessctl, lspci (About) and xdg-open (Open folder).
+    # brightnessctl, lspci (About) and xdg-open (Open folder). Explain mode
+    # points with slurp, takes the area's picture with grim and reads the
+    # selected text with wl-paste (wl-clipboard).
     environment.systemPackages = [ cfg.shellPackage pkgs.gtk3 pkgs.hyprsunset pkgs.brightnessctl pkgs.pciutils pkgs.xdg-utils
-                                   pkgs.orca pkgs.adwaita-icon-theme ]
+                                   pkgs.orca pkgs.adwaita-icon-theme pkgs.grim pkgs.slurp pkgs.wl-clipboard pkgs.rsync ]
       ++ lib.optionals cfg.installDefaultApps [ pkgs.kitty pkgs.thunar ];
 
     fonts.packages = [ pkgs.inter pkgs.jetbrains-mono ];
@@ -315,6 +332,8 @@ in
     };
     networking.networkmanager.enable = lib.mkDefault true;
     services.upower.enable = lib.mkDefault true;
+    # Bring my stuff over: old drives are opened read-only with udisksctl, and copied with rsync.
+    services.udisks2.enable = lib.mkDefault true;
     # Settings, Power: the power mode.
     services.power-profiles-daemon.enable = lib.mkDefault true;
     # Settings, Display: brightness for people in the video group, without root.

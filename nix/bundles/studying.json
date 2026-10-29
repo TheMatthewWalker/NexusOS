@@ -1,0 +1,52 @@
+{
+  "id": "studying",
+  "label": "Studying",
+  "order": 1,
+  "keywords": [
+    "study",
+    "studying",
+    "uni",
+    "university",
+    "school",
+    "college",
+    "homework",
+    "essay",
+    "essays",
+    "revision",
+    "revise",
+    "student",
+    "dissertation",
+    "thesis",
+    "exam",
+    "exams",
+    "lectures",
+    "notes",
+    "research"
+  ],
+  "apps": [
+    {
+      "flathub": "org.zotero.Zotero",
+      "name": "Zotero",
+      "detail": "References and citations"
+    },
+    {
+      "flathub": "net.ankiweb.Anki",
+      "name": "Anki",
+      "detail": "Flashcards"
+    },
+    {
+      "flathub": "com.github.xournalpp.xournalpp",
+      "name": "Xournal++",
+      "detail": "Handwritten notes and marking up PDFs"
+    }
+  ],
+  "system": [],
+  "settings": [
+    {
+      "key": "nightLight",
+      "value": true,
+      "name": "Night light",
+      "detail": "Warmer colours, easier on the eyes in the evening"
+    }
+  ]
+}

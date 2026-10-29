@@ -22,6 +22,8 @@ FloatingWindow {
     property bool reduced: false
     signal askNexus(string text)
     signal fixIt(string problem)
+    signal openWelcome()
+    signal moveIn()
 
     title: "Settings"
     visible: false
@@ -42,6 +44,7 @@ FloatingWindow {
         { id: "power", label: "Power", colour: "#7FE0B0", icon: "power" },
         { id: "desktop", label: "Desktop", colour: "#9C8FFF", icon: "desktop" },
         { id: "privacy", label: "Privacy and AI", colour: "#9C8FFF", icon: "privacy" },
+        { id: "search", label: "Search", colour: "#86A8FF", icon: "search" },
         { id: "timeline", label: "Timeline", colour: "#FFA65C", icon: "time" },
         { id: "automations", label: "Automations", colour: "#7FE0B0", icon: "spark" },
         { id: "accessibility", label: "Accessibility", colour: "#86A8FF", icon: "accessibility" },
@@ -73,6 +76,7 @@ FloatingWindow {
         ["privacy", "history", "Conversation history", "history conversations erase delete forget"],
         ["privacy", "guardian", "System changes", "guardian system change install ssh approval"],
         ["privacy", "forget", "Forget today", "forget today privacy dashboard what nexus read left the computer microphone camera"],
+        ["search", "", "Search", "search find files folders index private documents choose what is searched"],
         ["timeline", "", "Timeline", "timeline history undo changes what changed recent"],
         ["automations", "", "Automations", "automations rules when if then automatic schedule routine trigger"],
         ["accessibility", "textsize", "Bigger text", "accessibility bigger text larger font zoom vision"],
@@ -83,6 +87,8 @@ FloatingWindow {
         ["health", "", "Health", "health report problems disk smart updates check status"],
         ["about", "name", "Computer name", "about computer name hostname version"],
         ["about", "storage", "Storage", "storage disk space full free files"],
+        ["about", "welcome", "Welcome setup", "welcome first run setup bundles start again apps for studying gaming office coding"],
+        ["about", "movein", "Bring files from Windows or macOS", "move in old computer windows mac macos transfer copy files documents photos drive"],
         ["about", "generations", "Earlier versions", "rollback undo update generation boot earlier version"]
     ]
     function search(text) {
@@ -340,7 +346,8 @@ FloatingWindow {
                 width: scroller.width
                 readonly property string file: "settings/" + ({ network: "NetworkPage", bluetooth: "BluetoothPage", sound: "SoundPage",
                     display: "DisplayPage", power: "PowerPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
-                    timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage" })[win.page] + ".qml"
+                    timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage",
+                    search: "SearchPage" })[win.page] + ".qml"
                 function reload() {
                     if (win.visible) setSource(file, { theme: win.theme, host: win });
                     else source = "";

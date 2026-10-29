@@ -58,7 +58,7 @@ public sealed class ActionRejectedException(string message) : Exception(message)
 public static class NexusActions
 {
     public static readonly string[] SettingsPages =
-        ["network", "bluetooth", "sound", "display", "power", "desktop", "privacy", "timeline", "automations",
+        ["network", "bluetooth", "sound", "display", "power", "desktop", "privacy", "search", "timeline", "automations",
          "accessibility", "health", "about"];
     public static readonly string[] PersonalSettings =
         ["volume", "night_light", "scale", "windows", "blur", "animations", "high_contrast"];

@@ -39,6 +39,9 @@ else
 builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSeconds(180))
     .RedactLoggedHeaders(_ => true)
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false });
+// The local image model (ImageStudio.cs): loopback only, and an image can take minutes on a CPU.
+builder.Services.AddHttpClient("images", client => client.Timeout = TimeSpan.FromMinutes(10))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false });
 builder.Services.AddHttpClient("cloud", client => client.Timeout = TimeSpan.FromSeconds(180))
     .RedactLoggedHeaders(_ => true)
     .ConfigurePrimaryHttpMessageHandler(() => CloudHttp.CreateHandler(CloudConnector.Default));
@@ -61,6 +64,7 @@ builder.Services.AddSingleton<InferenceConcurrencyGate>();
 builder.Services.AddSingleton<InferenceTokenSettings>();
 builder.Services.AddSingleton<AssistantContextBuilder>();
 builder.Services.AddSingleton<CodingAgent>();
+builder.Services.AddSingleton<ImageStudio>();
 // Automations in plain words: rule store, engine, parser and timer (RuleEndpoints.cs).
 builder.Services.AddRules();
 builder.Services.AddHostedService<IdleModelEvictionService>();
@@ -371,6 +375,7 @@ app.MapGet("/system", () => Results.Ok(new
 app.MapFixIt();
 app.MapNexusSearch();
 app.MapCoding();
+app.MapImages();
 app.Run();
 
 // Journal summaries are one short line: drop control characters and truncate.

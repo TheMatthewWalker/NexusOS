@@ -14,6 +14,7 @@ FloatingWindow {
     id: win
     property var theme
     property var bridge
+    signal switchToImages()
     title: "Code"
     visible: false
     implicitWidth: 1240; implicitHeight: 780
@@ -131,7 +132,8 @@ FloatingWindow {
                         color: win.working ? "#FFA65C" : "#9C8FFF" }
             Text { text: win.folder ? "Code · " + win.folder : "Code"; color: win.theme.ink; font.pixelSize: 14; font.weight: 500
                    anchors.verticalCenter: parent.verticalCenter; width: parent.width - 120; elide: Text.ElideMiddle }
-            Text { text: "Local model"; color: "#7FE0B0"; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+            Text { text: "Images"; color: win.theme.focus; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter
+                   TapHandler { onTapped: win.switchToImages() } }
         }
 
         // No project yet: choose a folder.

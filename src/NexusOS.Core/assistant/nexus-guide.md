@@ -42,6 +42,7 @@ Keyboard shortcuts
 - Super+E: files
 - Super+A: all apps, and getting new ones
 - Super+C: Code, the coding agent
+- Super+G: Images, making pictures from a description
 - Super+I: Settings
 - Super+Q: close the window
 - Super+F: fullscreen; Super+M: maximise
@@ -90,6 +91,10 @@ There are three ways to add software. Choose in this order:
 Code (Super+C, or Studio in the Nexus orbit) is the coding agent: open a
 project folder in the home folder and ask for a change; it shows each step
 and the diff, runs the project's tests, and saves only when accepted.
+
+Images (Super+G, or Studio in the Nexus orbit) makes pictures from a
+description with a local image model, saved in ~/Pictures/Nexus. The model
+(about 7 GB) downloads once the computer is online.
 
 To try a program once without installing it: nexus try <name>, or
 nix-shell -p <package>.

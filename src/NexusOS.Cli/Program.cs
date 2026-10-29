@@ -53,7 +53,7 @@ if (mode == "unix")
     };
 }
 else handler = new SocketsHttpHandler();
-using var http = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5077"), Timeout = TimeSpan.FromMinutes(4) };
+using var http = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5077"), Timeout = TimeSpan.FromMinutes(15) };   // images and the coding agent can take minutes
 http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 if (args.Length == 0) { Usage(); return 2; }
 try
@@ -346,7 +346,10 @@ async IAsyncEnumerable<JsonElement> StreamEvents(string path, object body)
 //   {"id":10,"op":"code-start","folder":"~/projects/app"} -> {"type":"code-session","data":{"id":..,"folder":..,"tests":..}}
 //   {"id":11,"op":"code-send","session":"..","text":"fix the bug"} -> step events, changes, message, done
 //   {"id":12,"op":"code-accept","session":"..","files":["a.py"]|null} | code-reject | code-undo
-// Streaming requests (chat, code-send) run alongside the others, so a long
+// Images (ImageStudio.cs):
+//   {"op":"images-status"} | {"op":"images-list"} | {"op":"images-delete","name":".."}
+//   {"op":"images-generate","prompt":"..","shape":"landscape","count":4,"style":"painterly","seed":-1}
+// Streaming requests (chat, code-send) and image generation run alongside the others, so a long
 // answer never holds up a health check or a click.
 async Task<int> Bridge()
 {
@@ -368,6 +371,17 @@ async Task<int> Bridge()
         var op = req.TryGetProperty("op", out var o) ? o.GetString() : null;
         var prompt = req.TryGetProperty("prompt", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : "";
         string Arg(string key) => req.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
+        if (op == "images-generate")
+        {
+            var body = JsonSerializer.Deserialize<JsonElement>(line);
+            _ = Task.Run(async () =>
+            {
+                try { Emit(id, await Call(HttpMethod.Post, "/images/generate", body, "images")); }
+                catch (HttpRequestException) { Emit(id, new { type = "error", message = "Nexus Core is not reachable." }); }
+                catch (TaskCanceledException) { Emit(id, new { type = "error", message = "The image took too long." }); }
+            });
+            continue;
+        }
         if (op is "chat" or "code-send")
         {
             var path = op == "chat" ? "/chat/stream" : $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/messages";
@@ -384,6 +398,15 @@ async Task<int> Bridge()
         {
             switch (op)
             {
+                case "images-status":
+                    Emit(id, await Call(HttpMethod.Get, "/images/status", null, "images-status"));
+                    break;
+                case "images-list":
+                    Emit(id, await Call(HttpMethod.Get, "/images", null, "images"));
+                    break;
+                case "images-delete":
+                    Emit(id, await Call(HttpMethod.Delete, $"/images/{Uri.EscapeDataString(Arg("name"))}", null, "images-deleted"));
+                    break;
                 case "code-start":
                     Emit(id, await Call(HttpMethod.Post, "/code/sessions", new { folder = Arg("folder") }, "code-session"));
                     break;

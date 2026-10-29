@@ -28,7 +28,7 @@ pkgs.testers.runNixOSTest {
     machine.wait_for_unit("greetd.service")
 
     with subtest("the graphical login screen shows, not the text one"):
-        machine.wait_until_succeeds("pgrep -f 'quickshell.*greeter.qml'", timeout=600)
+        machine.wait_until_succeeds("pgrep -f '[q]uickshell.*greeter[.]qml'", timeout=600)
         machine.fail("pgrep -x tuigreet")
         # Under software emulation the screen takes a minute or more to load:
         # type only once the password box has the keyboard.
@@ -40,21 +40,21 @@ pkgs.testers.runNixOSTest {
         machine.send_chars("not-the-password\n")
         machine.wait_until_succeeds("journalctl -b -t nexus-greeter | grep -q 'login refused'", timeout=300)
         machine.fail("pgrep -u alice Hyprland")
-        machine.succeed("pgrep -f 'quickshell.*greeter.qml'")
+        machine.succeed("pgrep -f '[q]uickshell.*greeter[.]qml'")
         machine.screenshot("02-wrong-password")
 
     with subtest("the right password starts the desktop"):
         machine.sleep(5)                        # the refused attempt hands the keyboard back to the password box
         machine.send_chars("nexus-login\n")
         try:
-            machine.wait_until_succeeds("pgrep -u alice -f start-hyprland", timeout=300)
+            machine.wait_until_succeeds("pgrep -u alice -f '[s]tart-hyprland'", timeout=300)
         except Exception:
             machine.screenshot("03-failed")
             journal()
             raise
-        machine.wait_until_succeeds("pgrep -u alice -f 'nexus-shell/shell.qml'", timeout=600)
+        machine.wait_until_succeeds("pgrep -u alice -f '[n]exus-shell/shell[.]qml'", timeout=600)
         try:
-            machine.wait_until_fails("pgrep -f 'quickshell.*greeter.qml'", timeout=120)
+            machine.wait_until_fails("pgrep -f '[q]uickshell.*greeter[.]qml'", timeout=120)
         except Exception:
             print(machine.execute("ps -eo pid,ppid,user,stat,etime,args | grep -E 'cage|quickshell|Hyprland|greet' | grep -v grep")[1])
             journal()

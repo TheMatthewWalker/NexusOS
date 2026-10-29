@@ -101,6 +101,7 @@ let
     bind = SUPER, I, global, nexus:settings
     bind = SUPER, A, global, nexus:apps
     bind = SUPER, C, global, nexus:code
+    bind = SUPER, G, global, nexus:images
     bind = SUPER, L, exec, ${config.programs.hyprlock.package}/bin/hyprlock --config /etc/nexus/hyprlock.conf
     bind = SUPER, Return, exec, ${pkgs.gtk3}/bin/gtk-launch ${terminal}
     bind = CTRL ALT, T, exec, ${pkgs.gtk3}/bin/gtk-launch ${terminal}

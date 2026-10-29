@@ -82,8 +82,8 @@ ShellRoot {
     function openApp(id) {
         // Settings is part of the shell itself.
         if (id === "settings") { collapse(); settings.open("", ""); return; }
-        // Studio: making something new. The coding agent is the first part of it.
-        if (id === "studio") { collapse(); codeWin.open(""); return; }
+        // Studio: making something new, images or code (each window switches to the other).
+        if (id === "studio") { collapse(); imagesWin.open(); return; }
         if (apps.open(id)) collapse();
     }
     function installed(id) { return id === "settings" || id === "studio" || apps.installed(id) }
@@ -163,13 +163,15 @@ ShellRoot {
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
     }
     Apps { id: appsWin; theme: root.dark }
-    Code { id: codeWin; theme: root.dark; bridge: bridge }
+    Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }
+    Images { id: imagesWin; theme: root.dark; bridge: bridge; onSwitchToCode: codeWin.open("")
+             onUseAsWallpaper: path => wallpaper.set(path) }
     TopBar { theme: root.dark; settings: settings; onOpenNexus: root.expanded ? root.collapse() : root.open()
              onOpenApps: appsWin.open("all") }
     OrbitalControls { theme: root.dark; settings: settings; reduced: root.reduced }
     Process { id: hypr }
     Process { id: toast }
-    Wallpaper {}
+    Wallpaper { id: wallpaper }
 
     Timer { id: voiceDecay; interval: 140; onTriggered: root.voice = 0.1 }
     Timer { id: settle; interval: 1200; onTriggered: { root.mode = "idle"; root.voice = 0 } }
@@ -190,6 +192,8 @@ ShellRoot {
     GlobalShortcut { appid: "nexus"; name: "settings"; onPressed: settings.open("", "") }
     // Super+C (bind = SUPER, C, global, nexus:code): the coding agent.
     GlobalShortcut { appid: "nexus"; name: "code"; onPressed: codeWin.open("") }
+    // Super+G (bind = SUPER, G, global, nexus:images): image generation.
+    GlobalShortcut { appid: "nexus"; name: "images"; onPressed: imagesWin.open() }
     // Super+A (bind = SUPER, A, global, nexus:apps): every app, and getting new ones.
     GlobalShortcut { appid: "nexus"; name: "apps"; onPressed: appsWin.visible ? appsWin.visible = false : appsWin.open("all") }
     IpcHandler {

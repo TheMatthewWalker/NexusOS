@@ -34,6 +34,8 @@ Item {
     function chat(prompt) { return send("chat", { prompt: prompt }) }
     function suggest(prompt, useModel) { return send("suggest", { prompt: prompt, model: !!useModel }) }
     function unload() { return send("unload") }
+    // Any page's Core request (allowed areas only, see BridgeApi in the CLI); the answer comes as result(id, "api", data).
+    function api(method, path, body) { return send("api", { method: method, path: path, body: body || null }) }
 
     function handle(line) {
         let ev;
@@ -52,7 +54,7 @@ Item {
         else if (ev.type === "suggestions") suggestions(id, ev.data.apps, ev.data.source);
         else if (ev.type === "unloaded") unloaded(id, ev.data.vramFreedBytes);
         else if (ev.type === "health") { online = true; offlineReason = "" }
-        else if (["providers", "status", "cleared", "code-session", "code-result", "images-status", "images", "images-deleted"].includes(ev.type)) result(id, ev.type, ev.data || {});
+        else if (["providers", "status", "cleared", "code-session", "code-result", "images-status", "images", "images-deleted", "api"].includes(ev.type)) result(id, ev.type, ev.data || {});
         else if (ev.type === "error") {
             if (/not reachable|did not answer/.test(ev.message)) { online = false; offlineReason = ev.message }
             failed(id, ev.message);

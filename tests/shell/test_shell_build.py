@@ -126,7 +126,7 @@ class ShellBuild(unittest.TestCase):
         # Afterwards, the person's own choices from Settings, Desktop come back.
         self.assertIn('"keyword decoration:blur:enabled " + desktop.blur', shell)
         self.assertIn('" ; keyword animations:enabled " + desktop.animations', shell)
-        self.assertIn("DesktopSettings { id: desktop; gameMode: root.gameMode }", shell)
+        self.assertIn("DesktopSettings { id: desktop; gameMode: root.gameMode", shell)
         self.assertIn("G.toastText(true, freed)", shell)
         self.assertIn("G.toastText(false, null)", shell)
         self.assertIn("gameMode: root.gameMode", shell)                       # IPC state()

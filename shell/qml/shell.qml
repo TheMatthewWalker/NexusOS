@@ -58,7 +58,12 @@ ShellRoot {
     onGameModeChanged: gameMode ? enterGameMode() : exitGameMode()
     Component.onCompleted: if (gameMode) enterGameMode()
     // Provisional dark theme (approved 22 Oct): deep space, light ink, glass surfaces.
-    readonly property var dark: ({
+    // High contrast (Settings, Accessibility): solid panels, white text, bright borders.
+    readonly property var dark: desktop.highContrast ? ({
+        ink: "#FFFFFF", inkSecondary: "#DCE4FF", glass: Qt.rgba(0, 0, 0, 0.96),
+        glassBorder: "#B7CAFF", focus: "#FFD166", primary: "#5A48F0", chip: "#05070F",
+        orbit: Qt.rgba(0.8, 0.85, 1.0, 0.6), error: "#FFB3C1", muted: "#C9D4FF"
+    }) : ({
         ink: "#E3EAFF", inkSecondary: "#9AA9C9", glass: Qt.rgba(0.04, 0.07, 0.15, 0.80),
         glassBorder: "#2A3A66", focus: "#86A8FF", primary: "#7C6BFF", chip: "#121B33",
         orbit: Qt.rgba(0.55, 0.62, 1.0, 0.22), error: "#FF8FA3", muted: "#7885A3"
@@ -156,13 +161,16 @@ ShellRoot {
         }
     }
     AppDirectory { id: apps }
-    DesktopSettings { id: desktop; gameMode: root.gameMode }
+    DesktopSettings { id: desktop; gameMode: root.gameMode; bridge: bridge }
+    RuleRunner { bridge: bridge; desktop: desktop; wallpaper: wallpaper; apps: apps; wifi: settings.wifi }
     Settings {
         id: settings
         theme: root.dark; bridge: bridge; desktop: desktop; reduced: root.reduced
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
+        onFixIt: problem => fixItWin.open(problem)
     }
     Apps { id: appsWin; theme: root.dark }
+    FixIt { id: fixItWin; theme: root.dark; bridge: bridge }
     Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }
     Images { id: imagesWin; theme: root.dark; bridge: bridge; onSwitchToCode: codeWin.open("")
              onUseAsWallpaper: path => wallpaper.set(path) }

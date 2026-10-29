@@ -24,12 +24,33 @@ Item {
     property alias scale: store.scale
     property alias nightLight: store.nightLight
     property alias warmth: store.warmth
+    property alias highContrast: store.highContrast
+    property alias cursorSize: store.cursorSize
     // False while game mode has blur and animations off, so applying settings does not undo it.
     property bool gameMode: false
+    // Each change goes in the activity journal with its old value, so the Timeline can undo it.
+    property var bridge: null
+    function describe(key, value) {
+        switch (key) {
+        case "windows": return "Windows: " + (value === "tiling" ? "tiled" : "floating");
+        case "blur": return "Blur " + (value ? "on" : "off");
+        case "animations": return "Animations " + (value ? "on" : "off");
+        case "scale": return "Screen scale " + Math.round(value * 100) + "%";
+        case "nightLight": return "Night light " + (value ? "on" : "off");
+        case "warmth": return "Night light warmth " + value + " K";
+        case "highContrast": return "High contrast " + (value ? "on" : "off");
+        case "cursorSize": return "Pointer size " + value;
+        default: return key;
+        }
+    }
 
-    function set(key, value) {
+    function set(key, value, fromUndo) {
         if (store[key] === value) return;
         const wasTiling = store.windows === "tiling";
+        const before = store[key];
+        if (bridge && bridge.online && !fromUndo && key !== "warmth")
+            bridge.api("POST", "/journal", { kind: "setting", summary: describe(key, value), before: { value: before },
+                                             after: { value: value }, reversible: true, ref: "desktop:" + key });
         store[key] = value;
         file.writeAdapter();
         if (key === "windows") applyWindows(wasTiling);
@@ -52,6 +73,8 @@ Item {
             property real scale: 1
             property bool nightLight: false
             property int warmth: 4500
+            property bool highContrast: false
+            property int cursorSize: 24
         }
     }
 
@@ -98,6 +121,7 @@ Item {
         if (applied) return;
         applied = true;
         run(["--batch", (store.windows === "floating" ? [floatRules] : []).concat(keywords()).join(" ; ")]);
+        if (store.cursorSize !== 24) run(["setcursor", "Adwaita", String(store.cursorSize)]);
     }
 
     // Night light: hyprsunset runs while it is on; changing the warmth restarts it.

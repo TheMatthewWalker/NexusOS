@@ -20,6 +20,7 @@ FloatingWindow {
     property var desktop
     property bool reduced: false
     signal askNexus(string text)
+    signal fixIt(string problem)
 
     title: "Settings"
     visible: false
@@ -40,6 +41,10 @@ FloatingWindow {
         { id: "power", label: "Power", colour: "#7FE0B0", icon: "power" },
         { id: "desktop", label: "Desktop", colour: "#9C8FFF", icon: "desktop" },
         { id: "privacy", label: "Privacy and AI", colour: "#9C8FFF", icon: "privacy" },
+        { id: "timeline", label: "Timeline", colour: "#FFA65C", icon: "time" },
+        { id: "automations", label: "Automations", colour: "#7FE0B0", icon: "spark" },
+        { id: "accessibility", label: "Accessibility", colour: "#86A8FF", icon: "accessibility" },
+        { id: "health", label: "Health", colour: "#7FE0B0", icon: "health" },
         { id: "about", label: "About", colour: "#9AA9C9", icon: "about" }
     ]
     // What the search box finds: [page, highlight id, label, words people might type].
@@ -66,6 +71,15 @@ FloatingWindow {
         ["privacy", "notes", "Your notes for Nexus", "notes training documents teach nexus about me instructions"],
         ["privacy", "history", "Conversation history", "history conversations erase delete forget"],
         ["privacy", "guardian", "System changes", "guardian system change install ssh approval"],
+        ["privacy", "forget", "Forget today", "forget today privacy dashboard what nexus read left the computer microphone camera"],
+        ["timeline", "", "Timeline", "timeline history undo changes what changed recent"],
+        ["automations", "", "Automations", "automations rules when if then automatic schedule routine trigger"],
+        ["accessibility", "textsize", "Bigger text", "accessibility bigger text larger font zoom vision"],
+        ["accessibility", "contrast", "High contrast", "high contrast accessibility vision"],
+        ["accessibility", "reader", "Screen reader", "screen reader orca blind accessibility read aloud"],
+        ["accessibility", "pointer", "Pointer size", "pointer cursor mouse size bigger"],
+        ["accessibility", "motion", "Less motion", "reduce motion animations dizzy accessibility"],
+        ["health", "", "Health", "health report problems disk smart updates check status"],
         ["about", "name", "Computer name", "about computer name hostname version"],
         ["about", "storage", "Storage", "storage disk space full free files"],
         ["about", "generations", "Earlier versions", "rollback undo update generation boot earlier version"]
@@ -89,6 +103,10 @@ FloatingWindow {
         visible = true;
     }
     function hypr(args) { Quickshell.execDetached([hyprctl].concat(args)) }
+    // Undo from the Timeline: Core hands back the old value and where it belongs.
+    function restore(ref, value) {
+        if (typeof ref === "string" && ref.startsWith("desktop:") && value && "value" in value) desktop.set(ref.slice(8), value.value, true);
+    }
     function lock() { Quickshell.execDetached((Quickshell.env("NEXUS_LOCK") || "hyprlock").split(" ")) }
     function runInTerminal(command) { Quickshell.execDetached([Quickshell.env("NEXUS_TERMINAL") || "kitty"].concat(command)) }
     function openFolder(path) {
@@ -317,7 +335,8 @@ FloatingWindow {
                 id: pageLoader
                 width: scroller.width
                 readonly property string file: "settings/" + ({ network: "NetworkPage", bluetooth: "BluetoothPage", sound: "SoundPage",
-                    display: "DisplayPage", power: "PowerPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage" })[win.page] + ".qml"
+                    display: "DisplayPage", power: "PowerPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
+                    timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage" })[win.page] + ".qml"
                 function reload() {
                     if (win.visible) setSource(file, { theme: win.theme, host: win });
                     else source = "";

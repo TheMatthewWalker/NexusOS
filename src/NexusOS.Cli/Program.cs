@@ -349,6 +349,9 @@ async IAsyncEnumerable<JsonElement> StreamEvents(string path, object body)
 // Images (ImageStudio.cs):
 //   {"op":"images-status"} | {"op":"images-list"} | {"op":"images-delete","name":".."}
 //   {"op":"images-generate","prompt":"..","shape":"landscape","count":4,"style":"painterly","seed":-1}
+// Any other Core request the desktop's pages need, limited to these areas:
+//   {"op":"api","method":"GET","path":"/journal?limit=50"}  -> {"type":"api","data":...}
+//   {"op":"api","method":"POST","path":"/fixit","body":{"problem":"no sound"}}
 // Streaming requests (chat, code-send) and image generation run alongside the others, so a long
 // answer never holds up a health check or a click.
 async Task<int> Bridge()
@@ -371,6 +374,24 @@ async Task<int> Bridge()
         var op = req.TryGetProperty("op", out var o) ? o.GetString() : null;
         var prompt = req.TryGetProperty("prompt", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : "";
         string Arg(string key) => req.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
+        if (op == "api")
+        {
+            var method = Arg("method").ToUpperInvariant();
+            var apiPath = Arg("path");
+            object? apiBody = req.TryGetProperty("body", out var b) && b.ValueKind == JsonValueKind.Object ? b : null;
+            if (!BridgeApi.Allowed(method, apiPath))
+            {
+                Emit(id, new { type = "error", message = $"The desktop may not call {method} {apiPath}." });
+                continue;
+            }
+            _ = Task.Run(async () =>
+            {
+                try { Emit(id, await Call(new HttpMethod(method), apiPath, apiBody, "api")); }
+                catch (HttpRequestException) { Emit(id, new { type = "error", message = "Nexus Core is not reachable." }); }
+                catch (TaskCanceledException) { Emit(id, new { type = "error", message = "Nexus Core did not answer in time." }); }
+            });
+            continue;
+        }
         if (op == "images-generate")
         {
             var body = JsonSerializer.Deserialize<JsonElement>(line);
@@ -522,4 +543,16 @@ static void Usage()
     Console.WriteLine(RulesCommand.Usage);
     Console.WriteLine("nexus search <query> | search status | search formats | search reindex | search erase");
     Console.WriteLine("nexus search sources [list | add <folder>... | rm <folder>]   (search -- <query> to search for a subcommand word)");
+}
+
+// The Core areas the desktop's pages may call through the bridge's "api" op.
+static class BridgeApi
+{
+    private static readonly string[] Prefixes =
+        ["/journal", "/fixit", "/health/report", "/search", "/rules", "/events", "/guardian/propose", "/guardian/preview",
+         "/try/keep", "/settings/plan", "/workspaces", "/history", "/system"];
+
+    public static bool Allowed(string method, string path) =>
+        method is "GET" or "POST" or "DELETE" && path.StartsWith('/') && !path.Contains("..") &&
+        Prefixes.Any(p => path == p || path.StartsWith(p + "/", StringComparison.Ordinal) || path.StartsWith(p + "?", StringComparison.Ordinal));
 }

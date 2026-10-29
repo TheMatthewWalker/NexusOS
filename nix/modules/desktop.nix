@@ -102,6 +102,8 @@ let
     bind = SUPER, A, global, nexus:apps
     bind = SUPER, C, global, nexus:code
     bind = SUPER, G, global, nexus:images
+    # The screen reader, on and off.
+    bind = SUPER ALT, S, exec, ${pkgs.procps}/bin/pkill -x orca || ${pkgs.orca}/bin/orca --replace
     bind = SUPER, L, exec, ${config.programs.hyprlock.package}/bin/hyprlock --config /etc/nexus/hyprlock.conf
     bind = SUPER, Return, exec, ${pkgs.gtk3}/bin/gtk-launch ${terminal}
     bind = CTRL ALT, T, exec, ${pkgs.gtk3}/bin/gtk-launch ${terminal}
@@ -286,7 +288,8 @@ in
     environment.etc."nexus/desktop-apps.json".text = builtins.toJSON cfg.apps;
     # gtk3 provides gtk-launch; Settings uses hyprsunset (night light),
     # brightnessctl, lspci (About) and xdg-open (Open folder).
-    environment.systemPackages = [ cfg.shellPackage pkgs.gtk3 pkgs.hyprsunset pkgs.brightnessctl pkgs.pciutils pkgs.xdg-utils ]
+    environment.systemPackages = [ cfg.shellPackage pkgs.gtk3 pkgs.hyprsunset pkgs.brightnessctl pkgs.pciutils pkgs.xdg-utils
+                                   pkgs.orca pkgs.adwaita-icon-theme ]
       ++ lib.optionals cfg.installDefaultApps [ pkgs.kitty pkgs.thunar ];
 
     fonts.packages = [ pkgs.inter pkgs.jetbrains-mono ];
@@ -316,5 +319,8 @@ in
     services.power-profiles-daemon.enable = lib.mkDefault true;
     # Settings, Display: brightness for people in the video group, without root.
     services.udev.packages = [ pkgs.brightnessctl ];
+    # Settings, Accessibility: the screen reader reads Qt (the desktop) and GTK apps through AT-SPI.
+    services.gnome.at-spi2-core.enable = lib.mkDefault true;
+    environment.sessionVariables.QT_LINUX_ACCESSIBILITY_ALWAYS_ON = "1";
   };
 }

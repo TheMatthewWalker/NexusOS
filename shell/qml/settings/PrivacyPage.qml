@@ -1,9 +1,11 @@
 import QtQuick
 import Quickshell
 
-// Settings, Privacy and AI: which model answers, what may leave the
-// computer, conversation history, and the notes Nexus reads (the person's own
-// "training documents": AssistantContext.cs adds them to every question).
+// Settings, Privacy and AI: today at a glance (feature 12, Privacy
+// dashboard: what Nexus read, what left the computer, which apps used the
+// microphone or camera, and Forget today), which model answers, what may
+// leave the computer, conversation history, and the notes Nexus reads (the
+// person's own "training documents": AssistantContext.cs adds them to every question).
 Column {
     id: page
     property var theme
@@ -21,6 +23,13 @@ Column {
     property int statusId: -1
     property int selectId: -1
     property int clearId: -1
+    property var today: null
+    property var todayEntries: []
+    property int todayId: -1
+    property int todayListId: -1
+    property int forgetId: -1
+    property bool confirmForget: false
+    readonly property string todayDate: Qt.formatDate(new Date(), "yyyy-MM-dd")
     readonly property string notesDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nexusos/assistant"
     readonly property var labels: ({ "local": "On this computer (Ollama)", "llama-cpp": "On this computer (llama.cpp)",
                                      "openai-compatible": "Cloud model" })
@@ -28,6 +37,9 @@ Column {
         if (!bridge.online) return;
         providersId = bridge.send("providers");
         statusId = bridge.send("status");
+        todayId = bridge.api("GET", "/journal/today/summary");
+        const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+        todayListId = bridge.api("GET", "/journal?limit=60&since=" + encodeURIComponent(midnight.toISOString()));
     }
     Component.onCompleted: refresh()
     Connections {
@@ -38,14 +50,60 @@ Column {
             else if (id === page.statusId) page.status = data;
             else if (id === page.selectId) { page.selected = data.selected; page.statusId = page.bridge.send("status") }
             else if (id === page.clearId) { page.confirmClear = false; page.message = "Conversation history erased." }
+            else if (id === page.todayId) page.today = data;
+            else if (id === page.todayListId) page.todayEntries = (data || []).filter(e => ["ai-read", "egress", "device"].includes(e.kind));
+            else if (id === page.forgetId) { page.confirmForget = false; page.message = "Today's record is erased."; page.refresh() }
         }
         function onFailed(id, message) {
-            if ([page.providersId, page.statusId, page.selectId, page.clearId].includes(id)) page.message = message;
+            if ([page.providersId, page.statusId, page.selectId, page.clearId, page.todayId, page.todayListId, page.forgetId].includes(id)) page.message = message;
         }
     }
 
     PageHeader { theme: page.theme; title: "Privacy and AI"
                  summary: "Nexus runs on this computer. Nothing you ask leaves it unless you turn on a cloud model." }
+
+    // Today, at a glance.
+    Row {
+        width: parent.width; spacing: 10
+        Repeater {
+            model: [
+                { n: page.today ? page.today.aiReads : "–", label: "things Nexus read" },
+                { n: page.today ? page.today.leftTheComputer : "–", label: "requests left this computer" },
+                { n: page.today ? page.today.deviceUses : "–", label: "uses of microphone or camera" }
+            ]
+            delegate: Rectangle {
+                required property var modelData
+                width: (page.width - 20) / 3; height: 84; radius: 12; color: page.theme.chip
+                Column {
+                    anchors.centerIn: parent; spacing: 4
+                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.n; color: page.theme.ink; font.pixelSize: 26; font.weight: 600 }
+                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.label; color: page.theme.inkSecondary; font.pixelSize: 12 }
+                }
+            }
+        }
+    }
+    Repeater {
+        model: page.todayEntries.slice(0, 12)
+        delegate: Text {
+            required property var modelData
+            width: page.width; elide: Text.ElideRight; textFormat: Text.PlainText; leftPadding: 4
+            text: Qt.formatTime(new Date(modelData.time), "HH:mm") + "  " + modelData.summary
+            color: modelData.kind === "egress" ? page.theme.error : page.theme.inkSecondary; font.pixelSize: 12
+        }
+    }
+    SettingRow {
+        theme: page.theme; label: "Forget today"; highlighted: page.host.highlight === "forget"
+        detail: page.confirmForget ? "Erase today's record of what Nexus read, what left the computer and device use? This cannot be undone."
+              : "Erases today's record. Your files and settings stay as they are."
+        Row {
+            spacing: 8
+            Button { theme: page.theme; visible: !page.confirmForget; label: "Forget today"; enabled: page.bridge.online
+                     onClicked: page.confirmForget = true }
+            Button { theme: page.theme; visible: page.confirmForget; label: "Cancel"; onClicked: page.confirmForget = false }
+            Button { theme: page.theme; visible: page.confirmForget; primary: true; danger: true; label: "Erase today"
+                     onClicked: page.forgetId = page.bridge.api("DELETE", "/journal?day=" + page.todayDate) }
+        }
+    }
 
     SettingRow {
         theme: page.theme; label: "Model"; highlighted: page.host.highlight === "model"

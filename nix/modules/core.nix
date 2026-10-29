@@ -23,7 +23,7 @@ in
     };
     ollamaModel = lib.mkOption {
       type = lib.types.str;
-      default = "llama3.2:3b";
+      default = "qwen3:8b";
       description = "Local Ollama model used by the default provider.";
     };
     allowCloudEgress = lib.mkOption {

@@ -59,6 +59,7 @@ builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceActivity>();
 builder.Services.AddSingleton<InferenceConcurrencyGate>();
 builder.Services.AddSingleton<InferenceTokenSettings>();
+builder.Services.AddSingleton<AssistantContextBuilder>();
 // Automations in plain words: rule store, engine, parser and timer (RuleEndpoints.cs).
 builder.Services.AddRules();
 builder.Services.AddHostedService<IdleModelEvictionService>();
@@ -116,7 +117,8 @@ app.MapPost("/providers/select", (SelectRequest request, ProviderStore store) =>
 app.MapDelete("/history", async (ConversationStore history, RuleStore rules, CancellationToken ct) =>
     { await history.ClearAsync(ct); await rules.ClearRunsAsync(ct); return Results.NoContent(); });
 app.MapGet("/history", async (ConversationStore history, CancellationToken ct) => Results.Ok(await history.RecentAsync(50, ct)));
-app.MapPost("/chat", async (ChatRequest request, ModelRouter router, ConversationStore history, InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
+app.MapPost("/chat", async (ChatRequest request, ModelRouter router, ConversationStore history, AssistantContextBuilder assistant,
+    InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
@@ -126,7 +128,7 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
     {
         activity.BeginRequest();
         (string response, string provider) answer;
-        try { answer = await router.AskAsync(request.Prompt, ct); }
+        try { answer = await router.AskAsync(request.Prompt, ct, await assistant.BuildAsync(request.Prompt, ct)); }
         finally { activity.EndRequest(); }
         var (response, provider) = answer;
         await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, provider, request.Prompt, response), ct);
@@ -143,7 +145,7 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
 // error mid-answer becomes {"type":"error","message":"..."}. Only completed
 // answers are written to history.
 app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, ModelRouter router, ConversationStore history,
-    InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
+    AssistantContextBuilder assistant, InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
@@ -165,7 +167,7 @@ app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, ModelR
     activity.BeginRequest();
     try
     {
-        var (pieces, provider) = router.Stream(request.Prompt, ct);
+        var (pieces, provider) = router.Stream(request.Prompt, ct, await assistant.BuildAsync(request.Prompt, ct));
         await foreach (var piece in pieces)
         {
             answer.Append(piece);

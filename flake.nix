@@ -10,7 +10,7 @@
       # The local model the installer image carries, once pinned with
       # `nix run .#lock-model` (nix/models/). Without the lock file the image
       # leaves the model to download after installation.
-      modelLock = ./nix/models/llama3.2-3b.json;
+      modelLock = ./nix/models/qwen3-8b.json;
       bundledModel = if builtins.pathExists modelLock then ollamaModel.fromLock modelLock else null;
     in {
       packages.${system} = {

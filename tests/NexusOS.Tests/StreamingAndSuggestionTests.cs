@@ -110,7 +110,7 @@ public sealed class StreamingApiTests
     {
         using var factory = new CoreApiFactory
         {
-            AiHandler = StubHandler.Json(HttpStatusCode.OK, "{\"response\":\"Good \",\"done\":false}\n{\"response\":\"evening\",\"done\":true}\n")
+            AiHandler = StubHandler.Json(HttpStatusCode.OK, "{\"message\":{\"content\":\"Good \"},\"done\":false}\n{\"message\":{\"content\":\"evening\"},\"done\":true}\n")
         };
         var client = factory.Authorized();
         using var response = await client.PostAsJsonAsync("/chat/stream", new { prompt = "hello" });
@@ -141,7 +141,7 @@ public sealed class StreamingApiTests
     {
         using var factory = new CoreApiFactory
         {
-            AiHandler = StubHandler.Json(HttpStatusCode.OK, "{\"response\":\"partial\",\"done\":false}\n{broken\n")
+            AiHandler = StubHandler.Json(HttpStatusCode.OK, "{\"message\":{\"content\":\"partial\"},\"done\":false}\n{broken\n")
         };
         var client = factory.Authorized();
         using var response = await client.PostAsJsonAsync("/chat/stream", new { prompt = "hello" });

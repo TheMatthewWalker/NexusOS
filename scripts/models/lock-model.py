@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pin an Ollama model so the installer image can carry it.
 
-    nix run .#lock-model                 # the default model, llama3.2:3b
+    nix run .#lock-model                 # the default model, qwen3:8b
     nix run .#lock-model -- qwen2.5:7b   # another one
 
 Fetches the model's manifest from the Ollama registry and writes it to
@@ -20,7 +20,7 @@ ACCEPT = "application/vnd.docker.distribution.manifest.v2+json"
 
 
 def main():
-    model = sys.argv[1] if len(sys.argv) > 1 else "llama3.2:3b"
+    model = sys.argv[1] if len(sys.argv) > 1 else "qwen3:8b"
     name, _, tag = model.partition(":")
     tag = tag or "latest"
     if "/" in name:

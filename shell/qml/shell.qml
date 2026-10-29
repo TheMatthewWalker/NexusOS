@@ -476,34 +476,70 @@ ShellRoot {
                     }
                 }
 
-                // Reply, with its sources kept visibly separate.
-                Column {
+                // Reply, with its sources kept visibly separate. It scrolls: while the
+                // answer streams in it follows the newest line, unless the user has
+                // scrolled back up to read.
+                Flickable {
+                    id: replyView
                     x: root.lay.reply.x + 12; y: root.lay.reply.y
                     width: root.lay.reply.width - 24
-                    spacing: 8
+                    height: root.lay.surface.height - root.lay.reply.y - 12
+                    contentWidth: width; contentHeight: replyColumn.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
                     visible: root.reply.length > 0 || root.error.length > 0
-                    Text {
-                        width: parent.width; wrapMode: Text.Wrap
-                        textFormat: Text.PlainText      // model output is never rendered as rich text
-                        maximumLineCount: 6; elide: Text.ElideRight
-                        text: root.error ? "Nexus Core could not answer: " + root.error : root.reply
-                        font.pixelSize: 14; lineHeight: 1.5; color: root.error ? root.dark.error : root.dark.ink
+                    property bool follow: true
+                    onMovementEnded: follow = atYEnd
+                    onContentHeightChanged: if (follow) contentY = Math.max(0, contentHeight - height)
+                    Connections {
+                        target: root
+                        function onChatIdChanged() { replyView.follow = true; replyView.contentY = 0 }
                     }
-                    Flow {
-                        width: parent.width; spacing: 6
-                        visible: !root.error && root.provider !== ""
-                        Repeater {
-                            model: ["Answer · Nexus Core (" + root.provider + " provider)"].concat(
-                                root.suggestedBy ? ["Apps · " + ({ rules: "keyword rules, not AI", model: "chosen by the model",
-                                                                 "rules-fallback": "keyword rules (model unavailable)" })[root.suggestedBy]] : [])
-                            delegate: Rectangle {
-                                required property string modelData
-                                width: chip.implicitWidth + 20; height: 28; radius: 14
-                                color: root.dark.chip
-                                Text { id: chip; anchors.centerIn: parent; text: modelData; font.pixelSize: 13; color: root.dark.inkSecondary }
+                    WheelHandler {
+                        onWheel: event => {
+                            replyView.contentY = Math.max(0, Math.min(replyView.contentHeight - replyView.height,
+                                                                     replyView.contentY - event.angleDelta.y / 2));
+                            replyView.follow = replyView.atYEnd;
+                        }
+                    }
+                    Keys.onUpPressed: { follow = false; contentY = Math.max(0, contentY - 40) }
+                    Keys.onDownPressed: { contentY = Math.min(Math.max(0, contentHeight - height), contentY + 40); follow = atYEnd }
+                    Column {
+                        id: replyColumn
+                        width: replyView.width - 10
+                        spacing: 8
+                        Text {
+                            id: replyText
+                            width: parent.width; wrapMode: Text.Wrap
+                            textFormat: Text.PlainText      // model output is never rendered as rich text
+                            text: root.error ? "Nexus Core could not answer: " + root.error : root.reply
+                            font.pixelSize: 14; lineHeight: 1.5; color: root.error ? root.dark.error : root.dark.ink
+                        }
+                        Flow {
+                            width: parent.width; spacing: 6
+                            visible: !root.error && root.provider !== ""
+                            Repeater {
+                                model: ["Answer · Nexus Core (" + root.provider + " provider)"].concat(
+                                    root.suggestedBy ? ["Apps · " + ({ rules: "keyword rules, not AI", model: "chosen by the model",
+                                                                     "rules-fallback": "keyword rules (model unavailable)" })[root.suggestedBy]] : [])
+                                delegate: Rectangle {
+                                    required property string modelData
+                                    width: chip.implicitWidth + 20; height: 28; radius: 14
+                                    color: root.dark.chip
+                                    Text { id: chip; anchors.centerIn: parent; text: modelData; font.pixelSize: 13; color: root.dark.inkSecondary }
+                                }
                             }
                         }
                     }
+                    // Scroll position, shown only when there is more than fits.
+                    Rectangle {
+                        visible: replyView.contentHeight > replyView.height
+                        x: replyView.width - 4; width: 3; radius: 1.5
+                        y: replyView.contentY + replyView.visibleArea.yPosition * replyView.height
+                        height: Math.max(24, replyView.visibleArea.heightRatio * replyView.height)
+                        color: root.dark.glassBorder
+                    }
+                }
                 }
             }
         }

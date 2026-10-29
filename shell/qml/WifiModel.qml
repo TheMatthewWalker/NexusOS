@@ -42,9 +42,14 @@ Item {
     })
     readonly property var rows: !on || !device || !device.networks ? [] : W.rows(device.networks.values.map(n => ({
         name: n.name, signal: n.signalStrength, securityName: securityNames[n.security] || "Unknown",
-        security: W.securityKind(securityNames[n.security]), connected: n.connected, known: n.known,
+        security: W.securityKind(securityNames[n.security]), connected: n.connected,
+        known: n.known && !forgottenNames.includes(n.name),
         state: stateNames[n.state] || "Unknown", network: n })), 12)
 
+    // Networks forgotten while this window was open. NetworkManager deletes the
+    // saved connection at once, but the network object can keep reporting
+    // "known" until the next scan; until it connects again, treat it as new.
+    property var forgottenNames: []
     property string selected: ""            // a connected network whose Disconnect and Forget are showing
     property string passwordFor: ""         // the network whose password box is open
     property string passwordSecurity: ""
@@ -70,7 +75,12 @@ Item {
         return true;
     }
     function disconnect(row) { selected = ""; row.network.disconnect() }
-    function forget(row) { selected = ""; error = ""; note = W.forgotten(row.name); row.network.forget() }
+    function forget(row) {
+        selected = ""; error = ""; note = W.forgotten(row.name);
+        forgottenNames = forgottenNames.concat([row.name]);
+        row.network.forget();
+    }
+    onSsidChanged: if (ssid && forgottenNames.includes(ssid)) forgottenNames = forgottenNames.filter(n => n !== ssid)
 
     // Failures are watched on Quickshell's own network list, whose objects
     // outlive the rows above.

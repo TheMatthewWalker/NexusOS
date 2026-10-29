@@ -58,9 +58,16 @@ Keyboard shortcuts
 - Super+C: Code, the coding agent
 - Super+G: Images, making pictures from a description
 - Super+I: Settings
+- Super+? (Super+Shift+/): Explain mode; select text, then click its window
+  or drag over it, and Nexus explains it (text only for now)
+- Super+S: Search, which finds text in the person's files by words or
+  meaning; only folders chosen in Settings, Search are read
 - Super+Q: close the window
 - Super+F: fullscreen; Super+M: maximise
 - Super+T: switch the window between floating and tiled
+- Super+Tab: every workspace and its windows; drag a window to move it.
+  "..." on a card names a workspace and Remembers its apps; Restore
+  reopens them there
 - Super+1 to Super+5: go to a workspace; Super+Shift+number: move the window there
 - Super+drag: move a window; Super+right-drag: resize it
 - Super+L: lock the screen; Super+Shift+E: log out
@@ -73,6 +80,10 @@ box at the top to search them.
   are set up in a terminal with: nmtui
 - Sound: output volume and microphone. Display: brightness and night light.
 - Desktop: floating or tiled windows, motion and blur.
+- About: Welcome setup (suggests apps and settings for studying, gaming,
+  office, coding or creative work) and Bring files from Windows or macOS
+  (opens the old drive read-only and copies Documents, Pictures, Music,
+  Videos and Desktop into the home folder; bookmarks and apps come later).
 - Privacy and AI: which model answers, whether a cloud model may be used
   (off by default), and clearing conversation history.
 
@@ -110,8 +121,9 @@ Images (Super+G, or Studio in the Nexus orbit) makes pictures from a
 description with a local image model, saved in ~/Pictures/Nexus. The model
 (about 7 GB) downloads once the computer is online.
 
-To try a program once without installing it: nexus try <name>, or
-nix-shell -p <package>.
+To try a program once without installing it: Apps, System apps, Try it
+(a sandbox that cannot see their files and keeps nothing), or in a
+terminal: nexus try <name>. Keep it there asks Guardian to install it.
 Never suggest sudo apt, apt-get on the system, curl | sh installers, or
 editing files under /nix: they do not work on NexusOS or bypass Guardian.
 

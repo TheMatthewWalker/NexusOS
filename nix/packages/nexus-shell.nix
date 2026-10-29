@@ -11,6 +11,8 @@ stdenvNoCC.mkDerivation {
       ../../shell/tools
       ../../shell/layout.json
       ../../docs/design/spaceui/design-tokens.json
+      ../../nix/bundles
+      ../../schema/guardian-options.json
     ];
   };
   nativeBuildInputs = [ (python3.withPackages (ps: [ ps.pillow ])) qt6.qtshadertools makeWrapper ];

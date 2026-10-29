@@ -1,0 +1,41 @@
+{
+  "id": "gaming",
+  "label": "Gaming",
+  "order": 2,
+  "keywords": [
+    "game",
+    "games",
+    "gaming",
+    "steam",
+    "play",
+    "playing",
+    "esports",
+    "minecraft",
+    "fortnite",
+    "proton"
+  ],
+  "apps": [
+    {
+      "flathub": "com.valvesoftware.Steam",
+      "name": "Steam",
+      "detail": "Games, including many Windows games through Proton"
+    },
+    {
+      "flathub": "com.heroicgameslauncher.hgl",
+      "name": "Heroic",
+      "detail": "Epic and GOG games"
+    },
+    {
+      "flathub": "net.lutris.Lutris",
+      "name": "Lutris",
+      "detail": "Other game launchers and emulators"
+    },
+    {
+      "flathub": "com.discordapp.Discord",
+      "name": "Discord",
+      "detail": "Voice and text chat"
+    }
+  ],
+  "system": [],
+  "settings": []
+}

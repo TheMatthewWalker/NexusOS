@@ -41,6 +41,7 @@ import "settings"
 //
 // Shell entry points: open() shows waiting changes; open(planId, plan) records a
 // plan from an action card (Nexus's "Review the change") and shows it;
+// openPlan(plan, source) does the same for the rest of the shell (First run);
 // open(actionId) fetches that action's plan first. Also
 // `nexus-shell-ipc call guardian open` and `... guardian state`.
 Scope {
@@ -85,10 +86,16 @@ Scope {
         else if (typeof id === "string" && /^[0-9a-f]{16}$/.test(id)) { show(id); refresh() }
         else refresh();
     }
-    // A typed plan from an action card: Core validates it again and keeps it as a proposal.
-    function record(plan) {
+    // A typed plan (from an action card, or First run's "for every account" choices): Core
+    // validates it again and keeps it as a proposal waiting for the person.
+    function openPlan(plan, source) {
+        if (dialog.visible) Quickshell.execDetached([hyprctl, "dispatch", "focuswindow", "title:^(System change)$"]);
+        dialog.visible = true; note = ""; showFull = false;
+        record(plan, source);
+    }
+    function record(plan, source) {
         call("created", "POST", "/guardian/proposals", { description: plan.description, changes: plan.changes || [],
-                                                          packages: plan.packages || [], source: "nexus" });
+                                                          packages: plan.packages || [], source: source || "nexus" });
     }
     function approve() {
         const p = current;

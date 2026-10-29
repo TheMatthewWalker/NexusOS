@@ -54,6 +54,16 @@ Column {
     }
     SettingRow { theme: page.theme; label: "Kernel"; detail: page.info.kernel || "…" }
     SettingRow {
+        theme: page.theme; label: "Welcome setup"; highlighted: page.host.highlight === "welcome"
+        detail: "Choose what you use this computer for, and Nexus suggests apps and settings to go with it."
+        Button { theme: page.theme; label: "Run again"; onClicked: page.host.openWelcome() }
+    }
+    SettingRow {
+        theme: page.theme; label: "Bring files from Windows or macOS"; highlighted: page.host.highlight === "movein"
+        detail: "Copy documents, photos, music and videos from an old drive. The old drive is only read, never changed."
+        Button { theme: page.theme; label: "Open"; onClicked: page.host.moveIn() }
+    }
+    SettingRow {
         theme: page.theme; label: "Earlier versions"; highlighted: page.host.highlight === "generations"
         detail: "Every system change makes a new version. If an update breaks something, restart and choose an earlier one in the boot menu."
     }

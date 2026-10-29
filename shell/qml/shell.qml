@@ -172,9 +172,18 @@ ShellRoot {
         theme: root.dark; bridge: bridge; desktop: desktop; reduced: root.reduced
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
         onFixIt: problem => fixItWin.open(problem)
+        onOpenWelcome: firstRun.open()
+        onMoveIn: moveInWin.open()
     }
-    Apps { id: appsWin; theme: root.dark }
+    Apps { id: appsWin; theme: root.dark; bridge: bridge }
     FixIt { id: fixItWin; theme: root.dark; bridge: bridge }
+    Search { id: searchWin; theme: root.dark; bridge: bridge; onChooseFolders: settings.open("search", "") }
+    Overview { id: overview; theme: root.dark; bridge: bridge; apps: apps; reduced: root.reduced }
+    FirstRun { id: firstRun; theme: root.dark; bridge: bridge; desktop: desktop; onMoveIn: moveInWin.open()
+               onProposeSystem: plan => guardianWin.openPlan(plan, "user") }
+    MoveIn { id: moveInWin; theme: root.dark }
+    Explain { id: explainCard; theme: root.dark; bridge: bridge; onFixIt: problem => fixItWin.open(problem)
+              onTellMeMore: { root.open(); input.text = "Tell me more about that."; root.ask(input.text) } }
     Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }
     Images { id: imagesWin; theme: root.dark; bridge: bridge; onSwitchToCode: codeWin.open("")
              onUseAsWallpaper: path => wallpaper.set(path) }
@@ -210,6 +219,12 @@ ShellRoot {
     GlobalShortcut { appid: "nexus"; name: "images"; onPressed: imagesWin.open() }
     // Super+A (bind = SUPER, A, global, nexus:apps): every app, and getting new ones.
     GlobalShortcut { appid: "nexus"; name: "apps"; onPressed: appsWin.visible ? appsWin.visible = false : appsWin.open("all") }
+    // Super+S (bind = SUPER, S, global, nexus:search): private search over the chosen folders.
+    GlobalShortcut { appid: "nexus"; name: "search"; onPressed: searchWin.visible ? searchWin.visible = false : searchWin.open() }
+    // Super+Tab (bind = SUPER, Tab, global, nexus:overview): every workspace around the core.
+    GlobalShortcut { appid: "nexus"; name: "overview"; onPressed: overview.open ? overview.hide() : overview.show() }
+    // Super+? (bind = SUPER SHIFT, slash, global, nexus:explain): point at something to have it explained.
+    GlobalShortcut { appid: "nexus"; name: "explain"; onPressed: explainCard.start() }
     IpcHandler {
         target: "nexus"
         function toggle(): void { root.expanded ? root.collapse() : root.open() }

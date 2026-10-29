@@ -15,6 +15,8 @@ pkgs.testers.runNixOSTest {
     users.users.alice = { isNormalUser = true; uid = 1000; password = "nexus"; };
     services.nexus-desktop = {
       enable = true;
+      # No Welcome window over the desktop the test drives.
+      firstRun = false;
       autologinUser = "alice";
       # Software rendering in a VM: keep the test fast and deterministic.
       reducedMotion = true;

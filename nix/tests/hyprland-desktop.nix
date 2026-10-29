@@ -132,7 +132,7 @@ pkgs.testers.runNixOSTest {
             "su - alice -c 'HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl layers' | grep -q nexus-spaceui",
             timeout=600)
         layers = hypr("layers")
-        for ns in ("nexus-spaceui", "nexus-wallpaper", "nexus-system-panel", "nexus-reserve"):
+        for ns in ("nexus-spaceui", "nexus-wallpaper", "nexus-orbital-controls", "nexus-top-bar", "nexus-reserve"):
             assert ns in layers, f"{ns} missing:\n{layers}"
         print(machine.execute("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' 2>&1")[1])
         wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":true'", 300)

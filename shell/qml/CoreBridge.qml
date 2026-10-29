@@ -21,6 +21,7 @@ Item {
     signal failed(int id, string message)
     signal suggestions(int id, var apps, string source)
     signal unloaded(int id, var vramFreedBytes)     // bytes measured by Core, or null when unknown
+    signal result(int id, string type, var data)     // providers, status, cleared (Settings, Privacy and AI)
 
     function send(op, extra) {
         if (!proc.running) return -1;
@@ -45,6 +46,7 @@ Item {
         else if (ev.type === "suggestions") suggestions(id, ev.data.apps, ev.data.source);
         else if (ev.type === "unloaded") unloaded(id, ev.data.vramFreedBytes);
         else if (ev.type === "health") { online = true; offlineReason = "" }
+        else if (["providers", "status", "cleared"].includes(ev.type)) result(id, ev.type, ev.data || {});
         else if (ev.type === "error") {
             if (/not reachable|did not answer/.test(ev.message)) { online = false; offlineReason = ev.message }
             failed(id, ev.message);

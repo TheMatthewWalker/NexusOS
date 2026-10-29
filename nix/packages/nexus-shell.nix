@@ -32,6 +32,9 @@ stdenvNoCC.mkDerivation {
     # runtime dir holds only their own shell, so the display filter is not needed.
     makeWrapper ${quickshell}/bin/quickshell $out/bin/nexus-shell-ipc \
       --add-flags "ipc -p $out/share/nexus-shell/shell.qml --any-display"
+    # The login screen (greeter.qml), run by greetd inside cage.
+    makeWrapper ${quickshell}/bin/quickshell $out/bin/nexus-greeter \
+      --add-flags "-p $out/share/nexus-shell/greeter.qml"
     runHook postInstall
   '';
   meta = {

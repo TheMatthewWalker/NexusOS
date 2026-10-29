@@ -1,6 +1,8 @@
 // Nexus shell: the SpaceUI desktop for Hyprland, in Quickshell (ADR-003).
-// It draws the wallpaper, the bottom Nexus launcher, the full Nexus core with
-// its app orbit and chat, and the system panel. Hyprland manages the windows.
+// It draws the wallpaper, the top bar, the bottom Nexus launcher, the full
+// Nexus core with its app orbit and chat, the orbital controls in the
+// bottom-right corner, and Settings. Hyprland manages the windows: floating
+// by default (Desktop B), or tiled (Settings, Desktop).
 //
 // Safety rules it keeps (docs/design/spaceui/README.md):
 //  - the AI only suggests: apps open only when the user picks them;
@@ -53,7 +55,6 @@ ShellRoot {
     readonly property bool gameMode: gameApp !== ""
     property int unloadId: -1
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
-    readonly property bool blurConfigured: Quickshell.env("NEXUS_BLUR") !== "0"
     onGameModeChanged: gameMode ? enterGameMode() : exitGameMode()
     Component.onCompleted: if (gameMode) enterGameMode()
     // Provisional dark theme (approved 22 Oct): deep space, light ink, glass surfaces.
@@ -79,7 +80,22 @@ ShellRoot {
         chatId = bridge.chat(prompt);
     }
     function openApp(id) {
+        // Settings is part of the shell itself.
+        if (id === "settings") { collapse(); settings.open("", ""); return; }
         if (apps.open(id)) collapse();
+    }
+    function installed(id) { return id === "settings" || apps.installed(id) }
+    // Switching to a window from the launcher. A minimised window (the title
+    // bar's minimise button moves it to the hidden "minimized" workspace)
+    // comes back to the current workspace first.
+    function activateWindow(toplevel) {
+        const h = Hyprland.toplevels.values.find(t => t.wayland === toplevel);
+        if (h && h.workspace && h.workspace.name.startsWith("special:") && h.address) {
+            const address = h.address.startsWith("0x") ? h.address : "0x" + h.address;
+            const ws = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 1;
+            Hyprland.dispatch("movetoworkspace " + ws + ",address:" + address);
+        }
+        toplevel.activate();
     }
     function enterGameMode() {
         hypr.exec([hyprctl, "--batch", "keyword decoration:blur:enabled false ; keyword animations:enabled false"]);
@@ -88,8 +104,9 @@ ShellRoot {
     }
     function exitGameMode() {
         unloadId = -1;
-        hypr.exec([hyprctl, "--batch", "keyword decoration:blur:enabled " + blurConfigured
-                                       + " ; keyword animations:enabled " + !reduced]);
+        // Back to the person's own choices (Settings, Desktop).
+        hypr.exec([hyprctl, "--batch", "keyword decoration:blur:enabled " + desktop.blur
+                                       + " ; keyword animations:enabled " + desktop.animations]);
     }
     // Hyprland draws fullscreen windows above the Top layer, so the toast is a
     // compositor notification: it shows over the game without the shell
@@ -137,6 +154,14 @@ ShellRoot {
         }
     }
     AppDirectory { id: apps }
+    DesktopSettings { id: desktop; gameMode: root.gameMode }
+    Settings {
+        id: settings
+        theme: root.dark; bridge: bridge; desktop: desktop; reduced: root.reduced
+        onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
+    }
+    TopBar { theme: root.dark; settings: settings; onOpenNexus: root.expanded ? root.collapse() : root.open() }
+    OrbitalControls { theme: root.dark; settings: settings; reduced: root.reduced }
     Process { id: hypr }
     Process { id: toast }
     Wallpaper {}
@@ -156,6 +181,8 @@ ShellRoot {
     // Super+Space (bind = SUPER, Space, global, nexus:toggle) and
     // `quickshell ipc call nexus toggle` both open and close Nexus.
     GlobalShortcut { appid: "nexus"; name: "toggle"; onPressed: root.expanded ? root.collapse() : root.open() }
+    // Super+I (bind = SUPER, I, global, nexus:settings).
+    GlobalShortcut { appid: "nexus"; name: "settings"; onPressed: settings.open("", "") }
     IpcHandler {
         target: "nexus"
         function toggle(): void { root.expanded ? root.collapse() : root.open() }
@@ -283,7 +310,7 @@ ShellRoot {
                                 text: (modelData.title || modelData.appId || "?").slice(0, 1).toUpperCase()
                                 font.pixelSize: 18; font.weight: 600; color: root.dark.ink
                             }
-                            TapHandler { enabled: launcher.hoverOpen; onTapped: modelData.activate() }
+                            TapHandler { enabled: launcher.hoverOpen; onTapped: root.activateWindow(modelData) }
                             Accessible.role: Accessible.Button
                             Accessible.name: "Switch to " + modelData.title
                         }
@@ -306,6 +333,8 @@ ShellRoot {
                 opacity: root.expanded ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: root.reduced ? 0 : 220 } }
 
+                // A nebula behind the core and the chat keeps them legible over any window.
+                Nebula { anchors.fill: parent; z: -2; seed: 7; depth: 0.86 }
                 NovaCore {
                     id: bigCore
                     anchors.fill: parent
@@ -377,7 +406,7 @@ ShellRoot {
                         required property string modelData
                         required property int index
                         readonly property bool shown: root.expanded && root.visibleApps().includes(modelData)
-                        readonly property bool available: apps.installed(modelData)
+                        readonly property bool available: root.installed(modelData)
                         property real progress: 0
                         readonly property real eased: shown ? O.entryEase(progress) : 1 - O.exitEase(1 - progress)
                         readonly property var at: root.reduced ? Object.assign(O.slot(modelData), { scale: 1, opacity: progress })
@@ -540,10 +569,7 @@ ShellRoot {
                         color: root.dark.glassBorder
                     }
                 }
-                }
             }
         }
     }
-
-    SystemPanel { theme: root.dark; reduced: root.reduced }
 }

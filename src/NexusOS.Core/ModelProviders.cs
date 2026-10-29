@@ -25,6 +25,7 @@ public sealed class ProviderException(string message, int statusCode) : Exceptio
 public interface IModelProvider
 {
     string Name { get; }
+    string Model { get; }
     bool SupportsUnload { get; }
     // context, when given, is the system prompt and earlier exchanges
     // (AssistantContext.cs); without it the prompt is sent on its own.

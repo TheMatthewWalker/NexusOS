@@ -335,6 +335,11 @@ async IAsyncEnumerable<JsonElement> ChatEvents(string prompt)
 //   {"id":2,"op":"suggest","prompt":"...","model":false}
 //   {"id":3,"op":"apps"} | {"id":4,"op":"health"}
 //   {"id":5,"op":"unload"}                  -> {"type":"unloaded","data":{"vramFreedBytes":N|null}}
+// For Settings, Privacy and AI:
+//   {"id":6,"op":"providers"}               -> {"type":"providers","data":{"selected":"local","providers":[...]}}
+//   {"id":7,"op":"select","name":"local"}   -> {"type":"providers","data":{"selected":"local"}}
+//   {"id":8,"op":"status"}                  -> {"type":"status","data":{"backend":..,"model":..,"available":..}}
+//   {"id":9,"op":"clear-history"}           -> {"type":"cleared"}
 async Task<int> Bridge()
 {
     var output = Console.Out;
@@ -373,6 +378,19 @@ async Task<int> Bridge()
                     break;
                 case "unload":
                     Emit(id, await Unload());
+                    break;
+                case "providers":
+                    Emit(id, await Call(HttpMethod.Get, "/providers", null, "providers"));
+                    break;
+                case "select":
+                    var name = req.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString()! : "";
+                    Emit(id, await Call(HttpMethod.Post, "/providers/select", new { name }, "providers"));
+                    break;
+                case "status":
+                    Emit(id, await Call(HttpMethod.Get, "/inference/status", null, "status"));
+                    break;
+                case "clear-history":
+                    Emit(id, await Call(HttpMethod.Delete, "/history", null, "cleared"));
                     break;
                 default:
                     Emit(id, new { type = "error", message = $"Unknown bridge op '{op}'." });
@@ -424,6 +442,7 @@ async Task<object> Call(HttpMethod method, string path, object? body, string typ
     using var response = await http.SendAsync(request);
     var raw = await response.Content.ReadAsStringAsync();
     if (!response.IsSuccessStatusCode) return new { type = "error", message = ErrorMessage(raw, response) };
+    if (string.IsNullOrWhiteSpace(raw)) return new { type, data = (JsonElement?)null };
     using var doc = JsonDocument.Parse(raw);
     return new { type, data = doc.RootElement.Clone() };
 }

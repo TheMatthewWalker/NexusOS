@@ -1,0 +1,39 @@
+import QtQuick
+
+// Settings, Desktop: how windows behave, and the desktop's effects.
+Column {
+    id: page
+    property var theme
+    property var host
+    readonly property var desktop: host.desktop
+    width: parent ? parent.width : 600
+    spacing: 10
+
+    PageHeader { theme: page.theme; title: "Desktop"; summary: "How windows open and move, and the desktop's effects." }
+
+    SettingRow {
+        theme: page.theme; label: "Windows"; highlighted: page.host.highlight === "windows"
+        detail: page.desktop.windows === "floating"
+            ? "Windows float and overlap, as on Windows or macOS. Drag the title bar to move one; Super+T tiles a single window."
+            : "Windows tile side by side and fill the screen. Super+T floats a single window."
+        Choice { theme: page.theme; name: "Windows"; current: page.desktop.windows
+                 options: [{ value: "floating", label: "Floating" }, { value: "tiling", label: "Tiled" }]
+                 onChose: v => page.desktop.set("windows", v) }
+    }
+    SettingRow {
+        theme: page.theme; label: "Blur"; highlighted: page.host.highlight === "blur"
+        detail: "Frosted glass behind windows and panels. Off saves a little graphics power."
+        Switch { theme: page.theme; name: "Blur"; checked: page.desktop.blur; onToggled: page.desktop.set("blur", !page.desktop.blur) }
+    }
+    SettingRow {
+        theme: page.theme; label: "Animations"; highlighted: page.host.highlight === "animations"
+        detail: "Windows slide and fade as they open and close."
+        Switch { theme: page.theme; name: "Animations"; checked: page.desktop.animations
+                 onToggled: page.desktop.set("animations", !page.desktop.animations) }
+    }
+    SettingRow {
+        theme: page.theme; label: "Keyboard shortcuts"; highlighted: page.host.highlight === "shortcuts"
+        detail: "Super+Space Nexus · Super+Return terminal · Super+E files · Super+I Settings · Super+Q close · " +
+                "Super+M maximise · Super+F fullscreen · Super+1–5 workspaces · Super+L lock"
+    }
+}

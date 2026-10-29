@@ -61,6 +61,7 @@ in
     services.nexus-desktop = {
       enable = true;
       autologinUser = if cfg.autologin then cfg.user else null;
+      greeter = { user = cfg.user; fullName = cfg.fullName; };
     };
 
     # Local inference. The model itself is downloaded once the machine is online.

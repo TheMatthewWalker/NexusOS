@@ -349,7 +349,7 @@ app.MapRules();
 app.MapGet("/inference/status", async (ModelRouter router, CancellationToken ct) =>
 {
     var provider = router.Current;
-    return Results.Ok(new { backend = provider.Name, available = await provider.IsAvailableAsync(ct),
+    return Results.Ok(new { backend = provider.Name, model = provider.Model, available = await provider.IsAvailableAsync(ct),
                             unloadSupported = provider.SupportsUnload });
 });
 app.MapPost("/inference/unload", async (ModelRouter router, CancellationToken ct) =>

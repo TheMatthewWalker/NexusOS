@@ -37,16 +37,18 @@ class ShellBuild(unittest.TestCase):
 
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
-                     "SystemPanel.qml", "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
+                     "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
+                     *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About"]],
+                     "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
 
     def test_every_referenced_icon_exists(self):
         icons = set()
-        for qml in self.out.glob("*.qml"):
-            icons |= set(re.findall(r'"icons/([a-z-]+)\.svg"', qml.read_text()))
+        for qml in self.out.rglob("*.qml"):
+            icons |= set(re.findall(r'icons/([a-z-]+)\.svg"', qml.read_text()))
             # Roles and planets build icon paths from ids: "icons/" + id + ".svg".
         icons |= {"files", "browser", "terminal", "studio", "models", "settings",
-                  "network", "power", "bluetooth", "privacy", "time", "display", "sound"}
+                  "network", "power", "bluetooth", "privacy", "time", "display", "sound", "desktop", "about"}
         for icon in icons:
             self.assertTrue((self.out / "icons" / f"{icon}.svg").exists(), icon)
 
@@ -121,8 +123,10 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("t.fullscreen", shell)
         self.assertIn("unloadId = bridge.online ? bridge.unload() : -1", shell)
         self.assertIn('"keyword decoration:blur:enabled false ; keyword animations:enabled false"', shell)
-        self.assertIn('"keyword decoration:blur:enabled " + blurConfigured', shell)
-        self.assertIn('" ; keyword animations:enabled " + !reduced', shell)
+        # Afterwards, the person's own choices from Settings, Desktop come back.
+        self.assertIn('"keyword decoration:blur:enabled " + desktop.blur', shell)
+        self.assertIn('" ; keyword animations:enabled " + desktop.animations', shell)
+        self.assertIn("DesktopSettings { id: desktop; gameMode: root.gameMode }", shell)
         self.assertIn("G.toastText(true, freed)", shell)
         self.assertIn("G.toastText(false, null)", shell)
         self.assertIn("gameMode: root.gameMode", shell)                       # IPC state()
@@ -135,7 +139,8 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('case "unload":', cli)
         self.assertIn('"/inference/telemetry"', cli)
         self.assertIn('NEXUS_GAME_MODE,${if cfg.gameMode.enable then "1" else "0"}', desktop)
-        self.assertIn("NEXUS_HYPRCTL,${config.programs.hyprland.package}/bin/hyprctl", desktop)
+        self.assertIn("NEXUS_HYPRCTL,${hyprctl}", desktop)
+        self.assertIn('hyprctl = "${config.programs.hyprland.package}/bin/hyprctl";', desktop)
         self.assertIn('NEXUS_BLUR,${if cfg.blur then "1" else "0"}', desktop)
         self.assertRegex(desktop, r"gameMode\.enable = lib\.mkOption \{\s*type = lib\.types\.bool;\s*default = true;")
 
@@ -149,22 +154,57 @@ class ShellBuild(unittest.TestCase):
         self.run_node_test("wifi.test.mjs")
 
     def test_wifi_picker_uses_networkmanager_and_keeps_no_password(self):
-        """The panel lists networks and connects through Quickshell's NetworkManager backend."""
-        panel = (self.out / "SystemPanel.qml").read_text()
-        self.assertIn('import "lib/wifi.mjs" as W', panel)
-        self.assertIn("connectWithPsk(text)", panel)              # the password goes to NetworkManager
-        self.assertIn("network.forget()", panel)
-        self.assertIn("d.type === DeviceType.Wifi && d.nmManaged", panel)   # not an unmanaged adapter
-        self.assertIn("function onConnectionFailed(reason)", panel)
+        """Settings, Network lists networks and connects through Quickshell's NetworkManager backend."""
+        model = (self.out / "WifiModel.qml").read_text()
+        page = (self.out / "settings/NetworkPage.qml").read_text()
+        self.assertIn('import "lib/wifi.mjs" as W', model)
+        self.assertIn("connectWithPsk(text)", model)              # the password goes to NetworkManager
+        self.assertIn("row.network.forget()", model)
+        self.assertIn("d.type === DeviceType.Wifi && d.nmManaged", model)   # not an unmanaged adapter
+        self.assertIn("function onConnectionFailed(reason)", model)
+        # Scanning only while the Network page is showing.
+        self.assertIn('property: "scannerEnabled"; value: wifi.scanning && wifi.on', model)
+        self.assertIn("Component.onDestruction: wifi.scanning = false", page)
         # The password box sits outside the rebuilt list, so typing survives a rescan.
-        self.assertLess(panel.index("id: netRepeater"), panel.index("id: password"))
-        self.assertIn("echoMode: reveal.checked ? TextInput.Normal : TextInput.Password", panel)
-        self.assertIn("Qt.ImhSensitiveData", panel)
-        # Scanning only while the panel is open.
-        self.assertIn('property: "scannerEnabled"; value: win.expanded && win.wifiOn', panel)
+        self.assertLess(page.index("id: netRepeater"), page.index("id: password"))
+        self.assertIn("echoMode: reveal.checked ? TextInput.Normal : TextInput.Password", page)
+        self.assertIn("Qt.ImhSensitiveData", page)
         # The password box is cleared when it closes, and nothing is printed.
-        self.assertIn('else password.text = ""', panel)
-        self.assertNotIn("console.log", panel)
+        self.assertIn('else password.text = ""', page)
+        for text in (model, page):
+            self.assertNotIn("console.log", text)
+
+    def test_orbital_controls_are_shortcuts_to_settings(self):
+        """The orbital controls sit bottom right and open Settings pages; the controls themselves are in Settings."""
+        controls = (self.out / "OrbitalControls.qml").read_text()
+        settings = (self.out / "Settings.qml").read_text()
+        self.assertIn("anchors { bottom: true; right: true }", controls)
+        self.assertIn("TapHandler { onTapped: win.openPage(modelData.page) }", controls)
+        self.assertNotIn("audio.volume =", controls)                # no quick controls left in the panel
+        self.assertNotIn("connectWithPsk", controls)
+        self.assertIn("Nebula {", controls)
+        self.assertIn('target: "settings"', settings)
+        for page in ["network", "bluetooth", "sound", "display", "power", "desktop", "privacy", "about"]:
+            self.assertIn(f'{{ id: "{page}", label:', settings)
+        self.assertIn("WlrLayer.Top", controls)
+        self.assertNotIn("WlrLayer.Overlay", controls)
+
+    def test_desktop_settings_are_per_person_and_applied_with_hyprctl(self):
+        desktop = (self.out / "DesktopSettings.qml").read_text()
+        self.assertIn('path: desktop.configDir + "/desktop.json"', desktop)
+        self.assertIn("keyword windowrule float on, match:class .*", desktop)
+        self.assertIn('run(["reload"])', desktop)                    # back to tiling drops the runtime rule
+        self.assertIn("if (!gameMode)", desktop)                      # never undoes game mode
+        nix = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn("bind = SUPER, I, global, nexus:settings", nix)
+        self.assertIn("hyprbars-button = rgb(ff8fa3), 13, , ${hyprctl} dispatch killactive", nix)
+        self.assertIn("start-hyprland -- --config /etc/nexus/hyprland.conf", nix)
+
+    def test_reply_scrolls_instead_of_being_cut_off(self):
+        shell = (self.out / "shell.qml").read_text()
+        self.assertNotIn("maximumLineCount: 6", shell)
+        self.assertIn("onContentHeightChanged: if (follow) contentY = Math.max(0, contentHeight - height)", shell)
+        self.assertIn("Nebula { anchors.fill: parent; z: -2", shell)
 
     def run_node_test(self, name):
         if not shutil.which("node"):
@@ -182,13 +222,12 @@ class ShellBuild(unittest.TestCase):
         run = subprocess.run(["node", "--test", str(test)], capture_output=True, text=True)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
-    def test_system_panel_reads_real_state(self):
+    def test_system_state_is_read_not_faked(self):
         """Plain-language state comes from the formatter, and disk usage from df."""
-        panel = (self.out / "SystemPanel.qml").read_text()
-        self.assertIn('import "lib/describe.mjs" as D', panel)
-        self.assertIn('"df", "-P", "-B1", "/", "/home"', panel)
-        self.assertIn("WlrLayer.Top", panel)
-        self.assertNotIn("WlrLayer.Overlay", panel)
+        controls = (self.out / "OrbitalControls.qml").read_text()
+        about = (self.out / "settings/AboutPage.qml").read_text()
+        self.assertIn('import "lib/describe.mjs" as D', controls)
+        self.assertIn('"df", "-P", "-B1", "/", "/home"', about)
 
 
 if __name__ == "__main__":

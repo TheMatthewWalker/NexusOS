@@ -14,6 +14,7 @@ PanelWindow {
     property var theme
     property var settings
     signal openNexus()
+    signal openApps()
 
     anchors { top: true; left: true; right: true }
     margins { top: 10; left: 12; right: 12 }
@@ -60,6 +61,16 @@ PanelWindow {
                 TapHandler { onTapped: bar.openNexus() }
                 Accessible.role: Accessible.Button
                 Accessible.name: "Open Nexus"
+            }
+            // All apps.
+            Rectangle {
+                width: 28; height: 26; radius: 8; anchors.verticalCenter: parent.verticalCenter
+                color: appsHover.hovered ? Qt.rgba(0.49, 0.42, 1.0, 0.2) : "transparent"
+                Image { anchors.centerIn: parent; width: 16; height: 16; sourceSize: Qt.size(32, 32); source: "icons/apps.svg" }
+                HoverHandler { id: appsHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: bar.openApps() }
+                Accessible.role: Accessible.Button
+                Accessible.name: "All apps"
             }
             Row {
                 spacing: 4; anchors.verticalCenter: parent.verticalCenter

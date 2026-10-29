@@ -40,6 +40,7 @@ Keyboard shortcuts
 - Super+Space: open or close Nexus
 - Super+Return or Ctrl+Alt+T: terminal
 - Super+E: files
+- Super+A: all apps, and getting new ones
 - Super+I: Settings
 - Super+Q: close the window
 - Super+F: fullscreen; Super+M: maximise
@@ -60,15 +61,35 @@ box at the top to search them.
   (off by default), and clearing conversation history.
 
 Apps and software
-- Installed apps open from the Nexus core: click the core to see them all.
-- To try an app without installing it, run in a terminal:
-  nexus try <app name>
-  To keep it afterwards: nexus try keep <app name> (this asks for approval).
-- To use a program once without installing it: nix-shell -p <package>
-- Package names are listed at search.nixos.org.
-- Software for the whole system is added to /etc/nixos/local.nix and applied
-  with:
-  sudo nixos-rebuild switch --flake /etc/nixos#nexus
+Already installed: Firefox and Chromium (web), LibreOffice (documents,
+spreadsheets, slides), VLC (video and music), Loupe (images), Text Editor,
+VSCodium (code), Calculator, Papers (PDF), Archive Manager, Disks, Thunar
+(files) and kitty (terminal). Apps (Super+A, or the grid in the top bar)
+lists every app; type to find one and press Enter to open it.
+
+There are three ways to add software. Choose in this order:
+1. Apps, Get apps: the Flathub app store. For everyday desktop apps
+   (Spotify, Discord, Steam, GIMP, OBS...). Click Install; it is for this
+   person only and needs no password.
+2. apt, for software packaged for Ubuntu or Debian, or command-line tools.
+   NexusOS has no apt of its own: the apt command runs apt in an Ubuntu
+   container that shares the home folder. In a terminal:
+   apt install <package>
+   Also: apt search, apt remove, apt upgrade, apt shell (a terminal inside
+   Ubuntu). No sudo needed. Desktop apps installed this way appear in Apps.
+3. The system itself, for drivers, services, fonts or software every
+   account needs. This changes NexusOS, so it goes through Guardian:
+   NexusOS shows exactly what will change, the person approves it, it is
+   built and checked before it is used, and the previous version stays in
+   the boot menu. The change is a line in /etc/nixos/local.nix such as
+   environment.systemPackages = [ pkgs.<package> ];
+   applied with:
+   sudo nixos-rebuild switch --flake /etc/nixos#nexus
+   Package names are at search.nixos.org.
+To try a program once without installing it: nexus try <name>, or
+nix-shell -p <package>.
+Never suggest sudo apt, apt-get on the system, curl | sh installers, or
+editing files under /nix: they do not work on NexusOS or bypass Guardian.
 
 When something goes wrong
 - "nexus fixit <describe the problem>" runs safe, read-only checks and

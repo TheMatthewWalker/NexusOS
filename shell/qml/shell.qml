@@ -160,7 +160,9 @@ ShellRoot {
         theme: root.dark; bridge: bridge; desktop: desktop; reduced: root.reduced
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
     }
-    TopBar { theme: root.dark; settings: settings; onOpenNexus: root.expanded ? root.collapse() : root.open() }
+    Apps { id: appsWin; theme: root.dark }
+    TopBar { theme: root.dark; settings: settings; onOpenNexus: root.expanded ? root.collapse() : root.open()
+             onOpenApps: appsWin.open("all") }
     OrbitalControls { theme: root.dark; settings: settings; reduced: root.reduced }
     Process { id: hypr }
     Process { id: toast }
@@ -183,6 +185,8 @@ ShellRoot {
     GlobalShortcut { appid: "nexus"; name: "toggle"; onPressed: root.expanded ? root.collapse() : root.open() }
     // Super+I (bind = SUPER, I, global, nexus:settings).
     GlobalShortcut { appid: "nexus"; name: "settings"; onPressed: settings.open("", "") }
+    // Super+A (bind = SUPER, A, global, nexus:apps): every app, and getting new ones.
+    GlobalShortcut { appid: "nexus"; name: "apps"; onPressed: appsWin.visible ? appsWin.visible = false : appsWin.open("all") }
     IpcHandler {
         target: "nexus"
         function toggle(): void { root.expanded ? root.collapse() : root.open() }

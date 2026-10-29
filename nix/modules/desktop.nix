@@ -99,6 +99,7 @@ let
     # Super key for itself.
     bind = SUPER, Space, global, nexus:toggle
     bind = SUPER, I, global, nexus:settings
+    bind = SUPER, A, global, nexus:apps
     bind = SUPER, L, exec, ${config.programs.hyprlock.package}/bin/hyprlock --config /etc/nexus/hyprlock.conf
     bind = SUPER, Return, exec, ${pkgs.gtk3}/bin/gtk-launch ${terminal}
     bind = CTRL ALT, T, exec, ${pkgs.gtk3}/bin/gtk-launch ${terminal}

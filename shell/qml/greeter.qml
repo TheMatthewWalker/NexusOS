@@ -54,6 +54,9 @@ ShellRoot {
         }
         function onError(text) {
             console.warn("nexus-greeter: greetd error: " + text);
+            // After a refused password the connection to greetd is reset;
+            // the "wrong password" message is the one that matters.
+            if (root.failed) { root.busy = false; return }
             root.busy = false; root.pending = "";
             root.message = "Could not log in: " + text;
         }

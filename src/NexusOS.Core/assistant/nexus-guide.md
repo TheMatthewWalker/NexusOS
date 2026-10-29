@@ -44,6 +44,8 @@ Keyboard shortcuts
 - Super+C: Code, the coding agent
 - Super+G: Images, making pictures from a description
 - Super+I: Settings
+- Super+S: Search, which finds text in the person's files by words or
+  meaning; only folders chosen in Settings, Search are read
 - Super+Q: close the window
 - Super+F: fullscreen; Super+M: maximise
 - Super+T: switch the window between floating and tiled

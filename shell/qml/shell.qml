@@ -171,6 +171,7 @@ ShellRoot {
     }
     Apps { id: appsWin; theme: root.dark }
     FixIt { id: fixItWin; theme: root.dark; bridge: bridge }
+    Search { id: searchWin; theme: root.dark; bridge: bridge; onChooseFolders: settings.open("search", "") }
     Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }
     Images { id: imagesWin; theme: root.dark; bridge: bridge; onSwitchToCode: codeWin.open("")
              onUseAsWallpaper: path => wallpaper.set(path) }
@@ -204,6 +205,8 @@ ShellRoot {
     GlobalShortcut { appid: "nexus"; name: "images"; onPressed: imagesWin.open() }
     // Super+A (bind = SUPER, A, global, nexus:apps): every app, and getting new ones.
     GlobalShortcut { appid: "nexus"; name: "apps"; onPressed: appsWin.visible ? appsWin.visible = false : appsWin.open("all") }
+    // Super+S (bind = SUPER, S, global, nexus:search): private search over the chosen folders.
+    GlobalShortcut { appid: "nexus"; name: "search"; onPressed: searchWin.visible ? searchWin.visible = false : searchWin.open() }
     IpcHandler {
         target: "nexus"
         function toggle(): void { root.expanded ? root.collapse() : root.open() }

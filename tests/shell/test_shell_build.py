@@ -38,7 +38,8 @@ class ShellBuild(unittest.TestCase):
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
                      "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "Images.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
-                     *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About"]],
+                     "Search.qml",
+                     *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About", "Search"]],
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
 
@@ -221,6 +222,21 @@ class ShellBuild(unittest.TestCase):
         self.assertNotIn("maximumLineCount: 6", shell)
         self.assertIn("onContentHeightChanged: if (follow) contentY = Math.max(0, contentHeight - height)", shell)
         self.assertIn("Nebula { anchors.fill: parent; z: -2", shell)
+
+    def test_search_reads_only_the_local_index_and_shows_why(self):
+        """Private search goes through Core's index; file text is plain text; folders are chosen in Settings."""
+        search = (self.out / "Search.qml").read_text()
+        page = (self.out / "settings/SearchPage.qml").read_text()
+        settings = (self.out / "Settings.qml").read_text()
+        self.assertIn('bridge.api("POST", "/search"', search)
+        self.assertIn('"Why: " + hit.modelData.why', search)
+        self.assertIn("Searched on this computer only", search)
+        self.assertNotIn("RichText", search)
+        self.assertIn('target: "search"', search)
+        self.assertIn('bridge.api("POST", "/search/sources"', page)
+        self.assertIn('bridge.api("DELETE", "/search/index")', page)
+        self.assertIn('search: "SearchPage"', settings)
+        self.assertIn('{ id: "search", label: "Search"', settings)
 
     def run_node_test(self, name):
         if not shutil.which("node"):

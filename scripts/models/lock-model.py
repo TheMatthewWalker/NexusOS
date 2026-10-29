@@ -37,6 +37,7 @@ def main():
     root = Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
                                check=True).stdout.strip())
     out = root / "nix/models" / f"{name}-{tag}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)   # git does not keep the empty folder
     out.write_text(json.dumps({"name": name, "tag": tag, "manifest": manifest}, indent=2) + "\n")
     subprocess.run(["git", "-C", str(root), "add", str(out)], check=True)
     size = sum(layer.get("size", 0) for layer in layers)

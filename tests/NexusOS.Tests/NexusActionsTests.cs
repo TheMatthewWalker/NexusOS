@@ -156,6 +156,7 @@ public sealed class NexusActionsTests : IDisposable
         Assert.Single(stub.Requests);                 // the loop stops at the card
         var action = Assert.Single(OfType(events, "action"));
         Assert.Equal("personal", action.GetProperty("safety").GetString());
+        Assert.Equal(action.GetProperty("id").GetString(), action.GetProperty("actionId").GetString());   // kept through `nexus bridge`
         Assert.Equal("change_setting", action.GetProperty("action").GetString());
         Assert.Equal("Turn night light on", action.GetProperty("summary").GetString());
         Assert.Equal("done", events[^1].GetProperty("type").GetString());

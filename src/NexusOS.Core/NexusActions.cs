@@ -235,9 +235,10 @@ public static class NexusActions
 public sealed record PendingAction(string Id, NexusAction Action, JsonObject Args, string Summary, DateTimeOffset Expires,
     JsonObject? Perform = null, RuleDefinition? Rule = null, string? FixToken = null, GuardianPlan? Plan = null)
 {
+    // actionId repeats id for `nexus bridge`, which tags every event with its own request id.
     public object Event() => new
     {
-        type = "action", id = Id, action = Action.Name, args = Args, safety = Action.SafetyName, summary = Summary,
+        type = "action", id = Id, actionId = Id, action = Action.Name, args = Args, safety = Action.SafetyName, summary = Summary,
         plan = Plan is null ? null : new { id = Plan.Id, description = Plan.Description, changes = Plan.Changes, packages = Plan.Packages,
                                            nixPreview = Plan.NixPreview, risk = Plan.Risk, riskLevel = Plan.RiskLevel }
     };

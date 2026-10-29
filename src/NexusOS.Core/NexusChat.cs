@@ -337,7 +337,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 GuardianPlan plan;
                 try { plan = GuardianPlanner.Install(package); }
                 catch (ArgumentException) { throw new ActionRejectedException("That is not a valid nixpkgs package name."); }
-                return await ProposeAsync(action, args, $"Install {package} for every account (a system change, for Guardian)", plan, ct);
+                return await ProposeAsync(action, args, $"Install {package} for every account on this computer", plan, ct);
             }
             default: // change_system_option
             {
@@ -348,7 +348,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 GuardianPlan plan;
                 try { plan = GuardianPlanner.Preview(description, [new GuardianChange(option, enabled)]); }
                 catch (ArgumentException) { throw new ActionRejectedException("Guardian does not allow that change."); }
-                return await ProposeAsync(action, args, description + " (a system change, for Guardian)", plan, ct);
+                return await ProposeAsync(action, args, description, plan, ct);
             }
         }
     }

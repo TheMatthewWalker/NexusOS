@@ -149,7 +149,7 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
 //   {"type":"delta","text":"..."}  repeated, then {"type":"done","provider":"..."}
 // With actions (NexusChat.cs), between them:
 //   {"type":"tool","name":"search_files","status":"running|done|rejected","summary":"Searching your files"}
-//   {"type":"action","id":"..","action":"change_setting","args":{..},"safety":"personal|system","summary":"Turn night light on",
+//   {"type":"action","id":"..","actionId":"..","action":"change_setting","args":{..},"safety":"personal|system","summary":"Turn night light on",
 //    "plan":{..} for system actions}  -- waits for POST /actions/{id}/confirm or /decline
 // An error before the first piece is an ordinary HTTP problem response; an
 // error mid-answer becomes {"type":"error","message":"..."}. Only completed

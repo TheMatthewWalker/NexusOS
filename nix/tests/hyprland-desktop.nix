@@ -93,7 +93,9 @@ pkgs.testers.runNixOSTest {
     def diagnostics():
         print(machine.execute("journalctl -b --no-pager -t nexus-shell | tail -60")[1])
         print(machine.execute("journalctl -b --no-pager --user-unit nexus-core -M alice@ | tail -20")[1])
-        print(machine.execute("ps -eo pid,user,args | grep -E 'quickshell|nexus|Hyprland' | grep -v grep")[1])
+        print(machine.execute("ps -eo pid,user,args | grep -E 'quickshell|nexus|Hyprland|kitty' | grep -v grep")[1])
+        print(machine.execute("su - alice -c 'HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl clients; HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl layers'")[1])
+        machine.screenshot("diagnostics")
 
     def open_from_orbit(app, clients_before):
         """Bring every app into orbit, then open one. Software rendering can drop a

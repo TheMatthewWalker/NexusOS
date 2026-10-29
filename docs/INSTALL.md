@@ -6,7 +6,7 @@ not on the machine you rely on: the installer erases the whole disk you pick.
 ## What you need
 
 - A 64-bit Intel or AMD computer that boots with **UEFI**. Legacy/CSM boot is not supported.
-- At least 8 GB of RAM and a 64 GB disk. A local model also needs 4 GB or more of free disk space.
+- At least 8 GB of RAM and a 64 GB disk. A local model also needs 6 GB or more of free disk space. For fast answers, an NVIDIA or AMD graphics card with 8 GB of video memory or more.
 - A USB stick of 8 GB or more, or 16 GB if the image carries the local model (step 1). Writing the image erases the stick.
 - No internet connection is needed to install: everything is on the stick. Without the model on the stick, the installed system downloads it once it is online.
 
@@ -17,14 +17,14 @@ On any Linux machine with Nix installed and flakes turned on:
 ```sh
 git clone https://github.com/TheMatthewWalker/NexusOS
 cd NexusOS
-nix run .#lock-model      # optional: put the local AI model (about 2 GB) on the image
+nix run .#lock-model      # optional: put the local AI model (about 5 GB) on the image
 nix build .#iso
 ls result/iso/            # nexusos-26.05-live-x86_64-linux.iso
 ```
 
 The build takes a while the first time; most of it is downloaded from the NixOS cache.
 
-`nix run .#lock-model` pins the default model, `llama3.2:3b`, by writing `nix/models/llama3.2-3b.json`: the list of the model's files with their SHA-256 checksums, from the Ollama registry. The image build then downloads the model and Nix checks every file against that list. Commit the file to keep it. Without it, the image is about 2 GB smaller and the model downloads after installation.
+`nix run .#lock-model` pins the default model, `qwen3:8b`, by writing `nix/models/qwen3-8b.json`: the list of the model's files with their SHA-256 checksums, from the Ollama registry. The image build then downloads the model and Nix checks every file against that list. Commit the file to keep it. Without it, the image is about 5 GB smaller and the model downloads after installation.
 
 ## 2. Write it to a USB stick
 
@@ -63,16 +63,26 @@ The live desktop starts by itself, with a terminal called **Install NexusOS**:
 On the first start, NexusOS asks for your password.
 
 ![The installed system's login screen, then the NexusOS desktop](evidence/img/M7-installed-desktop.png)
- If the stick carried the local model, Nexus can answer straight away. Otherwise NexusOS downloads the model in the background once it is online (about 2 GB); until then, Nexus says it is unavailable and apps work as normal.
+ If the stick carried the local model, Nexus can answer straight away. Otherwise NexusOS downloads the model in the background once it is online (about 5 GB); until then, Nexus says it is unavailable and apps work as normal.
 
 ## Wi-Fi
 
-Hover over the system panel (top right). With Wi-Fi on, the quick controls list nearby networks, strongest first, with your current and saved networks at the top.
+Open **Settings, Network**: click the Wi-Fi icon in the top bar, the Network planet in the orbital controls (bottom right), or press Super+I. With Wi-Fi on, it lists nearby networks, strongest first, with your current and saved networks at the top.
 
 - Click a network to connect. A secured one opens a password box; press Enter or **Connect**. **Show** reveals what you typed.
 - NetworkManager keeps the password, so a saved network reconnects by itself and with one click.
 - Click the connected network for **Disconnect** and **Forget** (Forget deletes the saved password).
-- Work or school networks that need a username or certificate are not set up from the panel yet: use `nmtui` in a terminal (Ctrl+Alt+T).
+- Work or school networks that need a username or certificate are not set up from Settings yet: **Open nmtui** on the same page, or run `nmtui` in a terminal (Ctrl+Alt+T).
+
+## Using the desktop
+
+- **Windows** float, like on Windows or macOS: drag the title bar to move, drag an edge to resize, and use the buttons on the left of the title bar to close, minimise or maximise. A minimised window comes back from its planet around the Nexus core at the bottom. **Settings, Desktop** switches to tiling, where windows fill the screen side by side; Super+T switches a single window.
+- **Settings** (Super+I) has Network, Bluetooth, Sound, Display, Power, Desktop, Privacy and AI, and About. Type in its search box to find a setting, or to ask Nexus.
+- **Shortcuts**: Super+Space Nexus, Super+Return terminal, Super+E files, Super+Q close, Super+M maximise, Super+F fullscreen, Super+1 to 5 workspaces, Super+L lock.
+
+## Teaching Nexus about you
+
+Nexus reads a built-in guide to NexusOS with every question, plus any notes you write. Put text or Markdown files in `~/.config/nexusos/assistant/` (**Settings, Privacy and AI, Open folder**): who you are, what you use the computer for, how you like answers. They are read each time, so a change takes effect on the next question. Nothing is uploaded or used to retrain the model.
 
 ## NVIDIA graphics
 
@@ -116,7 +126,8 @@ The options are documented in `nix/profiles/nexusos.nix` and `nix/modules/deskto
 - Disk encryption, dual boot, and choosing partitions by hand. The installer always uses a whole disk.
 - A graphical installer. The installer runs in a terminal.
 - Guardian (AI-proposed system changes) is not switched on in installed systems yet. It needs a builder signing key to be set up on each machine.
-- Settings and Files apps of its own. Thunar is the file manager, and settings are changed in `local.nix`.
+- A Files app of its own: Thunar is the file manager. System-wide settings (software, services) are changed in `local.nix`.
+- Nexus applying settings for you: it explains and points to the right page, and you make the change.
 
 ## How the installer is tested
 

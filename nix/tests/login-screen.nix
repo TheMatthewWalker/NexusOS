@@ -30,17 +30,21 @@ pkgs.testers.runNixOSTest {
     with subtest("the graphical login screen shows, not the text one"):
         machine.wait_until_succeeds("pgrep -f 'quickshell.*greeter.qml'", timeout=600)
         machine.fail("pgrep -x tuigreet")
-        machine.sleep(20)                       # software rendering: let the first frames land
+        # Under software emulation the screen takes a minute or more to load:
+        # type only once the password box has the keyboard.
+        machine.wait_until_succeeds("journalctl -b -t nexus-greeter | grep -q 'password box has the keyboard'", timeout=900)
+        machine.sleep(5)
         machine.screenshot("01-login-screen")
 
     with subtest("a wrong password is refused, and the screen stays"):
         machine.send_chars("not-the-password\n")
-        machine.sleep(10)
+        machine.wait_until_succeeds("journalctl -b -t nexus-greeter | grep -q 'login refused'", timeout=300)
         machine.fail("pgrep -u alice Hyprland")
         machine.succeed("pgrep -f 'quickshell.*greeter.qml'")
         machine.screenshot("02-wrong-password")
 
     with subtest("the right password starts the desktop"):
+        machine.sleep(5)                        # the refused attempt hands the keyboard back to the password box
         machine.send_chars("nexus-login\n")
         try:
             machine.wait_until_succeeds("pgrep -u alice -f start-hyprland", timeout=300)

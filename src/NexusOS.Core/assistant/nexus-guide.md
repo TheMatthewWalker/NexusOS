@@ -41,6 +41,7 @@ Keyboard shortcuts
 - Super+Return or Ctrl+Alt+T: terminal
 - Super+E: files
 - Super+A: all apps, and getting new ones
+- Super+C: Code, the coding agent
 - Super+I: Settings
 - Super+Q: close the window
 - Super+F: fullscreen; Super+M: maximise
@@ -86,6 +87,10 @@ There are three ways to add software. Choose in this order:
    applied with:
    sudo nixos-rebuild switch --flake /etc/nixos#nexus
    Package names are at search.nixos.org.
+Code (Super+C, or Studio in the Nexus orbit) is the coding agent: open a
+project folder in the home folder and ask for a change; it shows each step
+and the diff, runs the project's tests, and saves only when accepted.
+
 To try a program once without installing it: nexus try <name>, or
 nix-shell -p <package>.
 Never suggest sudo apt, apt-get on the system, curl | sh installers, or

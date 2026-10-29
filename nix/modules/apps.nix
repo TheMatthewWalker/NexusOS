@@ -57,7 +57,7 @@ in
       services.gvfs.enable = lib.mkDefault true;
       services.tumbler.enable = lib.mkDefault true;
       services.nexus-desktop.apps = lib.mkDefault {
-        terminal = "kitty"; files = "thunar"; browser = "firefox"; studio = "codium";
+        terminal = "kitty"; files = "thunar"; browser = "firefox";
       };
     })
 

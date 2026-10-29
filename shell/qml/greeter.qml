@@ -52,6 +52,8 @@ ShellRoot {
             console.info("nexus-greeter: starting " + root.session.join(" "));
             Greetd.launch(root.session, [], true);
         }
+        // greetd starts the desktop once the login screen has exited.
+        function onLaunched() { console.info("nexus-greeter: launched; exiting"); quitSoon.start() }
         function onError(text) {
             console.warn("nexus-greeter: greetd error: " + text);
             // After a refused password the connection to greetd is reset;
@@ -62,6 +64,7 @@ ShellRoot {
         }
     }
     SystemClock { id: clock; precision: SystemClock.Minutes }
+    Timer { id: quitSoon; interval: 500; onTriggered: Qt.quit() }
 
     FloatingWindow {
         id: win

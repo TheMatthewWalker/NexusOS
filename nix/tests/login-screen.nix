@@ -53,7 +53,12 @@ pkgs.testers.runNixOSTest {
             journal()
             raise
         machine.wait_until_succeeds("pgrep -u alice -f 'nexus-shell/shell.qml'", timeout=600)
-        machine.wait_until_fails("pgrep -f 'quickshell.*greeter.qml'", timeout=120)
+        try:
+            machine.wait_until_fails("pgrep -f 'quickshell.*greeter.qml'", timeout=120)
+        except Exception:
+            print(machine.execute("ps -eo pid,ppid,user,stat,etime,args | grep -E 'cage|quickshell|Hyprland|greet' | grep -v grep")[1])
+            journal()
+            raise
         machine.sleep(30)
         machine.screenshot("03-desktop")
   '';

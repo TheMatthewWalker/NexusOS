@@ -21,7 +21,8 @@ Item {
     signal failed(int id, string message)
     signal suggestions(int id, var apps, string source)
     signal unloaded(int id, var vramFreedBytes)     // bytes measured by Core, or null when unknown
-    signal result(int id, string type, var data)     // providers, status, cleared (Settings, Privacy and AI)
+    signal result(int id, string type, var data)     // providers, status, cleared, code-session, code-result
+    signal codeEvent(int id, var ev)                 // the coding agent's step, changes, message and done events
 
     function send(op, extra) {
         if (!proc.running) return -1;
@@ -41,12 +42,17 @@ Item {
         if (ev.type === "ready") { restartDelay = 1000; health.restart(); send("health"); return }
         const id = typeof ev.id === "number" ? ev.id : -1;
         if (ev.type === "delta") { delta(id, ev.text); return }
+        if (pending[id] === "code-send" && ev.type !== "error") {
+            if (ev.type === "done") delete pending[id];
+            codeEvent(id, ev);
+            return;
+        }
         delete pending[id];
         if (ev.type === "done") done(id, ev.provider);
         else if (ev.type === "suggestions") suggestions(id, ev.data.apps, ev.data.source);
         else if (ev.type === "unloaded") unloaded(id, ev.data.vramFreedBytes);
         else if (ev.type === "health") { online = true; offlineReason = "" }
-        else if (["providers", "status", "cleared"].includes(ev.type)) result(id, ev.type, ev.data || {});
+        else if (["providers", "status", "cleared", "code-session", "code-result"].includes(ev.type)) result(id, ev.type, ev.data || {});
         else if (ev.type === "error") {
             if (/not reachable|did not answer/.test(ev.message)) { online = false; offlineReason = ev.message }
             failed(id, ev.message);

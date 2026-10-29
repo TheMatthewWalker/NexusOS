@@ -37,7 +37,7 @@ class ShellBuild(unittest.TestCase):
 
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
-                     "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
+                     "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
                      *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About"]],
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
@@ -199,6 +199,22 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("bind = SUPER, I, global, nexus:settings", nix)
         self.assertIn("hyprbars-button = rgb(ff8fa3), 13, , ${hyprctl} dispatch killactive", nix)
         self.assertIn("start-hyprland -- --config /etc/nexus/hyprland.conf", nix)
+
+    def test_code_window_shows_changes_before_anything_is_saved(self):
+        code = (self.out / "Code.qml").read_text()
+        bridge = (self.out / "CoreBridge.qml").read_text()
+        self.assertIn('bridge.send("code-send"', code)
+        self.assertIn('win.act("code-accept"', code)
+        self.assertIn('win.act("code-reject")', code)
+        self.assertIn('win.act("code-undo")', code)
+        self.assertIn("textFormat: Text.PlainText", code)          # model text is never rich text
+        self.assertIn('if (pending[id] === "code-send" && ev.type !== "error")', bridge)
+
+    def test_apps_installs_per_person_without_a_password(self):
+        apps = (self.out / "Apps.qml").read_text()
+        self.assertIn("flatpak install --user --noninteractive", apps)
+        self.assertNotIn("sudo", apps)
+        self.assertNotIn("pkexec", apps)
 
     def test_reply_scrolls_instead_of_being_cut_off(self):
         shell = (self.out / "shell.qml").read_text()

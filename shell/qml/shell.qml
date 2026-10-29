@@ -82,9 +82,11 @@ ShellRoot {
     function openApp(id) {
         // Settings is part of the shell itself.
         if (id === "settings") { collapse(); settings.open("", ""); return; }
+        // Studio: making something new. The coding agent is the first part of it.
+        if (id === "studio") { collapse(); codeWin.open(""); return; }
         if (apps.open(id)) collapse();
     }
-    function installed(id) { return id === "settings" || apps.installed(id) }
+    function installed(id) { return id === "settings" || id === "studio" || apps.installed(id) }
     // Switching to a window from the launcher. A minimised window (the title
     // bar's minimise button moves it to the hidden "minimized" workspace)
     // comes back to the current workspace first.
@@ -161,6 +163,7 @@ ShellRoot {
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
     }
     Apps { id: appsWin; theme: root.dark }
+    Code { id: codeWin; theme: root.dark; bridge: bridge }
     TopBar { theme: root.dark; settings: settings; onOpenNexus: root.expanded ? root.collapse() : root.open()
              onOpenApps: appsWin.open("all") }
     OrbitalControls { theme: root.dark; settings: settings; reduced: root.reduced }
@@ -185,6 +188,8 @@ ShellRoot {
     GlobalShortcut { appid: "nexus"; name: "toggle"; onPressed: root.expanded ? root.collapse() : root.open() }
     // Super+I (bind = SUPER, I, global, nexus:settings).
     GlobalShortcut { appid: "nexus"; name: "settings"; onPressed: settings.open("", "") }
+    // Super+C (bind = SUPER, C, global, nexus:code): the coding agent.
+    GlobalShortcut { appid: "nexus"; name: "code"; onPressed: codeWin.open("") }
     // Super+A (bind = SUPER, A, global, nexus:apps): every app, and getting new ones.
     GlobalShortcut { appid: "nexus"; name: "apps"; onPressed: appsWin.visible ? appsWin.visible = false : appsWin.open("all") }
     IpcHandler {

@@ -60,6 +60,7 @@ builder.Services.AddSingleton<InferenceActivity>();
 builder.Services.AddSingleton<InferenceConcurrencyGate>();
 builder.Services.AddSingleton<InferenceTokenSettings>();
 builder.Services.AddSingleton<AssistantContextBuilder>();
+builder.Services.AddSingleton<CodingAgent>();
 // Automations in plain words: rule store, engine, parser and timer (RuleEndpoints.cs).
 builder.Services.AddRules();
 builder.Services.AddHostedService<IdleModelEvictionService>();
@@ -369,6 +370,7 @@ app.MapGet("/system", () => Results.Ok(new
 // POST /fixit, POST /fixit/apply, GET /health/report (FixIt.cs).
 app.MapFixIt();
 app.MapNexusSearch();
+app.MapCoding();
 app.Run();
 
 // Journal summaries are one short line: drop control characters and truncate.

@@ -13,7 +13,8 @@ using System.Text.Json;
 // The model is only told things; it gets no tools and runs nothing.
 public sealed record ChatMessage(string Role, string Content);
 
-public sealed record ChatContext(string System, IReadOnlyList<ChatMessage> Earlier)
+// Json asks the model for a JSON object (the coding agent's actions).
+public sealed record ChatContext(string System, IReadOnlyList<ChatMessage> Earlier, bool Json = false)
 {
     public IReadOnlyList<ChatMessage> Messages(string prompt) =>
         [new("system", System), .. Earlier, new("user", prompt)];

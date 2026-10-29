@@ -309,9 +309,11 @@ async Task<int> StreamAnswer(string prompt)
 }
 
 // Streams /chat/stream events; an HTTP error becomes a single error event.
-async IAsyncEnumerable<JsonElement> ChatEvents(string prompt)
+IAsyncEnumerable<JsonElement> ChatEvents(string prompt) => StreamEvents("/chat/stream", new { prompt });
+
+async IAsyncEnumerable<JsonElement> StreamEvents(string path, object body)
 {
-    using var request = new HttpRequestMessage(HttpMethod.Post, "/chat/stream") { Content = JsonContent.Create(new { prompt }) };
+    using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
     using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
     if (!response.IsSuccessStatusCode)
     {
@@ -340,6 +342,12 @@ async IAsyncEnumerable<JsonElement> ChatEvents(string prompt)
 //   {"id":7,"op":"select","name":"local"}   -> {"type":"providers","data":{"selected":"local"}}
 //   {"id":8,"op":"status"}                  -> {"type":"status","data":{"backend":..,"model":..,"available":..}}
 //   {"id":9,"op":"clear-history"}           -> {"type":"cleared"}
+// The coding agent (CodingAgent.cs):
+//   {"id":10,"op":"code-start","folder":"~/projects/app"} -> {"type":"code-session","data":{"id":..,"folder":..,"tests":..}}
+//   {"id":11,"op":"code-send","session":"..","text":"fix the bug"} -> step events, changes, message, done
+//   {"id":12,"op":"code-accept","session":"..","files":["a.py"]|null} | code-reject | code-undo
+// Streaming requests (chat, code-send) run alongside the others, so a long
+// answer never holds up a health check or a click.
 async Task<int> Bridge()
 {
     var output = Console.Out;
@@ -359,12 +367,34 @@ async Task<int> Bridge()
         JsonElement? id = req.TryGetProperty("id", out var i) ? i : null;
         var op = req.TryGetProperty("op", out var o) ? o.GetString() : null;
         var prompt = req.TryGetProperty("prompt", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : "";
+        string Arg(string key) => req.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
+        if (op is "chat" or "code-send")
+        {
+            var path = op == "chat" ? "/chat/stream" : $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/messages";
+            object body = op == "chat" ? new { prompt } : new { text = Arg("text") };
+            _ = Task.Run(async () =>
+            {
+                try { await foreach (var ev in StreamEvents(path, body)) Emit(id, ev); }
+                catch (HttpRequestException) { Emit(id, new { type = "error", message = "Nexus Core is not reachable." }); }
+                catch (Exception ex) when (ex is TaskCanceledException or IOException) { Emit(id, new { type = "error", message = "Nexus Core did not answer in time." }); }
+            });
+            continue;
+        }
         try
         {
             switch (op)
             {
-                case "chat":
-                    await foreach (var ev in ChatEvents(prompt)) Emit(id, ev);
+                case "code-start":
+                    Emit(id, await Call(HttpMethod.Post, "/code/sessions", new { folder = Arg("folder") }, "code-session"));
+                    break;
+                case "code-accept":
+                    string[]? files = req.TryGetProperty("files", out var f) && f.ValueKind == JsonValueKind.Array
+                        ? f.EnumerateArray().Select(x => x.GetString() ?? "").ToArray() : null;
+                    Emit(id, await Call(HttpMethod.Post, $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/accept", new { files }, "code-result"));
+                    break;
+                case "code-reject":
+                case "code-undo":
+                    Emit(id, await Call(HttpMethod.Post, $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/{op[5..]}", new { }, "code-result"));
                     break;
                 case "suggest":
                     var model = req.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.True;

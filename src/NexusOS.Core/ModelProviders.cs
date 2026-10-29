@@ -252,8 +252,7 @@ public sealed class OllamaProvider : IModelProvider
                     new { model = Model, prompt, stream = false, think = Think, options = Options(budget) }, token),
                 root => root.GetProperty("response").GetString(), ct, Missing)
             : ProviderHttp.SendAsync("Local Ollama", token => _factory.CreateClient("ai").PostAsJsonAsync(Endpoint + "/api/chat",
-                    new { model = Model, messages = ProviderHttp.Messages(prompt, context), stream = false, think = Think,
-                          options = Options(budget) }, token),
+                    ChatBody(prompt, context, budget, stream: false), token),
                 root => root.GetProperty("message").GetProperty("content").GetString(), ct, Missing);
 
     public IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct, ChatContext? context = null) =>
@@ -263,10 +262,19 @@ public sealed class OllamaProvider : IModelProvider
                     new { model = Model, prompt, stream = true, think = Think, options = Options(budget) }, token),
                 ProviderHttp.ParseOllamaLine, ct, Missing)
             : ProviderHttp.StreamAsync("Local Ollama", token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"),
-                    Endpoint + "/api/chat",
-                    new { model = Model, messages = ProviderHttp.Messages(prompt, context), stream = true, think = Think,
-                          options = Options(budget) }, token),
+                    Endpoint + "/api/chat", ChatBody(prompt, context, budget, stream: true), token),
                 ProviderHttp.ParseOllamaChatLine, ct, Missing);
+
+    private Dictionary<string, object> ChatBody(string prompt, ChatContext context, InferenceTokenBudget budget, bool stream)
+    {
+        var body = new Dictionary<string, object>
+        {
+            ["model"] = Model, ["messages"] = ProviderHttp.Messages(prompt, context), ["stream"] = stream,
+            ["think"] = Think, ["options"] = Options(budget)
+        };
+        if (context.Json) body["format"] = "json";
+        return body;
+    }
 
     private static object Options(InferenceTokenBudget budget) =>
         new { num_ctx = budget.ContextTokens, num_predict = budget.ReservedOutputTokens };

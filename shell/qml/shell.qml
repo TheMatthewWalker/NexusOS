@@ -169,12 +169,14 @@ ShellRoot {
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
         onFixIt: problem => fixItWin.open(problem)
         onOpenWelcome: firstRun.open()
+        onMoveIn: moveInWin.open()
     }
     Apps { id: appsWin; theme: root.dark; bridge: bridge }
     FixIt { id: fixItWin; theme: root.dark; bridge: bridge }
     Search { id: searchWin; theme: root.dark; bridge: bridge; onChooseFolders: settings.open("search", "") }
     Overview { id: overview; theme: root.dark; bridge: bridge; apps: apps; reduced: root.reduced }
-    FirstRun { id: firstRun; theme: root.dark; bridge: bridge; desktop: desktop }
+    FirstRun { id: firstRun; theme: root.dark; bridge: bridge; desktop: desktop; onMoveIn: moveInWin.open() }
+    MoveIn { id: moveInWin; theme: root.dark }
     Explain { id: explainCard; theme: root.dark; bridge: bridge; onFixIt: problem => fixItWin.open(problem)
               onTellMeMore: { root.open(); input.text = "Tell me more about that."; root.ask(input.text) } }
     Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }

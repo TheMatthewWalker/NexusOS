@@ -38,7 +38,7 @@ class ShellBuild(unittest.TestCase):
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
                      "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "Images.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
-                     "Search.qml", "Overview.qml", "FirstRun.qml", "Explain.qml", "lib/firstrun.mjs", "lib/bundles.mjs",
+                     "Search.qml", "Overview.qml", "FirstRun.qml", "Explain.qml", "MoveIn.qml", "lib/firstrun.mjs", "lib/bundles.mjs",
                      *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About", "Search"]],
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
@@ -297,6 +297,20 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("if (!attrPattern.test(attr) || trial.running) return false;", apps)
         self.assertIn('{ value: "try", label: "System apps" }', apps)
         self.assertIn("./try-apps.nix", nix)
+
+    def test_move_in_reads_the_old_drive_only_and_never_overwrites(self):
+        mi = (self.out / "MoveIn.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        nix = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn('"udisksctl", "mount", "--no-user-interaction", "-b", path, "-o", "ro"', mi)
+        self.assertIn("rsync -r -t --ignore-existing", mi)
+        self.assertIn('"lsblk", "-J"', mi)
+        for word in ["sudo", "pkexec", "--remove-source-files", "rm -"]:
+            self.assertNotIn(word, mi)
+        self.assertIn('target: "movein"', mi)
+        self.assertIn("MoveIn { id: moveInWin", shell)
+        self.assertIn("services.udisks2.enable", nix)
+        self.assertIn("pkgs.rsync", nix)
 
     def run_node_test(self, name):
         if not shutil.which("node"):

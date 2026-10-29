@@ -67,7 +67,9 @@ box at the top to search them.
 - Sound: output volume and microphone. Display: brightness and night light.
 - Desktop: floating or tiled windows, motion and blur.
 - About: Welcome setup (suggests apps and settings for studying, gaming,
-  office, coding or creative work) and bringing files from Windows or macOS.
+  office, coding or creative work) and Bring files from Windows or macOS
+  (opens the old drive read-only and copies Documents, Pictures, Music,
+  Videos and Desktop into the home folder; bookmarks and apps come later).
 - Privacy and AI: which model answers, whether a cloud model may be used
   (off by default), and clearing conversation history.
 

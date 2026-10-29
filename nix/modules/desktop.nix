@@ -306,7 +306,7 @@ in
     # points with slurp, takes the area's picture with grim and reads the
     # selected text with wl-paste (wl-clipboard).
     environment.systemPackages = [ cfg.shellPackage pkgs.gtk3 pkgs.hyprsunset pkgs.brightnessctl pkgs.pciutils pkgs.xdg-utils
-                                   pkgs.orca pkgs.adwaita-icon-theme pkgs.grim pkgs.slurp pkgs.wl-clipboard ]
+                                   pkgs.orca pkgs.adwaita-icon-theme pkgs.grim pkgs.slurp pkgs.wl-clipboard pkgs.rsync ]
       ++ lib.optionals cfg.installDefaultApps [ pkgs.kitty pkgs.thunar ];
 
     fonts.packages = [ pkgs.inter pkgs.jetbrains-mono ];
@@ -332,6 +332,8 @@ in
     };
     networking.networkmanager.enable = lib.mkDefault true;
     services.upower.enable = lib.mkDefault true;
+    # Bring my stuff over: old drives are opened read-only with udisksctl, and copied with rsync.
+    services.udisks2.enable = lib.mkDefault true;
     # Settings, Power: the power mode.
     services.power-profiles-daemon.enable = lib.mkDefault true;
     # Settings, Display: brightness for people in the video group, without root.

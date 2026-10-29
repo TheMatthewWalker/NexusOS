@@ -233,9 +233,26 @@ fi
 
 # --- Install ----------------------------------------------------------------
 say "Installing NexusOS (this takes a while)"
+# Everything the install needs is on the image. Online, the NixOS cache can
+# still save some building; offline, give up on it quickly. (Do not empty
+# the substituters: nixos-install copies from this USB stick's store through
+# one, and an empty list would make it download nixpkgs from GitHub.)
+offline=()
+if ! curl -sfI --max-time 8 https://cache.nixos.org/nix-cache-info > /dev/null 2>&1; then
+  echo "No internet connection: installing from the USB stick only."
+  offline=(--option connect-timeout 3)
+fi
 # Lock first: locking inside nixos-install would change the flake mid-build.
-nix --extra-experimental-features "nix-command flakes" flake lock "path:/mnt/etc/nixos"
-nixos-install --root /mnt --flake "path:/mnt/etc/nixos#nexus" --no-root-passwd --no-channel-copy
+nix --extra-experimental-features "nix-command flakes" flake lock "path:/mnt/etc/nixos" "${offline[@]}"
+nixos-install --root /mnt --flake "path:/mnt/etc/nixos#nexus" --no-root-passwd --no-channel-copy "${offline[@]}"
+
+# The local model, if the image carries one: first boot hands it to Ollama
+# (nexus-model-pull), so Nexus answers without downloading it.
+if [ -d /etc/nexusos-model/manifests ]; then
+  say "Copying the local AI model"
+  mkdir -p /mnt/var/lib/nexus-model-seed
+  cp -rL --no-preserve=ownership,mode /etc/nexusos-model/. /mnt/var/lib/nexus-model-seed/
+fi
 
 say "Setting your password"
 printf '%s:%s\n' "$user" "$password" | nixos-enter --root /mnt -c 'chpasswd'

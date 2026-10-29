@@ -7,8 +7,8 @@ not on the machine you rely on: the installer erases the whole disk you pick.
 
 - A 64-bit Intel or AMD computer that boots with **UEFI**. Legacy/CSM boot is not supported.
 - At least 8 GB of RAM and a 64 GB disk. A local model also needs 4 GB or more of free disk space.
-- A USB stick of 8 GB or more. Writing the image erases the stick.
-- An internet connection during the install. Most of NexusOS is already on the image, but the parts built for your computer's hardware, and the local model, are downloaded.
+- A USB stick of 8 GB or more, or 16 GB if the image carries the local model (step 1). Writing the image erases the stick.
+- No internet connection is needed to install: everything is on the stick. Without the model on the stick, the installed system downloads it once it is online.
 
 ## 1. Build the image
 
@@ -17,11 +17,14 @@ On any Linux machine with Nix installed and flakes turned on:
 ```sh
 git clone https://github.com/TheMatthewWalker/NexusOS
 cd NexusOS
+nix run .#lock-model      # optional: put the local AI model (about 2 GB) on the image
 nix build .#iso
 ls result/iso/            # nexusos-26.05-live-x86_64-linux.iso
 ```
 
 The build takes a while the first time; most of it is downloaded from the NixOS cache.
+
+`nix run .#lock-model` pins the default model, `llama3.2:3b`, by writing `nix/models/llama3.2-3b.json`: the list of the model's files with their SHA-256 checksums, from the Ollama registry. The image build then downloads the model and Nix checks every file against that list. Commit the file to keep it. Without it, the image is about 2 GB smaller and the model downloads after installation.
 
 ## 2. Write it to a USB stick
 
@@ -43,24 +46,33 @@ The live desktop starts by itself, with a terminal called **Install NexusOS**:
 
 - Close that terminal to look around. Nothing in the live session is kept.
 - Super+Space opens Nexus.
-- The local model is not on the stick, so Nexus answers only after installation. Everything else works.
+- The local model does not run in the live session, so Nexus answers only after installation. Everything else works.
 
 ## 4. Install
 
-1. Connect to the internet: open the system panel (top right) and turn on Wi-Fi, or plug in a cable.
+1. Optional: connect to the internet. Hover over the system panel (top right). With Wi-Fi on, it lists nearby networks: click one, type its password and press Enter. A cable or your phone's USB tethering also works. Online, the install can take a little less time; it does not need it.
 2. In the **Install NexusOS** terminal, press Enter. If you closed it, press Super+Return (or Ctrl+Alt+T) for a new terminal and run `sudo nexus-install`.
 3. The installer asks for:
    - the disk to install to (it lists the disks with their sizes and models);
    - your login name, full name and password;
    - then you type the disk name again to confirm it may be erased.
 
-   It then partitions the disk, writes the configuration and installs NexusOS. That takes 5–30 minutes, depending on your connection and disk.
+   It then partitions the disk, writes the configuration and installs NexusOS from the stick. That takes 5–30 minutes, depending on your disk.
 4. When it says **NexusOS is installed**, remove the stick and restart.
 
 On the first start, NexusOS asks for your password.
 
 ![The installed system's login screen, then the NexusOS desktop](evidence/img/M7-installed-desktop.png)
- It then downloads the default local model in the background (a few GB). Until the model is there, Nexus says it is unavailable and apps work as normal.
+ If the stick carried the local model, Nexus can answer straight away. Otherwise NexusOS downloads the model in the background once it is online (about 2 GB); until then, Nexus says it is unavailable and apps work as normal.
+
+## Wi-Fi
+
+Hover over the system panel (top right). With Wi-Fi on, the quick controls list nearby networks, strongest first, with your current and saved networks at the top.
+
+- Click a network to connect. A secured one opens a password box; press Enter or **Connect**. **Show** reveals what you typed.
+- NetworkManager keeps the password, so a saved network reconnects by itself and with one click.
+- Click the connected network for **Disconnect** and **Forget** (Forget deletes the saved password).
+- Work or school networks that need a username or certificate are not set up from the panel yet: use `nmtui` in a terminal (Ctrl+Alt+T).
 
 ## NVIDIA graphics
 

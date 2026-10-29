@@ -20,7 +20,7 @@ jobs:
   desktop:
     name: Nexus shell and Hyprland desktop (VM)
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - name: Free runner disk for VM images
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
@@ -33,11 +33,15 @@ jobs:
         run: nix build .#nexus-shell --no-update-lock-file --print-build-logs
       - name: Hyprland desktop end to end (VM)
         run: nix build .#checks.x86_64-linux.hyprland-desktop --no-update-lock-file --print-build-logs --out-link desktop-vm
+      - name: Wi-Fi list, password and forget, on a simulated radio (VM)
+        run: nix build .#checks.x86_64-linux.wifi-picker --no-update-lock-file --print-build-logs --out-link wifi-vm
       - name: Upload desktop screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nexus-desktop-screenshots
-          path: desktop-vm/*.png
+          path: |
+            desktop-vm/*.png
+            wifi-vm/*.png
           if-no-files-found: ignore
           retention-days: 30

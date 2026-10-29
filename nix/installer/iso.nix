@@ -1,6 +1,6 @@
 # The NexusOS installer image: a live NexusOS desktop that opens the
 # installer in a terminal. Build it with `nix build .#iso`.
-{ config, lib, pkgs, modulesPath, nexusSource, referenceSystem, referenceSystemNvidia, nixpkgsSource, ... }:
+{ config, lib, pkgs, modulesPath, nexusSource, referenceSystem, referenceSystemNvidia, nixpkgsSource, bundledModel ? null, ... }:
 let
   nexus-install = pkgs.callPackage ../packages/nexus-install.nix { };
   welcome = pkgs.writeShellScriptBin "nexus-install-welcome" ''
@@ -11,8 +11,9 @@ let
       You are running the live system: nothing is installed yet, and nothing
       you do here is kept. Close this window to keep exploring.
 
-      To install NexusOS on this computer, connect to the internet
-      (the system panel, top right), then press Enter.
+      To install NexusOS on this computer, press Enter. No internet
+      connection is needed: everything is on this USB stick. To connect
+      anyway, open the system panel (top right) and pick a Wi-Fi network.
 
     EOF
     read -r _
@@ -35,11 +36,16 @@ in
   isoImage.volumeID = lib.mkForce "NEXUSOS";
   isoImage.appendToMenuLabel = " live";
 
-  # Most of what the installer needs is already on the image: the installed
-  # system's closure and the pinned nixpkgs source, so installing downloads
-  # little more than the parts built for this computer's hardware. The NVIDIA
-  # variant carries the driver, which the NixOS cache does not build.
-  isoImage.storeContents = [ referenceSystem referenceSystemNvidia nixpkgsSource ];
+  # Everything the installer needs is on the image: the installed system's
+  # closure, the pinned nixpkgs source, and the tools that build the parts
+  # specific to this computer's hardware. The NVIDIA variant carries the
+  # driver, which the NixOS cache does not build.
+  isoImage.storeContents = [ referenceSystem referenceSystemNvidia nixpkgsSource ]
+    # The tools that build those parts, so installing works with no internet.
+    ++ import ./offline-deps.nix pkgs
+    # The local model, when pinned (nix/models/); nexus-install copies it to the disk.
+    ++ lib.optional (bundledModel != null) bundledModel;
+  environment.etc."nexusos-model" = lib.mkIf (bundledModel != null) { source = bundledModel; };
 
   # A second boot entry, "NexusOS live (NVIDIA)", for machines whose screen
   # is driven by an NVIDIA card. The default entry uses the built-in open
@@ -58,8 +64,9 @@ in
       exec-once = kitty --title "Install NexusOS" ${welcome}/bin/nexus-install-welcome
     '';
   };
-  # The desktop uses NetworkManager; the minimal image's wpa_supplicant would clash.
-  networking.wireless.enable = lib.mkForce false;
+  # Wi-Fi: NetworkManager runs wpa_supplicant under its own control
+  # (networking.wireless.enable with dbusControlled). Turning
+  # networking.wireless off here once left the live system with no Wi-Fi at all.
   # NexusOS installs to ext4; leave ZFS out of the image.
   boot.supportedFilesystems.zfs = lib.mkForce false;
   hardware.enableRedistributableFirmware = true;

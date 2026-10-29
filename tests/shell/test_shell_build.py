@@ -37,7 +37,7 @@ class ShellBuild(unittest.TestCase):
 
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
-                     "SystemPanel.qml", "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
+                     "SystemPanel.qml", "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
 
     def test_every_referenced_icon_exists(self):
@@ -144,6 +144,27 @@ class ShellBuild(unittest.TestCase):
 
     def test_game_detection(self):
         self.run_node_test("game.test.mjs")
+
+    def test_wifi_list_logic(self):
+        self.run_node_test("wifi.test.mjs")
+
+    def test_wifi_picker_uses_networkmanager_and_keeps_no_password(self):
+        """The panel lists networks and connects through Quickshell's NetworkManager backend."""
+        panel = (self.out / "SystemPanel.qml").read_text()
+        self.assertIn('import "lib/wifi.mjs" as W', panel)
+        self.assertIn("connectWithPsk(text)", panel)              # the password goes to NetworkManager
+        self.assertIn("network.forget()", panel)
+        self.assertIn("d.type === DeviceType.Wifi && d.nmManaged", panel)   # not an unmanaged adapter
+        self.assertIn("function onConnectionFailed(reason)", panel)
+        # The password box sits outside the rebuilt list, so typing survives a rescan.
+        self.assertLess(panel.index("id: netRepeater"), panel.index("id: password"))
+        self.assertIn("echoMode: reveal.checked ? TextInput.Normal : TextInput.Password", panel)
+        self.assertIn("Qt.ImhSensitiveData", panel)
+        # Scanning only while the panel is open.
+        self.assertIn('property: "scannerEnabled"; value: win.expanded && win.wifiOn', panel)
+        # The password box is cleared when it closes, and nothing is printed.
+        self.assertIn('else password.text = ""', panel)
+        self.assertNotIn("console.log", panel)
 
     def run_node_test(self, name):
         if not shutil.which("node"):

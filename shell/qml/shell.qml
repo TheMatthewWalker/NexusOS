@@ -35,6 +35,7 @@ ShellRoot {
     property string error: ""
     property int chatId: -1
     property string lastPrompt: ""
+    property string toolNote: ""            // a look-up Nexus is running, e.g. "Searching your files"
     property int suggestId: -1
     property real voice: 0
     // GPU budget (the local model shares the GPU with the core):
@@ -76,11 +77,11 @@ ShellRoot {
     function open() { expanded = true }
     function collapse() {
         expanded = false; showAll = false; suggested = []; suggestedBy = "";
-        input.text = ""; reply = ""; error = ""; mode = "idle"; voice = 0;
+        input.text = ""; reply = ""; error = ""; mode = "idle"; voice = 0; toolNote = ""; actionCards.clear();
     }
     function ask(prompt) {
         if (!bridge.online) return;
-        error = ""; reply = ""; provider = ""; mode = "thinking";
+        error = ""; reply = ""; provider = ""; mode = "thinking"; toolNote = ""; actionCards.clear();
         lastPrompt = prompt;
         chatId = bridge.chat(prompt);
     }
@@ -131,9 +132,12 @@ ShellRoot {
             root.voice = Math.min(1, 0.35 + vowels / Math.max(4, text.length));
             voiceDecay.restart();
         }
+        // Nexus's actions (NexusActions.cs in Core): a look-up running, or a card for the person.
+        onTool: (id, ev) => { if (id === root.chatId) root.toolNote = ev.status === "running" ? (ev.summary || "Working") + "…" : "" }
+        onAction: (id, ev) => { if (id === root.chatId) { root.toolNote = ""; actionCards.offer(ev) } }
         onDone: (id, provider) => {
             if (id !== root.chatId) return;
-            root.provider = provider;
+            root.provider = provider; root.toolNote = "";
             settle.restart();
             // With the answer done the model is free: let it pick the apps,
             // falling back to the rules (and saying so) if it cannot.
@@ -226,6 +230,9 @@ ShellRoot {
                                     modelBusy: root.modelBusy, launcherPaused: root.launcherPaused, gameMode: root.gameMode })
         }
         function simulateBusy(on: bool): void { root.simulateBusy = on }
+        // Ask Nexus as if typed in the chat; actions() lists the cards it offered.
+        function ask(text: string): void { root.open(); input.text = text; root.ask(text) }
+        function actions(): string { return JSON.stringify(actionCards.cardList.map(c => ({ summary: c.summary, safety: c.safety, state: c.state, message: c.message }))) }
         // "Treat fullscreen as game": any fullscreen window except video players and browsers.
         function fullscreenIsGame(on: bool): void { root.fullscreenIsGame = on }
     }
@@ -551,7 +558,7 @@ ShellRoot {
                     contentWidth: width; contentHeight: replyColumn.implicitHeight
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
-                    visible: root.reply.length > 0 || root.error.length > 0
+                    visible: root.reply.length > 0 || root.error.length > 0 || root.toolNote !== "" || actionCards.cardList.length > 0
                     property bool follow: true
                     onMovementEnded: follow = atYEnd
                     onContentHeightChanged: if (follow) contentY = Math.max(0, contentHeight - height)
@@ -574,10 +581,30 @@ ShellRoot {
                         spacing: 8
                         Text {
                             id: replyText
+                            visible: text !== ""             // a reply can be just an action card
                             width: parent.width; wrapMode: Text.Wrap
                             textFormat: Text.PlainText      // model output is never rendered as rich text
                             text: root.error ? "Nexus Core could not answer: " + root.error : root.reply
                             font.pixelSize: 14; lineHeight: 1.5; color: root.error ? root.dark.error : root.dark.ink
+                        }
+                        Text {
+                            visible: root.toolNote !== "" && !root.error
+                            text: root.toolNote
+                            font.pixelSize: 13; font.italic: true; color: root.dark.inkSecondary
+                        }
+                        // What Nexus offers to do: nothing happens until the person picks "Do it".
+                        ActionCards {
+                            id: actionCards
+                            width: parent.width
+                            theme: root.dark; bridge: bridge; apps: apps; settings: settings; desktop: desktop
+                            appsWin: appsWin; imagesWin: imagesWin; codeWin: codeWin; fixItWin: fixItWin
+                            onOpened: root.collapse()
+                            onOpenRole: role => root.openApp(role)
+                            // The Guardian approval dialog, where the desktop has one (Guardian.qml).
+                            onReview: card => {
+                                try { guardianWin.open(card.plan ? card.plan.id : card.id, card.plan); actionCards.reviewTaken = true }
+                                catch (e) { actionCards.reviewTaken = false }
+                            }
                         }
                         Flow {
                             width: parent.width; spacing: 6

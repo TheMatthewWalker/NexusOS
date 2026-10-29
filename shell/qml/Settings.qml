@@ -3,6 +3,7 @@ import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import Quickshell.Services.Pipewire
 import "settings"
 
 // Settings (design: "Settings B · Orbital categories", approved with the AI
@@ -112,6 +113,9 @@ FloatingWindow {
     // Undo from the Timeline: Core hands back the old value and where it belongs.
     function restore(ref, value) {
         if (typeof ref === "string" && ref.startsWith("desktop:") && value && "value" in value) desktop.set(ref.slice(8), value.value, true);
+        // The volume, when Nexus changed it (ActionCards.qml).
+        else if (ref === "sound:volume" && value && typeof value.value === "number" && Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.audio)
+            Pipewire.defaultAudioSink.audio.volume = Math.max(0, Math.min(1, value.value / 100));
     }
     function lock() { Quickshell.execDetached((Quickshell.env("NEXUS_LOCK") || "hyprlock").split(" ")) }
     function runInTerminal(command) { Quickshell.execDetached([Quickshell.env("NEXUS_TERMINAL") || "kitty"].concat(command)) }

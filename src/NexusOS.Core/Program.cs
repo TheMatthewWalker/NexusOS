@@ -77,6 +77,7 @@ builder.Services.AddSingleton<LocalApiToken>();
 builder.Services.AddFixIt();
 builder.Services.AddNexusSearch(); // Private search (M8): SearchEndpoints.cs
 builder.Services.AddWorkspaces(); // Workspaces that remember: Workspaces.cs
+builder.Services.AddNexusActions(); // What Nexus can do from the chat: NexusActions.cs, NexusChat.cs
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -147,17 +148,20 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
 }).RequireRateLimiting("ai");
 // Streams the answer as newline-delimited JSON events:
 //   {"type":"delta","text":"..."}  repeated, then {"type":"done","provider":"..."}
+// With actions (NexusChat.cs), between them:
+//   {"type":"tool","name":"search_files","status":"running|done|rejected","summary":"Searching your files"}
+//   {"type":"action","id":"..","actionId":"..","action":"change_setting","args":{..},"safety":"personal|system","summary":"Turn night light on",
+//    "plan":{..} for system actions}  -- waits for POST /actions/{id}/confirm or /decline
 // An error before the first piece is an ordinary HTTP problem response; an
 // error mid-answer becomes {"type":"error","message":"..."}. Only completed
 // answers are written to history.
-app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, ModelRouter router, ConversationStore history,
+app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, NexusChat chat, ConversationStore history,
     AssistantContextBuilder assistant, InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
     using var slot = await concurrency.TryEnterAsync(ct);
     if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
-    var answer = new System.Text.StringBuilder();
     var started = false;
     async Task WriteEvent(object value)
     {
@@ -173,14 +177,10 @@ app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, ModelR
     activity.BeginRequest();
     try
     {
-        var (pieces, provider) = router.Stream(request.Prompt, ct, await assistant.BuildAsync(request.Prompt, ct));
-        await foreach (var piece in pieces)
-        {
-            answer.Append(piece);
-            await WriteEvent(new { type = "delta", text = piece });
-        }
-        await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, provider, request.Prompt, answer.ToString()), ct);
-        await WriteEvent(new { type = "done", provider });
+        var context = await assistant.BuildAsync(request.Prompt, ct, chat.ReservedChars);
+        var turn = await chat.RunAsync(request.Prompt, context, WriteEvent, ct);
+        await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, turn.Provider, request.Prompt, turn.ForHistory), ct);
+        await WriteEvent(new { type = "done", provider = turn.Provider });
         return Results.Empty;
     }
     catch (ProviderException ex)
@@ -378,6 +378,7 @@ app.MapNexusSearch();
 app.MapWorkspaces();
 app.MapCoding();
 app.MapImages();
+app.MapNexusActions();
 app.Run();
 
 // Journal summaries are one short line: drop control characters and truncate.

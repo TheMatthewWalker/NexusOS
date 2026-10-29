@@ -37,7 +37,7 @@ class ShellBuild(unittest.TestCase):
 
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
-                     "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "Images.qml", "ActionCards.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
+                     "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "Images.qml", "ActionCards.qml", "Guardian.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
                      *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About"]],
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
@@ -244,6 +244,47 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("id: ev.actionId", cards)                    # the bridge replaces "id" with its request id
         cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
         self.assertIn('"/actions"]', cli)
+
+    def test_guardian_dialog_approves_only_with_the_persons_password(self):
+        """Guardian.qml: approval is polkit's password prompt, then the broker's review and staging."""
+        guardian = (self.out / "Guardian.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        bar = (self.out / "TopBar.qml").read_text()
+        # The person's click starts the checks; approval is the polkit helper after their password.
+        self.assertIn('"/guardian/proposals/" + p.id + "/check"', guardian)
+        self.assertIn("approver.command = [pkexec, approveHelper, p.candidateId]", guardian)
+        self.assertEqual(guardian.count("approver.running = true"), 1)
+        self.assertIn("/run/current-system/sw/bin/nexus-guardian-desktop-approve", guardian)
+        # Only after polkit succeeds: the existing review with the builder's attestation, then staging.
+        self.assertIn('win.call("review", "POST", "/guardian/review", { candidateId: p.candidateId, attestation: p.attestation }', guardian)
+        self.assertIn('if (data.eligible === true && data.decision)', guardian)
+        self.assertIn('"/guardian/stage", { decision: data.decision }', guardian)
+        # The password goes only to polkit, is never kept, and shows as dots.
+        self.assertIn("win.flow.submit(password.text); password.text = \"\"", guardian)
+        self.assertIn("TextInput.Password", guardian)
+        self.assertNotIn("sudo", guardian)
+        self.assertNotIn("localStorage", guardian)
+        self.assertIn("textFormat: Text.PlainText", guardian)     # proposal text is never rich text
+        self.assertIn('flow.actionId === "org.nexusos.guardian.approve" && approving', guardian)
+        # Everything the person must see.
+        for text in ("Approve and stage", "Decline", "Show the full change", "What changes", "Restart now",
+                     "Only allowed settings and packages are touched", "Built on this computer",
+                     "Starts up properly in a test machine", "goes back to today's version"):
+            self.assertIn(text, guardian, text)
+        # The shell talks to Core only through the bridge; IPC and the action cards' entry point exist.
+        self.assertNotIn("nexus.sock", guardian)
+        self.assertIn('target: "guardian"', guardian)
+        self.assertIn("function open(id, plan)", guardian)
+        self.assertIn("Guardian { id: guardianWin; theme: root.dark; bridge: bridge }", shell)
+        self.assertIn("guardian: guardianWin", shell)
+        self.assertIn("bar.guardian.open()", bar)
+        cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
+        for prefix in ("/guardian/proposals", "/guardian/review", "/guardian/stage"):
+            self.assertIn(f'"{prefix}"', cli)
+        # The polkit action's helper path is the one the dialog runs, and asks every time.
+        module = (ROOT / "nix/modules/guardian.nix").read_text()
+        self.assertIn('approveHelper = "/run/current-system/sw/bin/nexus-guardian-desktop-approve"', module)
+        self.assertIn("<allow_active>auth_admin</allow_active>", module)
 
     def test_nexus_actions_name_what_the_shell_has(self):
         """The Settings pages and roles Core offers the model are the shell's own."""

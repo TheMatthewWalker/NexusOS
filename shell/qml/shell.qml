@@ -178,7 +178,9 @@ ShellRoot {
     Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }
     Images { id: imagesWin; theme: root.dark; bridge: bridge; onSwitchToCode: codeWin.open("")
              onUseAsWallpaper: path => wallpaper.set(path) }
-    TopBar { theme: root.dark; settings: settings; onOpenNexus: root.expanded ? root.collapse() : root.open()
+    // System changes waiting for approval, and how they are going (Guardian.qml).
+    Guardian { id: guardianWin; theme: root.dark; bridge: bridge }
+    TopBar { theme: root.dark; settings: settings; guardian: guardianWin; onOpenNexus: root.expanded ? root.collapse() : root.open()
              onOpenApps: appsWin.open("all") }
     OrbitalControls { theme: root.dark; settings: settings; reduced: root.reduced }
     Process { id: hypr }

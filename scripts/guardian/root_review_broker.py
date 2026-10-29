@@ -254,6 +254,14 @@ class GuardianBroker:
             raise Denied("Unknown decision")
         return json.loads(row[0])["candidate"]["baseline"]
 
+    def decision_owner(self, decision_hash):
+        """(uid, permitted, staged) of a recorded decision, or None. Lets root services
+        act for a socket caller only on that caller's own decisions."""
+        with closing(self.connect()) as db:
+            row = db.execute("SELECT uid, permitted, staged FROM decisions WHERE hash=?",
+                             (decision_hash,)).fetchone()
+        return None if row is None else (row[0], bool(row[1]), bool(row[2]))
+
     def verify_ledger(self):
         previous = "GENESIS"
         with closing(self.connect()) as db:

@@ -137,6 +137,26 @@ pkgs.testers.runNixOSTest {
         assert target.succeed("stat -L -c %u /var/lib/ollama").strip() != "0", "Ollama's directory is owned by root"
         target.wait_until_succeeds("OLLAMA_HOST=127.0.0.1:11434 ollama list | grep -q 'nexus-test:tiny'", timeout=300)
 
+    with subtest("Guardian is on, with this computer's own builder key made at first boot"):
+        for unit in ("nexus-guardian-keys", "nexus-guardian", "nexus-guardian-builder", "nexus-guardian-stage",
+                     "nexus-guardian-boot-check"):
+            target.wait_for_unit(unit + ".service")
+        assert target.succeed("stat -c '%a %U' /var/lib/nexus-guardian-builder").strip() == "700 root"
+        assert target.succeed("stat -c '%a %U' /var/lib/nexus-guardian-builder/builder.key").strip() == "600 root"
+        # The broker trusts exactly this computer's key (no key is configured in the image).
+        target.succeed("diff <(grep -v '^#' /var/lib/nexus-guardian-builder/trusted-keys) /var/lib/nexus-guardian-builder/builder.pub")
+        for sock in ("nexus-guardian/review", "nexus-guardian-builder/build", "nexus-guardian-stage/stage"):
+            assert target.succeed(f"stat -c '%a %U %G' /run/{sock}.sock").strip() == "660 root nexus-guardian", sock
+        target.succeed("id -nG alice | grep -qw nexus-guardian")
+        # Alice's own requests are answered (here: no such candidate); the approval
+        # helper is polkit's, and trial boots fall back by themselves.
+        out = target.succeed("su - alice -c \"nexus-guardian-client status '{\\\"candidateId\\\": \\\"" + "0" * 24 + "\\\"}'\" || true")
+        assert "No such candidate" in out, out
+        target.succeed("grep -q org.nexusos.guardian.approve /run/current-system/sw/share/polkit-1/actions/org.nexusos.guardian.policy")
+        target.succeed("test -x /run/current-system/sw/bin/nexus-guardian-desktop-approve")
+        target.succeed("grep -q boot.panic_on_fail /proc/cmdline")
+        target.succeed("journalctl -b -u nexus-guardian-boot-check | grep -q nothing-pending")
+
     with subtest("the machine can rebuild itself from /etc/nixos"):
         target.succeed("nix --extra-experimental-features 'nix-command flakes' eval --raw /etc/nixos#nixosConfigurations.nexus.config.networking.hostName | grep -qx nexus-test")
   '';

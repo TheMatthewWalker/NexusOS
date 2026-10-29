@@ -208,7 +208,12 @@ pkgs.testers.runNixOSTest {
         # The Network planet (design tokens: orbitalControl.planetTopLeft.network, 51 px across),
         # in the expanded panel anchored bottom right: 365 wide, 12 from the bottom, 16 from the right.
         height = 28 + 242 + 10 + 96
-        click(W - 16 - 365 + 120 + 25, H - 12 - height + 23 + 25)
+        tx, ty = W - 16 - 365 + 120 + 25, H - 12 - height + 23 + 25
+        # Glide there, as a mouse does, so the controls stay open on the way.
+        for i in range(1, 6):
+            hypr(f"dispatch movecursor {MARK[0] + (tx - MARK[0]) * i // 5} {MARK[1] + (ty - MARK[1]) * i // 5}")
+            time.sleep(0.15)
+        click(tx, ty)
         until(lambda s: s["expanded"], "the Network planet did not open Settings, Network", timeout=120)
 
     def active_ssid():

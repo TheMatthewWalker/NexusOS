@@ -81,7 +81,9 @@ PanelWindow {
     }
 
     onExpandedChanged: if (!expanded) focusId = ""
-    Timer { id: leave; interval: win.oc.leaveDelay; onTriggered: win.expanded = false }
+    // A little longer than the design's leave delay: the panel grows from the
+    // small mark as it opens, and the pointer must not count as leaving meanwhile.
+    Timer { id: leave; interval: Math.max(600, win.oc.leaveDelay); onTriggered: win.expanded = false }
     HoverHandler { onHoveredChanged: hovered ? (leave.stop(), win.expanded = true) : leave.restart() }
 
     // Collapsed: a small Nexus mark.

@@ -23,6 +23,8 @@ Item {
     signal unloaded(int id, var vramFreedBytes)     // bytes measured by Core, or null when unknown
     signal result(int id, string type, var data)     // providers, status, cleared, code-session, code-result
     signal codeEvent(int id, var ev)                 // the coding agent's step, changes, message and done events
+    signal tool(int id, var ev)                      // a chat look-up running or finished: { name, status, summary }
+    signal action(int id, var ev)                    // a chat action offered to the person: { actionId, action, safety, summary, plan }
 
     function send(op, extra) {
         if (!proc.running) return -1;
@@ -44,6 +46,9 @@ Item {
         if (ev.type === "ready") { restartDelay = 1000; health.restart(); send("health"); return }
         const id = typeof ev.id === "number" ? ev.id : -1;
         if (ev.type === "delta") { delta(id, ev.text); return }
+        // Mid-answer events of a chat: the request is still open until done.
+        if (pending[id] === "chat" && ev.type === "tool") { tool(id, ev); return }
+        if (pending[id] === "chat" && ev.type === "action") { action(id, ev); return }
         if (pending[id] === "code-send" && ev.type !== "error") {
             if (ev.type === "done") delete pending[id];
             codeEvent(id, ev);

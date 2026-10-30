@@ -54,3 +54,41 @@ test("only Guardian's approval of this exact candidate and build is the dialog's
   assert.equal(G.ownsFlow(G.APPROVE_ACTION, message(ID + " " + BUILD), null), false);
   assert.equal(G.ownsFlow(G.APPROVE_ACTION, undefined, record), false);
 });
+
+const LOCK = "cd".repeat(32);
+const update = {
+  kind: "update", candidateId: ID, buildHash: BUILD, staged: false, risk: { level: "review", notes: [] },
+  settings: [], packages: [], nixModule: "",
+  update: {
+    lockHash: LOCK, previousLockHash: "ef".repeat(32), otherPackages: 10, added: 1, removed: 0,
+    nixpkgs: { branch: "nixos-26.05", before: { rev: "7993f34ee47e28a3d607a525aadc6c94b73be728", lastModified: 1791765022 },
+               after: { rev: "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567", lastModified: 1792900000 } },
+    packages: [{ name: "linux", label: "Linux", before: "6.18.56", after: "6.18.60" },
+               { name: "firefox", label: "Firefox", before: "144.0", after: "144.0.2" }],
+  },
+};
+
+test("a security update's record names its packages and NixOS revisions", () => {
+  assert.equal(G.isUpdate(update), true);
+  assert.equal(G.isUpdate(record), false);
+  assert.equal(G.title(update), "Approve security updates 1a2b3c4d: 12 packages updated");
+  assert.equal(G.updateLine(update.update),
+               "Security updates: 12 packages updated, including Linux 6.18.56 → 6.18.60, Firefox 144.0 → 144.0.2");
+  assert.equal(G.revisions(update.update), "NixOS nixos-26.05: 7993f34 (2026-10-12) → 0a1b2c3 (2026-10-25)");
+  assert.deepEqual(G.items(update), [
+    { kind: "update", name: "linux", label: "Linux", before: "6.18.56", after: "6.18.60" },
+    { kind: "update", name: "firefox", label: "Firefox", before: "144.0", after: "144.0.2" },
+  ]);
+  assert.equal(G.updateLine({ ...update.update, packages: null }), "Security updates (the list of updated packages could not be read)");
+  assert.equal(G.title({ ...update, update: { ...update.update, lockHash: "x" } }), "");
+});
+
+test("Core's update must name the same lock and versions as the broker's", () => {
+  const core = G.items(update);
+  assert.equal(G.agrees(core, update, LOCK), true);
+  assert.equal(G.agrees(core, update, "ab".repeat(32)), false);                  // another lock
+  assert.equal(G.agrees(core, update), false);                                  // no lock named
+  assert.equal(G.agrees([core[0]], update, LOCK), false);
+  assert.equal(G.agrees([core[0], { ...core[1], after: "145.0" }], update, LOCK), false);
+  assert.deepEqual(G.helperArgs(update), [ID, BUILD]);                          // approved the same way
+});

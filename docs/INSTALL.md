@@ -149,6 +149,12 @@ sudo nixos-rebuild switch --flake /etc/nixos#nexus
 
 The options are documented in `nix/profiles/nexusos.nix` and `nix/modules/desktop.nix` (under `/etc/nixos/nexusos`).
 
+### Updates
+
+Flathub apps update by themselves every day. The system itself (the kernel, Firefox, Chromium, the desktop) gets security updates through Guardian: once a week, when the computer is online and has at least 10 GiB free, it looks for newer NixOS 26.05 packages, builds and tests them on this computer, and the top bar says "Security updates are ready". The System change window lists what changes (for example Linux 6.18.56 → 6.18.60); approve with your password and restart. The update is tried once at that restart, and if the computer does not start properly it goes back to the previous version by itself. Ask Nexus "check for updates" to look now.
+
+Only after a confirmed restart is `/etc/nixos/flake.lock` updated, so `nixos-rebuild` afterwards builds on the new packages. NexusOS's own files under `/etc/nixos/nexusos` are not changed by updates. To turn the weekly check off, set `nexusos.updates.enable = false;` in `local.nix`.
+
 ## Not in this alpha
 
 - Disk encryption, dual boot, and choosing partitions by hand. The installer always uses a whole disk.

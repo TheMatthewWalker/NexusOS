@@ -5,12 +5,17 @@ The builder holds the private key and signs; the broker holds only public keys
 and verifies. A statement names the exact system toplevel and derivation that
 passed evaluation, build and VM testing for one candidate, and may record
 today's value of each changed setting and package as the builder evaluated it
-("before"), so what the person is shown at approval is signed as well.
+("before"), so what the person is shown at approval is signed as well. A
+security update's statement also carries "update": the SHA-256 of the
+flake.lock it was built with, the nixpkgs revisions before and after, and the
+package versions that changed (system_update.py), so the lock and what the
+person is told about it are bound to the build.
 """
 import argparse
 import base64
 import hashlib
 import json
+import re
 import os
 import stat
 import sys
@@ -24,7 +29,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from guardian_schema import DRV_PATH, ID_LENGTH, STORE_PATH, canonical, require_baseline
 
 STATEMENT_FIELDS = {"attestationVersion", "candidateId", "baseline", "toplevel", "drvPath", "checks", "builder", "issuedAt"}
-OPTIONAL_FIELDS = {"before"}
+OPTIONAL_FIELDS = {"before", "update"}
 CHECKS = ("evaluate", "build", "vm-test")
 MAX_AGE_SECONDS = 7 * 24 * 3600
 MAX_BEFORE = 64
@@ -56,6 +61,49 @@ def validate_before(before):
     return before
 
 
+HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+REV = re.compile(r"[0-9a-f]{40}\Z")
+BRANCH = re.compile(r"nixos-[0-9]{2}\.[0-9]{2}\Z")
+NAME = re.compile(r"[A-Za-z0-9+._-]{1,100}\Z")
+VERSION = re.compile(r"[A-Za-z0-9+._~, -]{1,100}\Z")
+MAX_LISTED = 16
+
+
+def _count(value):
+    return type(value) is int and 0 <= value <= 100000
+
+
+def validate_update(update):
+    """{lockHash, previousLockHash, nixpkgs: {branch, before, after: {rev, lastModified}},
+    packages: [{name, before, after}] or null (the list could not be read), otherPackages, added, removed}"""
+    if not isinstance(update, dict) or set(update) != {"lockHash", "previousLockHash", "nixpkgs", "packages",
+                                                       "otherPackages", "added", "removed"}:
+        raise ValueError("update has unexpected fields")
+    if not all(isinstance(update[k], str) and HEX64.fullmatch(update[k]) for k in ("lockHash", "previousLockHash")):
+        raise ValueError("update must name lock hashes")
+    nixpkgs = update["nixpkgs"]
+    if not isinstance(nixpkgs, dict) or set(nixpkgs) != {"branch", "before", "after"} \
+            or not isinstance(nixpkgs["branch"], str) or BRANCH.fullmatch(nixpkgs["branch"]) is None:
+        raise ValueError("update must name the nixpkgs branch")
+    for side in ("before", "after"):
+        value = nixpkgs[side]
+        if not isinstance(value, dict) or set(value) != {"rev", "lastModified"} or not isinstance(value["rev"], str) \
+                or REV.fullmatch(value["rev"]) is None or type(value["lastModified"]) is not int:
+            raise ValueError("update must name nixpkgs revisions")
+    packages = update["packages"]
+    if packages is not None:
+        if not isinstance(packages, list) or len(packages) > MAX_LISTED:
+            raise ValueError("Invalid update packages")
+        for item in packages:
+            if not isinstance(item, dict) or set(item) != {"name", "before", "after"} \
+                    or not all(isinstance(item[k], str) for k in item) or NAME.fullmatch(item["name"]) is None \
+                    or not all(VERSION.fullmatch(item[k]) for k in ("before", "after")):
+                raise ValueError("Invalid update package")
+    if not all(_count(update[k]) for k in ("otherPackages", "added", "removed")):
+        raise ValueError("Invalid update counts")
+    return update
+
+
 def validate_statement(statement):
     if not isinstance(statement, dict) or not STATEMENT_FIELDS <= set(statement) <= STATEMENT_FIELDS | OPTIONAL_FIELDS:
         raise ValueError("Unexpected attestation statement fields")
@@ -77,6 +125,8 @@ def validate_statement(statement):
         raise ValueError("issuedAt must be an integer")
     if "before" in statement:
         validate_before(statement["before"])
+    if "update" in statement:
+        validate_update(statement["update"])
     return statement
 
 

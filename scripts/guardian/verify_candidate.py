@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from candidate import FIELDS, prepare
+from candidate import FIELDS, UPDATE_FIELDS, prepare, prepare_update
 
 
 def extract(candidate, changes):
@@ -14,6 +14,16 @@ def extract(candidate, changes):
     if candidate != expected:
         raise ValueError("Candidate does not match independently reconstructed proposal")
     return expected["nixModule"]
+
+
+def extract_update(candidate, update):
+    """An update candidate, reconstructed from its lock hash; returns that hash."""
+    if not isinstance(candidate, dict) or set(candidate) != UPDATE_FIELDS or not isinstance(update, dict) \
+            or set(update) - {"lockHash", "previousLockHash"} or "lockHash" not in update:
+        raise ValueError("Unexpected update candidate fields")
+    if candidate != prepare_update(update["lockHash"], candidate.get("baseline"), candidate.get("hostConfig")):
+        raise ValueError("Candidate does not match independently reconstructed update")
+    return candidate["lockHash"]
 
 
 def main():

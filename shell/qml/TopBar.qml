@@ -146,7 +146,7 @@ PanelWindow {
             // Guardian: shown only while a system change needs the person or is under way.
             Row {
                 readonly property var g: bar.guardian
-                readonly property string label: !g ? "" : g.attention ? "Change waiting" : g.busy ? "Checking a change…"
+                readonly property string label: !g ? "" : g.updatesReady ? "Security updates are ready" : g.attention ? "Change waiting" : g.busy ? "Checking a change…"
                                               : g.restartNeeded ? "Restart to finish" : ""
                 visible: label !== ""; spacing: 6
                 Image { width: 16; height: 16; sourceSize: Qt.size(32, 32); source: "icons/guardian.svg"; anchors.verticalCenter: parent.verticalCenter }

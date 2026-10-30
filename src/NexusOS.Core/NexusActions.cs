@@ -85,6 +85,8 @@ public static class NexusActions
             Private: true),
         new("get_settings", ActionSafety.Read,
             "The person's current desktop settings (windows, blur, animations, scale, night light, high contrast) and the AI model in use.", []),
+        new("get_system_updates", ActionSafety.Read,
+            "Security updates for the system (kernel, Firefox, Chromium...): when Guardian last checked, and whether updates are ready to approve.", []),
 
         // ---- personal: offered to the person, run on "Do it" ----
         new("open_app", ActionSafety.Personal,
@@ -128,6 +130,8 @@ public static class NexusActions
             [new("package", "string", "The nixpkgs package name, for example gimp.", MaxLength: 100, Pattern: @"[A-Za-z0-9][A-Za-z0-9._+-]{0,99}")]),
         new("open_move_in", ActionSafety.Personal, "Open Move in, to copy documents and photos from an old Windows or macOS drive.", []),
         new("open_welcome", ActionSafety.Personal, "Open the welcome setup, which suggests apps and settings for what the person does.", []),
+        new("check_for_updates", ActionSafety.Personal,
+            "Ask Guardian to check for system security updates now (it also checks weekly). Found updates are built and tested, then shown for approval.", []),
         new("apply_fix", ActionSafety.Personal, "Apply one personal fix that diagnose_problem offered.",
             [new("fix_id", "string", "The fix's id from diagnose_problem.", MaxLength: 64, Pattern: @"[a-z0-9][a-z0-9._-]{0,63}")]),
 

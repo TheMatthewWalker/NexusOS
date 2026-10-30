@@ -17,7 +17,14 @@ identified by SO_PEERCRED and limited to the broker's allowlist. Operations:
 
   build   {changes}       -> the candidate for that change on the running system,
                              and its job (started now, or the existing one)
+  build   {update: {lockHash}} -> the same for the security update waiting
+                             (system_update.py): the host configuration with no
+                             overlay, evaluated from a copy of /etc/nixos with that
+                             lock, read here from the root-owned update directory
   status  {candidateId}   -> {state, checks, attestation (once passed), message}
+  updates {}              -> {status: the last update check, available: the update waiting or null}
+  check-updates {}        -> asks for an update check now (nexus-update-check.path
+                             starts the root service); at most every 10 minutes
 
 Jobs run one at a time. A caller sees only jobs it asked for.
 
@@ -31,6 +38,7 @@ import os
 from pathlib import Path
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -41,9 +49,11 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 
 from attestation import CHECKS, public_raw, sign
 from baseline_inspect import inspect
-from candidate import prepare
+from candidate import prepare, prepare_update
 from guardian_schema import DRV_PATH, ID_LENGTH, STORE_PATH, split
 from root_review_broker import Denied, protected_directory, protected_file, serve
+import system_update
+from system_update import UpdateError
 
 BUILD_FILE = Path(__file__).resolve().with_name("candidate-build.nix")
 BUILDER_NAME = "this-computer"
@@ -52,6 +62,8 @@ KEEP_SECONDS = 14 * 24 * 3600
 UNIT = re.compile(r"[A-Za-z0-9@._:-]{1,128}\Z")
 NIX = ["nix", "--extra-experimental-features", "nix-command flakes"]
 FINAL = ("passed", "failed")
+CHECK_REQUEST = "update-requested"
+CHECK_INTERVAL = 600
 
 
 def run_command(command, timeout):
@@ -111,7 +123,9 @@ def init_keys(directory, static_keys=None):
 class LocalBuilder:
     def __init__(self, directory, private_key, allowed_uids, host_config, *, required_units=(),
                  observer=inspect, runner=run_command, clock=time.time, owner=0, build_file=BUILD_FILE,
-                 vm_timeout=1800, start_worker=True):
+                 vm_timeout=1800, start_worker=True, updates_dir=system_update.UPDATES_DIR,
+                 host_flake_dir=system_update.HOST_FLAKE_DIR, free=system_update.free_bytes,
+                 min_free=system_update.MIN_FREE_BYTES):
         self.dir = Path(directory)
         self.work = self.dir / "work"
         protected_directory(self.work, owner)
@@ -129,6 +143,9 @@ class LocalBuilder:
         self.observer, self.runner, self.clock = observer, runner, clock
         self.build_file = Path(build_file)
         self.vm_timeout = int(vm_timeout)
+        self.owner = owner
+        self.updates_dir, self.host_flake_dir = Path(updates_dir), Path(host_flake_dir)
+        self.free, self.min_free = free, min_free
         self.lock = threading.Lock()
         self.queue = queue.Queue()
         self.jobs = {}
@@ -180,19 +197,27 @@ class LocalBuilder:
         view = {key: job[key] for key in ("candidateId", "state", "checks", "message")}
         view["attestation"] = job.get("attestation")
         view["before"] = job.get("before")
+        view["kind"] = job.get("kind", "change")
+        if job.get("kind") == "update":
+            view["update"] = job.get("updateSummary") or job["update"]
         return view
 
     # --- operations ---
 
     def build(self, uid, payload):
         self._authorise(uid)
-        if not isinstance(payload, dict) or set(payload) != {"changes"}:
-            raise Denied("build expects changes")
+        if not isinstance(payload, dict) or set(payload) not in ({"changes"}, {"update"}):
+            raise Denied("build expects changes or update")
         observation = self.observer()
         if observation.get("verified") is not True:
             raise Denied("Running system could not be verified")
+        update = None
         try:
-            candidate = prepare(payload["changes"], observation["generationStorePath"], self.host_config)
+            if "update" in payload:
+                update = self._waiting_update(payload["update"])
+                candidate = prepare_update(update["lockHash"], observation["generationStorePath"], self.host_config)
+            else:
+                candidate = prepare(payload["changes"], observation["generationStorePath"], self.host_config)
         except ValueError as error:
             raise Denied(str(error)) from None
         candidate_id = candidate["candidateId"]
@@ -207,9 +232,11 @@ class LocalBuilder:
             active = sum(1 for other in self.jobs.values() if other["state"] not in FINAL)
             if active >= MAX_QUEUED:
                 raise Denied("Guardian is already checking several changes; try again later")
-            job = {"candidateId": candidate_id, "uids": [uid], "candidate": candidate, "changes": payload["changes"], "state": "queued",
+            job = {"candidateId": candidate_id, "uids": [uid], "candidate": candidate, "changes": payload.get("changes"), "state": "queued",
                    "checks": {name: "pending" for name in CHECKS}, "message": "", "attestation": None,
                    "createdAt": int(self.clock())}
+            if update is not None:
+                job.update(kind="update", update=update)
             self.jobs[candidate_id] = job
             self._save(job)
         self.queue.put(candidate_id)
@@ -226,16 +253,82 @@ class LocalBuilder:
                 raise Denied("No such job for this caller")
             return self.public_view(job)
 
-    OPERATIONS = ("build", "status")
+    # --- security updates ---
+
+    def _waiting_update(self, update):
+        """The update the root update check offers now, if it is the one named; with room to build it."""
+        if not isinstance(update, dict) or set(update) != {"lockHash"}:
+            raise Denied("update expects lockHash")
+        waiting = system_update.pending(self.updates_dir, self.host_flake_dir, owner=self.owner)
+        if waiting is None or waiting["lockHash"] != update["lockHash"]:
+            raise Denied("This update is no longer the one waiting; check for updates again")
+        try:
+            system_update.require_space(self.free(), self.min_free)
+        except UpdateError as error:
+            raise Denied(str(error)) from None
+        return waiting
+
+    def updates(self, uid, payload):
+        self._authorise(uid)
+        if payload != {}:
+            raise Denied("updates expects no arguments")
+        try:
+            available = system_update.pending(self.updates_dir, self.host_flake_dir, owner=self.owner)
+        except UpdateError as error:
+            print(f"guardian-builder: update waiting refused: {error}", file=sys.stderr, flush=True)
+            available = None
+        requested = self.work / CHECK_REQUEST
+        return {"status": system_update.status(self.updates_dir, owner=self.owner), "available": available,
+                "requestedAt": int(requested.stat().st_mtime) if requested.exists() else None}
+
+    def check_updates(self, uid, payload):
+        """Ask for an update check: a root path unit watches this file and starts nexus-update-check."""
+        self._authorise(uid)
+        if payload != {}:
+            raise Denied("check-updates expects no arguments")
+        requested = self.work / CHECK_REQUEST
+        with self.lock:
+            if requested.exists() and self.clock() - requested.stat().st_mtime < CHECK_INTERVAL:
+                return {"requested": False, "message": "Guardian checked for updates a few minutes ago."}
+            fd = os.open(requested, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "w", encoding="ascii") as stream:
+                stream.write(f"{int(self.clock())} {uid}\n")
+            os.utime(requested, (self.clock(), self.clock()))
+        return {"requested": True, "message": "Checking for updates."}
+
+    OPERATIONS = ("build", "status", "updates", "check-updates")
 
     def handle(self, uid, request):
         if not isinstance(request, dict) or set(request) != {"operation", "payload"}:
             raise Denied("Malformed request")
         if request["operation"] not in self.OPERATIONS:
             raise Denied("Unsupported operation")
-        return getattr(self, request["operation"])(uid, request["payload"])
+        return getattr(self, request["operation"].replace("-", "_"))(uid, request["payload"])
 
     # --- the work ---
+
+    def _update_flake(self, update, copy):
+        """Copy /etc/nixos to copy and put the update's lock in it, or UpdateError.
+
+        /etc/nixos/flake.lock must still be the lock the update was made from."""
+        lock = system_update.read_lock(self.updates_dir, update["lockHash"], owner=self.owner)
+        current = (self.host_flake_dir / "flake.lock").read_bytes()
+        if system_update.sha256(current) != update["previousLockHash"]:
+            raise UpdateError("This computer's configuration changed since the update was found; check for updates again.")
+        shutil.rmtree(copy, ignore_errors=True)
+        shutil.copytree(self.host_flake_dir, copy, symlinks=True)
+        system_update.write_file(copy / "flake.lock", lock)
+
+    def _update_summary(self, update, baseline, toplevel):
+        """The signed update record: the lock, the nixpkgs revisions and the package versions that change."""
+        status, out, err = self.runner(NIX + ["store", "diff-closures", baseline, toplevel], 600)
+        if status == 0:
+            diff = system_update.diff_summary(out)
+        else:
+            print(f"guardian-builder: diff-closures failed: {err}", file=sys.stderr, flush=True)
+            diff = {"packages": None, "otherPackages": 0, "added": 0, "removed": 0}
+        return {"lockHash": update["lockHash"], "previousLockHash": update["previousLockHash"],
+                "nixpkgs": update["nixpkgs"], **diff}
 
     def _worker(self):
         while True:
@@ -254,13 +347,21 @@ class LocalBuilder:
         if job["state"] != "queued":
             return
         candidate = job["candidate"]
+        update = job.get("update") if job.get("kind") == "update" else None
         folder = self.results / candidate_id
         folder.mkdir(mode=0o700, exist_ok=True)
-        module = folder / "candidate.nix"
-        module.write_text(candidate["nixModule"], encoding="utf-8")
-        options, packages = split(job["changes"])
-        arguments = ["--impure", "--file", str(self.build_file), "--argstr", "flake", self.flake,
-                     "--argstr", "host", self.host, "--argstr", "module", str(module),
+        if update is None:
+            module = folder / "candidate.nix"
+            module.write_text(candidate["nixModule"], encoding="utf-8")
+            module = str(module)
+            options, packages = split(job["changes"])
+        else:
+            module, options, packages = "", {}, []
+        # An update is evaluated from a copy of the host's flake with the update's lock.
+        copy = folder / "flake"
+        flake = self.flake if update is None else f"path:{copy}"
+        arguments = ["--impure", "--file", str(self.build_file), "--argstr", "flake", flake,
+                     "--argstr", "host", self.host, "--argstr", "module", module,
                      "--argstr", "requiredUnits", " ".join(self.required_units),
                      "--argstr", "timeoutSeconds", str(self.vm_timeout),
                      "--argstr", "options", " ".join(sorted(options)), "--argstr", "packages", " ".join(packages)]
@@ -274,9 +375,22 @@ class LocalBuilder:
         if observation.get("generationStorePath") != candidate["baseline"]:
             return fail("evaluate", "This computer changed since the change was proposed. Propose it again.", "baseline changed")
 
+        # The copy and its lock are made here, from /etc/nixos and the root-owned
+        # update directory (never from a path anyone else names), checked against the lock's hash.
+        if update is not None:
+            try:
+                system_update.require_space(self.free(), self.min_free)
+                self._update_flake(update, copy)
+            except (UpdateError, OSError) as error:
+                shutil.rmtree(copy, ignore_errors=True)
+                message = str(error) if isinstance(error, UpdateError) else "The update could not be prepared. Nothing changed."
+                return fail("evaluate", message, str(error))
+
         # One evaluation gives both derivations; the builds then use them directly.
         self._update(job, state="evaluating", checks={"evaluate": "running"})
         status, out, err = self.runner(NIX + ["eval", "--json"] + arguments + ["evaluation"], 1800)
+        # Evaluation copied the flake into the store; the work copy is not needed again.
+        shutil.rmtree(copy, ignore_errors=True)
         try:
             derivations = json.loads(out)
             drv_path, vm_drv = derivations["toplevel"], derivations["vmTest"]
@@ -301,9 +415,14 @@ class LocalBuilder:
 
         statement = {"attestationVersion": 1, "candidateId": candidate_id, "baseline": candidate["baseline"],
                      "toplevel": toplevel, "drvPath": drv_path, "builder": BUILDER_NAME,
-                     "checks": {name: True for name in CHECKS}, "issuedAt": int(self.clock()),
-                     # Signed, so the approval dialog can show today's values from the broker's record.
-                     "before": job["before"]}
+                     "checks": {name: True for name in CHECKS}, "issuedAt": int(self.clock())}
+        if update is None:
+            # Signed, so the approval dialog can show today's values from the broker's record.
+            statement["before"] = job["before"]
+        else:
+            # Signed too: the lock it was built with, and which package versions change.
+            statement["update"] = self._update_summary(update, candidate["baseline"], toplevel)
+            job["updateSummary"] = statement["update"]
         self._update(job, state="passed", checks={"vm-test": "pass"}, attestation=sign(statement, self.key),
                      message="Built and tested on this computer.")
 

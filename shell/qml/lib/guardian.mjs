@@ -7,13 +7,49 @@
 //   { candidateId, buildHash, settings: [{ option, summary, before, after }],
 //     packages: [{ package, before }], risk: { level, notes }, staged }
 // It, not Core's proposal text, is what the person approves; Core's own
-// summary is only shown as "Nexus says".
+// summary is only shown as "Nexus says". A security update's record has kind
+// "update", no settings or packages, and the signed update instead:
+//   update: { lockHash, previousLockHash, nixpkgs: { branch, before, after: { rev, lastModified } },
+//             packages: [{ name, label, before, after }] | null, otherPackages, added, removed }
 
 export const APPROVE_ACTION = "org.nexusos.guardian.approve";
 
 export function isRecord(r) {
   return !!r && typeof r === "object" && /^[0-9a-f]{24}$/.test(r.candidateId || "") &&
     /^[0-9a-f]{64}$/.test(r.buildHash || "") && Array.isArray(r.settings) && Array.isArray(r.packages);
+}
+
+export function isUpdate(r) {
+  return isRecord(r) && r.kind === "update" && !!r.update && typeof r.update === "object" &&
+    /^[0-9a-f]{64}$/.test(r.update.lockHash || "");
+}
+
+// How many package versions an update changes (listed plus the others).
+export function updatedCount(u) {
+  if (!u || !Array.isArray(u.packages)) return 0;
+  return u.packages.length + (Number.isInteger(u.otherPackages) ? u.otherPackages : 0);
+}
+
+function label(p) { return p.label || p.name }
+
+// "Security updates: 12 packages updated, including Linux 6.18.56 → 6.18.60, Firefox 144.0 → 144.0.2"
+export function updateLine(u, shown = 3) {
+  if (!u || typeof u !== "object") return "";
+  if (!Array.isArray(u.packages)) return "Security updates (the list of updated packages could not be read)";
+  const n = updatedCount(u);
+  if (n === 0) return "Security updates: rebuilt with fixes, no package versions change";
+  return "Security updates: " + count(n, "package", "packages") + " updated, including " +
+    u.packages.slice(0, shown).map(p => label(p) + " " + p.before + " → " + p.after).join(", ");
+}
+
+function day(seconds) { return Number.isInteger(seconds) ? new Date(seconds * 1000).toISOString().slice(0, 10) : "?" }
+
+// "NixOS nixos-26.05: 7993f34 (2026-10-12) → 0a1b2c3 (2026-10-28)"
+export function revisions(u) {
+  const n = u && u.nixpkgs;
+  if (!n || !n.before || !n.after) return "";
+  return "NixOS " + n.branch + ": " + String(n.before.rev).slice(0, 7) + " (" + day(n.before.lastModified) + ") → " +
+    String(n.after.rev).slice(0, 7) + " (" + day(n.after.lastModified) + ")";
 }
 
 export function shortId(id) { return typeof id === "string" ? id.slice(0, 8) : "" }
@@ -23,6 +59,11 @@ function count(n, one, many) { return n + " " + (n === 1 ? one : many) }
 // "Approve system change 1a2b3c4d: 2 settings, 1 package"
 export function title(r) {
   if (!isRecord(r)) return "";
+  if (r.kind === "update") {
+    if (!isUpdate(r)) return "";
+    const n = updatedCount(r.update);
+    return "Approve security updates " + shortId(r.candidateId) + ": " + (n ? count(n, "package", "packages") + " updated" : "rebuilt with fixes");
+  }
   const parts = [];
   if (r.settings.length) parts.push(count(r.settings.length, "setting", "settings"));
   if (r.packages.length) parts.push(count(r.packages.length, "package", "packages"));
@@ -32,15 +73,20 @@ export function title(r) {
 // The record's items in the dialog's format ({ kind, name, label, before, after }).
 export function items(r) {
   if (!isRecord(r)) return [];
+  if (r.kind === "update")
+    return isUpdate(r) && Array.isArray(r.update.packages)
+      ? r.update.packages.map(p => ({ kind: "update", name: p.name, label: label(p), before: p.before, after: p.after })) : [];
   return r.settings.map(s => ({ kind: "setting", name: s.option, label: s.summary || s.option, before: s.before, after: s.after }))
     .concat(r.packages.map(p => ({ kind: "package", name: p.package, label: p.package, before: p.before, after: true })));
 }
 
 function key(item) { return item.kind + ":" + item.name + "=" + (item.kind === "package" ? "true" : String(item.after)) }
 
-// Whether Core's summary (its proposal's items) names exactly the broker's changes.
-export function agrees(coreItems, r) {
+// Whether Core's summary (its proposal's items) names exactly the broker's changes;
+// for an update, also the same lock (coreLock, the proposal's lockHash).
+export function agrees(coreItems, r, coreLock) {
   if (!isRecord(r) || !Array.isArray(coreItems)) return false;
+  if (r.kind === "update" && (!isUpdate(r) || coreLock !== r.update.lockHash)) return false;
   const mine = coreItems.map(key).sort(), theirs = items(r).map(key).sort();
   return mine.length === theirs.length && mine.every((k, i) => k === theirs[i]);
 }

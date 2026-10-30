@@ -8,7 +8,10 @@ Runs once per boot (nexus-guardian-boot-check.service). With a pending trial
   - running the baseline                -> the trial failed and the bootloader fell
                                            back; restore the baseline profile
 The bootloader is the one recorded when the trial was staged (GRUB unless the
-record says systemd-boot).
+record says systemd-boot). A confirmed security update's flake.lock then
+becomes /etc/nixos/flake.lock (atomically, and only if that file is still the
+lock the update was made from), so later rebuilds and changes build on it;
+after a rollback or fallback /etc/nixos stays exactly as it was.
 """
 import argparse
 import json
@@ -17,6 +20,7 @@ from pathlib import Path
 import subprocess
 
 from stage_executor import GRUBENV, PROFILE, record, run
+import system_update
 
 
 def system_health(required_units):
@@ -48,8 +52,22 @@ def restore_baseline(baseline, runner, follow):
     follow()
 
 
+def settle_lock(state_dir, pending, confirmed, host_flake_dir):
+    """A security update's lock: into /etc/nixos after a confirmed trial; otherwise dropped."""
+    lock = pending["flakeLock"]
+    staged = Path(state_dir) / "staged-flake.lock"
+    try:
+        if confirmed:
+            result = system_update.install_lock(staged, lock["sha256"], lock["previous"], host_flake_dir)
+            record(state_dir, {"event": "flake-lock-" + result, "decision": pending["decision"], "lockHash": lock["sha256"]})
+    except (OSError, ValueError, KeyError) as error:
+        record(state_dir, {"event": "flake-lock-failed", "decision": pending["decision"], "reason": str(error)[:200]})
+    finally:
+        staged.unlink(missing_ok=True)
+
+
 def check(state_dir, *, current=None, health=None, runner=run, grub_editenv="grub-editenv", grubenv=GRUBENV,
-          bootctl="bootctl", required_units=()):
+          bootctl="bootctl", required_units=(), host_flake_dir=system_update.HOST_FLAKE_DIR):
     pending_path = Path(state_dir) / "pending-boot.json"
     if not pending_path.exists():
         return "nothing-pending"
@@ -76,6 +94,8 @@ def check(state_dir, *, current=None, health=None, runner=run, grub_editenv="gru
     else:
         record(state_dir, {"event": "unexpected-generation", "decision": pending["decision"], "current": current})
         return "unexpected-generation"  # Leave the pending record for an administrator.
+    if pending.get("flakeLock"):
+        settle_lock(state_dir, pending, outcome == "confirmed", host_flake_dir)
     pending_path.unlink()
     return outcome
 

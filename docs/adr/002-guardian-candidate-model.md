@@ -113,3 +113,17 @@ console, with the least new privilege:
 - **Core records, never decides.** Core keeps the proposals the dialog shows
   and forwards requests; it cannot approve (no password), review in its own
   favour (the broker decides), or stage anything not already permitted.
+
+## Security updates
+
+An overlay cannot express "move to newer nixpkgs", so a second candidate kind
+does: `update`, the host configuration with no overlay, evaluated with a
+newer `flake.lock` in which only NexusOS's nixpkgs moved forward on its
+release branch. Its candidate ID is derived from the baseline, the host
+configuration and the lock's SHA-256; the lock is written by a root service
+(`nexus-update-check`) to a root-owned directory and read from there by hash
+only, never from a path a caller names. The attestation binds the lock hash
+and signs what the person is shown (nixpkgs revisions, changed package
+versions). Approval, review and the trial boot are unchanged; the lock
+becomes `/etc/nixos/flake.lock` only after a confirmed trial boot. Details:
+docs/GUARDIAN-DEPLOYMENT.md, "Security updates".

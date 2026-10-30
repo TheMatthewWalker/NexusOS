@@ -113,6 +113,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
         "list_automations" => "Looking at your automations",
         "get_today_summary" => "Reading today's activity",
         "get_settings" => "Looking at your settings",
+        "get_system_updates" => "Looking for security updates",
         _ => "Working"
     };
 
@@ -206,6 +207,8 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                                                         kind = e.Kind, who = e.Actor, what = e.Summary, undone = e.UndoneAt is not null })
                 };
             }
+            case "get_system_updates":
+                return await services.GetRequiredService<GuardianProposals>().UpdatesAsync(ct);
             default: // get_settings
             {
                 var router = services.GetRequiredService<ModelRouter>();
@@ -334,6 +337,8 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 return pending.Add(action, args, "Open Move in, to bring files over from an old drive", Perform("movein.open"));
             case "open_welcome":
                 return pending.Add(action, args, "Open the welcome setup", Perform("welcome.open"));
+            case "check_for_updates":
+                return pending.Add(action, args, "Check for system security updates now");
             case "open_fix_it":
             {
                 var problem = Str(args, "problem");
@@ -462,6 +467,14 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
     public async Task<ConfirmResult> ConfirmAsync(PendingAction action, CancellationToken ct)
     {
         if (action.Plan is { } plan) return await SubmitAsync(plan, ct);
+        if (action.Action.Name == "check_for_updates")
+        {
+            // Through Guardian's builder, which asks the root update check to run; no sudo, no password.
+            var (requested, message) = await services.GetRequiredService<GuardianProposals>().RequestUpdateCheckAsync(ct);
+            if (requested) await Journal(JournalKinds.System, action, ct);
+            return new ConfirmResult(requested ? "done" : "failed",
+                requested ? "Checking for updates. If there are any, Guardian builds and tests them, then asks for your approval." : message);
+        }
         if (action.Perform is { } perform)
         {
             // Desktop settings and volume are journalled by the shell with their old value, so they can be undone there.

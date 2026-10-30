@@ -39,16 +39,14 @@ change makes a new "generation", and older generations stay in the boot menu
 to go back to.
 
 The desktop
-- Windows float, as on Windows or macOS: drag the title bar to move, drag an
-  edge to resize, and use the buttons on the title bar to close, minimise or
-  maximise. Settings, Desktop has a switch for tiling, where windows arrange
-  themselves side by side.
+- Windows float, as on Windows or macOS: drag the title bar to move, an edge
+  to resize; its buttons close, minimise or maximise. Settings, Desktop
+  switches to tiling (side by side).
 - The top bar shows workspaces (1-5), the date and time, and Wi-Fi, sound and
   battery.
 - The Nexus core at the bottom of the screen opens this assistant. The small
   planets around it are open windows: hover to see them, click one to switch.
-- The orbital controls in the bottom right are shortcuts: hover to see them,
-  click one to open its page in Settings.
+- The orbital controls (bottom right) open Settings pages; hover to see them.
 
 Keyboard shortcuts
 - Super+Space: open or close Nexus
@@ -74,8 +72,7 @@ Keyboard shortcuts
 
 Settings
 Settings shows its categories in orbit around the centre: Network, Sound,
-Display, Power, Bluetooth, Desktop, Privacy and AI, and About. Type in the
-box at the top to search them.
+Display, Power, Bluetooth, Desktop, Privacy and AI, and About (searchable).
 - Wi-Fi: Settings, Network. Work or school networks that need a username
   are set up in a terminal with: nmtui
 - Sound: output volume and microphone. Display: brightness and night light.
@@ -138,8 +135,10 @@ When something goes wrong
   suggests fixes. "nexus health report" summarises the system's health.
 - "nexus journal --today" lists what changed today. Many entries can be
   undone.
-- If an update breaks something, restart and pick an older generation in the
-  boot menu.
+- Security updates (kernel, Firefox...): Guardian checks weekly, tests them,
+  and the System change window asks for approval (get_system_updates;
+  check_for_updates checks now). If one breaks something, restart and pick
+  an older generation in the boot menu.
 
 Games
 Game mode starts by itself when a game goes fullscreen: the AI model is

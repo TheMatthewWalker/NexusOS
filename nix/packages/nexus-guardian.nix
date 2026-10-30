@@ -46,6 +46,11 @@ stdenvNoCC.mkDerivation {
     makeWrapper ${python}/bin/python3 $out/bin/nexus-guardian-stage-service \
       --add-flags "-E -s $share/scripts/guardian/stage_service.py" \
       --prefix PATH : ${lib.makeBinPath [ nix grub2 systemd ]}
+    # Looks for security updates (newer nixpkgs, same release) and records the
+    # lock for Guardian's builder; it never changes /etc/nixos or the system.
+    makeWrapper ${python}/bin/python3 $out/bin/nexus-update-check \
+      --add-flags "-E -s $share/scripts/guardian/update_check.py" \
+      --prefix PATH : ${lib.makeBinPath [ nix ]}
     makeWrapper ${python}/bin/python3 $out/bin/nexus-guardian-boot-check \
       --add-flags "-E -s $share/scripts/guardian/boot_check.py" \
       --prefix PATH : ${lib.makeBinPath [ nix grub2 systemd ]}

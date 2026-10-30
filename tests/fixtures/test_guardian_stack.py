@@ -12,6 +12,9 @@ holding the build hash appears, standing in for polkit after the password
 three are listening.
 
   --failing-build   the builder's build step fails
+  --update          a security update is waiting: <dir>/etc-nixos is the host's
+                    flake and <dir>/updates the root update check's directory,
+                    with a newer nixpkgs lock (as update_check.py leaves it)
 """
 import argparse
 import json
@@ -28,6 +31,7 @@ from local_builder import LocalBuilder, init_keys, load_private_key  # noqa: E40
 from root_review_broker import GuardianBroker, serve  # noqa: E402
 from stage_executor import record  # noqa: E402
 from stage_service import StageService  # noqa: E402
+import system_update  # noqa: E402
 
 BASELINE = "/nix/store/" + "1" * 32 + "-nixos-system-lab-26.05"
 TOPLEVEL = "/nix/store/" + "3" * 32 + "-nixos-system-lab-26.05"
@@ -38,6 +42,7 @@ HOST = "path:/etc/nixos#nixosConfigurations.lab"
 parser = argparse.ArgumentParser()
 parser.add_argument("--dir", type=Path, required=True)
 parser.add_argument("--failing-build", action="store_true")
+parser.add_argument("--update", action="store_true")
 args = parser.parse_args()
 uid = os.geteuid()
 
@@ -46,7 +51,36 @@ def observer():
     return {"verified": True, "generationStorePath": BASELINE, "profileStorePath": BASELINE}
 
 
+DIFF = "linux: 6.18.56 → 6.18.60, +12.3 KiB\nfirefox: 144.0 → 144.0.2\nchromium: 141.0.7390.65 → 141.0.7390.107\nzlib: 1.3.1 → 1.3.2\n"
+
+
+def lock(rev, modified):
+    nodes = {"nexusos": {"inputs": {"nixpkgs": "nixpkgs"}, "locked": {"path": "./nexusos", "type": "path"},
+                         "original": {"path": "./nexusos", "type": "path"}, "parent": []},
+             "nixpkgs": {"locked": {"lastModified": modified, "narHash": "sha256-x", "owner": "NixOS", "repo": "nixpkgs",
+                                    "rev": rev, "type": "github"},
+                         "original": {"owner": "NixOS", "ref": "nixos-26.05", "repo": "nixpkgs", "type": "github"}},
+             "root": {"inputs": {"nexusos": "nexusos"}}}
+    return json.dumps({"nodes": nodes, "root": "root", "version": 7}).encode()
+
+
+host_flake = args.dir / "etc-nixos"
+updates = args.dir / "updates"
+host_flake.mkdir()
+(host_flake / "flake.lock").write_bytes(lock("a" * 40, 1791765022))
+if args.update:
+    from update_check import check as update_check
+
+    def fetch(command, timeout):
+        if "update" in command:
+            (Path(command[command.index("--flake") + 1].removeprefix("path:")) / "flake.lock").write_bytes(lock("b" * 40, 1792900000))
+        return 0, "", ""
+    update_check(updates, host_flake, runner=fetch, free=lambda: 50 * 1024 ** 3)
+
+
 def nix(command, timeout):
+    if "diff-closures" in command:
+        return 0, DIFF, ""
     if "eval" in command:
         return 0, json.dumps({"toplevel": DRV, "vmTest": VM_DRV,
                               "before": {"options": {"services.printing.enable": False}, "packages": {}}}), ""
@@ -60,9 +94,9 @@ init_keys(builder_dir)
 state = args.dir / "state"
 state.mkdir(mode=0o700)
 broker = GuardianBroker(state, builder_dir / "trusted-keys", {uid}, HOST, owner=uid, observer=observer,
-                        store_checker=lambda _: True)
+                        store_checker=lambda _: True, updates_dir=updates, host_flake_dir=host_flake)
 builder = LocalBuilder(builder_dir, load_private_key(builder_dir, owner=uid), {uid}, HOST, observer=observer,
-                       runner=nix, owner=uid)
+                       runner=nix, owner=uid, updates_dir=updates, host_flake_dir=host_flake, free=lambda: 50 * 1024 ** 3)
 assert load_trusted_keys(builder_dir / "trusted-keys", owner=uid)
 
 

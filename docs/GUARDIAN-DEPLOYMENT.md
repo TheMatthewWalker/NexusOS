@@ -93,6 +93,63 @@ changed item's before and after; the fields are documented at the top of
 `shell/qml/Guardian.qml`. `POST /guardian/propose` (Nexus) and
 `POST /guardian/proposals` (a typed plan) add one; neither submits anything.
 
+### Security updates
+
+Everything from nixpkgs (the kernel, Firefox, Chromium, the desktop) would
+otherwise stay at its install-day version: an update is a Guardian candidate
+of its own kind, approved like any change (`nix/modules/updates.nix`;
+Flathub apps update separately, daily, in `apps.nix`).
+
+1. **Check** (`nexus-update-check.service`, root; `nexus-update-check.timer`
+   weekly with `Persistent` and a random delay of up to a day, at idle CPU
+   and I/O priority; after `network-online.target`, and offline it retries
+   hourly). It refuses to start with less than `nexusos.updates.minFreeGiB`
+   (10 GiB) free on /nix and says so. It copies `/etc/nixos` into
+   `/var/lib/nexus-updates/work`, runs `nix flake update nexusos/nixpkgs`
+   there (only NexusOS's nixpkgs moves, on the release branch the lock
+   already follows, `nixos-26.05`), and accepts the result only if no other
+   lock node changed and nixpkgs moved forward on the same branch. The new
+   lock goes to `/var/lib/nexus-updates/locks/<sha256>.lock` (0700 root),
+   `update.json` names it with the hashes of the old and new lock and the
+   nixpkgs revisions and dates, and the fetched source gets a garbage
+   collector root until it is built. The work directory is removed.
+   Neither `/etc/nixos` nor NexusOS's source is changed.
+2. **Propose:** Core polls the builder (`updates`) and records a proposal of
+   kind `update` (source `updates`), and sends it for checking at once:
+   `submit {description, update: {lockHash}}` and `build {update: {lockHash}}`.
+   The hash is all that Core or the person can name; the broker and builder
+   accept only the update `update.json` offers now, made from today's
+   `/etc/nixos/flake.lock`, and read the lock themselves from the root-owned
+   directory, checking its hash.
+3. **Build and test:** the candidate is the host configuration with no
+   overlay, evaluated from the builder's own copy of `/etc/nixos` with that
+   lock (removed after evaluation), then built and VM-tested as usual. The
+   builder also refuses under 10 GiB free. The signed statement carries
+   `update`: the lock's hash and the previous lock's, the nixpkgs branch and
+   revisions before and after (with `lastModified`), and the package versions
+   that change (`nix store diff-closures` between the running system and the
+   candidate: Linux, Firefox, Chromium and other notable ones first, at most
+   16, and how many more). The candidate ID is derived from the lock's hash.
+4. **Approve:** `describe` returns `kind: "update"` and that signed record;
+   the dialog shows "Security updates: N packages updated, including Linux
+   6.18.56 → 6.18.60, …" and the revisions; the top bar says "Security updates
+   are ready". The password approval, review and staging are unchanged.
+5. **Trial boot:** staging copies the exact lock beside the pending trial
+   (`/var/lib/nexus-guardian/staged-flake.lock`). Only a confirmed trial makes
+   it `/etc/nixos/flake.lock` (root, 0644, written beside it and renamed), and
+   only if that file is still the lock the update was made from
+   (`flake-lock-installed`, or `flake-lock-skipped` in `staging.jsonl`). After
+   a rollback or fallback `/etc/nixos` is as it was. Later rebuilds, changes
+   and update checks build on the installed lock.
+
+Asking Nexus "check for updates" offers a card; on "Do it" Core asks the
+builder (`check-updates`, at most every 10 minutes), which writes
+`/var/lib/nexus-guardian-builder/work/update-requested`; the root path unit
+`nexus-update-check.path` starts the check. No sudo or password is involved.
+`GET /guardian/updates` (and Nexus's `get_system_updates`) report the last
+check and where the update is. Logs: `journalctl -u nexus-update-check`,
+`/var/lib/nexus-updates/status.json`.
+
 ## Enable on other NixOS hosts
 
 

@@ -424,6 +424,27 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('approveHelper = "/run/current-system/sw/bin/nexus-guardian-desktop-approve"', module)
         self.assertIn("<allow_active>auth_admin</allow_active>", module)
 
+    def test_security_updates_are_shown_and_approved_through_the_guardian_dialog(self):
+        """Updates: the top bar says they are ready; the dialog shows the broker's signed versions and lock."""
+        guardian = (self.out / "Guardian.qml").read_text()
+        bar = (self.out / "TopBar.qml").read_text()
+        self.assertIn('g.updatesReady ? "Security updates are ready"', bar)
+        self.assertIn("updatesReady = !!list.updatesReady", guardian)
+        self.assertIn('readonly property var shownUpdate: held && held.kind === "update" ? held.update', guardian)
+        self.assertIn("GD.updateLine(win.shownUpdate)", guardian)
+        self.assertIn("GD.revisions(win.shownUpdate)", guardian)
+        self.assertIn('p.kind === "update" ? "SECURITY UPDATES FROM NIXOS"', guardian)
+        # Approved the same way as any change: the password for the broker's candidate and build.
+        self.assertEqual(guardian.count("approver.running = true"), 1)
+        self.assertNotIn("/guardian/updates", guardian)   # the dialog never starts or skips checks itself
+        # The check service is a root unit with a timer, started on request through the builder, never sudo.
+        updates = (ROOT / "nix/modules/updates.nix").read_text()
+        for text in ('OnCalendar = "weekly"', "Persistent = true", "RandomizedDelaySec", "Nice = 19", 'IOSchedulingClass = "idle"',
+                     "PathChanged = request", "--min-free-gib", "network-online.target"):
+            self.assertIn(text, updates)
+        self.assertNotIn("sudo", updates)
+        self.assertIn("../modules/updates.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+
     def test_guardian_approval_is_bound_to_the_brokers_record(self):
         """What the person approves is the broker's record, named in polkit's prompt, and only that
         request gets the dialog's password box."""
@@ -436,7 +457,7 @@ class ShellBuild(unittest.TestCase):
         self.assertNotIn("model: win.current ? win.current.items", guardian)
         self.assertIn("text: win.held ? GD.title(win.held) : win.current ? win.current.title", guardian)
         self.assertIn('"Nexus says: “" + win.current.title', guardian)
-        self.assertIn("readonly property bool disagrees: !!held && !GD.agrees(current.items, held)", guardian)
+        self.assertIn("readonly property bool disagrees: !!held && !GD.agrees(current.items, held, current.lockHash)", guardian)
         self.assertIn("visible: win.disagrees", guardian)
         # The password is asked for only for the record on screen, and only when Nexus agrees unless the person clicks.
         self.assertIn("function askPassword(p, r)", guardian)

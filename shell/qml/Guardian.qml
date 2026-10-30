@@ -47,7 +47,7 @@ import "lib/guardian.mjs" as GD
 //                             "packages": ["attr"], "source": "nexus"|"fixit"|"try"|"user",
 //                             "request": "<optional, at most 300 chars>"}
 //       The same with a typed plan (validated by Core; the same open plan is not repeated).
-//   GET  /guardian/proposals -> {proposals: [...], attention, busy, restartNeeded}
+//   GET  /guardian/proposals -> {proposals: [...], attention, busy, restartNeeded, updatesReady}
 //   Each proposal: {id, source, request, state, message, title, plan, items: [{kind:
 //   "setting"|"package", name, label, before, after}], risk: {level, notes}, checks:
 //   {evaluate, build, vm-test}, candidateId, attestation, decision}. States: waiting,
@@ -55,6 +55,10 @@ import "lib/guardian.mjs" as GD
 //   GET  /guardian/proposals/{id}/describe (a "ready" proposal) -> the broker's record:
 //   {candidateId, buildHash, settings: [{option, summary, before, after}], packages:
 //   [{package, before}], risk, nixModule, staged}. This is what the dialog shows and approves.
+//   Security updates are proposals with kind "update" (source "updates"), found by Guardian's
+//   weekly update check and checked by themselves; their items are package versions
+//   ({kind: "update", name, label, before, after}) and their record carries the signed
+//   "update" (nixpkgs revisions before and after, the lock's hash, package versions).
 //   Proposing never submits, approves or changes anything; only the person can, here.
 //
 // Shell entry points: open() shows waiting changes; open(planId, plan) records a
@@ -74,6 +78,7 @@ Scope {
     property bool attention: false
     property bool busy: false
     property bool restartNeeded: false
+    property bool updatesReady: false     // security updates are built, tested and waiting for the password
     property string note: ""              // what the dialog itself has to say (errors, progress)
     property bool showFull: false
     property string approveWhenReady: ""  // the person chose Approve; ask for the password once checks pass
@@ -85,7 +90,10 @@ Scope {
     // The broker's record of the proposal on screen, once it has passed the checks.
     readonly property var held: !!current && current.state === "ready" && attestedFor === current.id && GD.isRecord(attested)
                                   && attested.candidateId === current.candidateId ? attested : null
-    readonly property bool disagrees: !!held && !GD.agrees(current.items, held)
+    readonly property bool disagrees: !!held && !GD.agrees(current.items, held, current.lockHash)
+    // A security update (kind "update"): package versions instead of settings.
+    readonly property bool isUpdate: !!current && current.kind === "update"
+    readonly property var shownUpdate: held && held.kind === "update" ? held.update : isUpdate ? current.update : null
     readonly property var shownItems: held ? GD.items(held) : current ? current.items : []
     readonly property int shownPackages: shownItems.filter(i => i.kind === "package").length
     readonly property int shownSettings: shownItems.length - shownPackages
@@ -163,7 +171,7 @@ Scope {
     }
     function accept(list) {
         proposals = list.proposals || [];
-        attention = !!list.attention; busy = !!list.busy; restartNeeded = !!list.restartNeeded;
+        attention = !!list.attention; busy = !!list.busy; restartNeeded = !!list.restartNeeded; updatesReady = !!list.updatesReady;
         if (index >= proposals.length) index = 0;
         // A change waiting for the person opens the dialog by itself, once.
         const fresh = proposals.find(p => (p.state === "waiting" || p.state === "ready") && !seen[p.id]);
@@ -195,12 +203,13 @@ Scope {
     }
     function onOff(value) { return value === true ? "On" : value === false ? "Off" : "Not known yet" }
     function itemChange(item) {
+        if (item.kind === "update") return item.before + "  →  " + item.after;
         if (item.kind === "package") return (item.before === true ? "Installed" : item.before === false ? "Not installed" : "Not known yet") + "  →  Installed";
         return onOff(item.before) + "  →  " + onOff(item.after);
     }
     function heading(p) {
         if (!p) return "";
-        return p.source === "nexus" ? "NEXUS PROPOSES A SYSTEM CHANGE" : p.source === "try" ? "KEEP AN APP YOU TRIED"
+        return p.kind === "update" ? "SECURITY UPDATES FROM NIXOS" : p.source === "nexus" ? "NEXUS PROPOSES A SYSTEM CHANGE" : p.source === "try" ? "KEEP AN APP YOU TRIED"
              : p.source === "fixit" ? "FIX IT PROPOSES A SYSTEM CHANGE" : "A SYSTEM CHANGE";
     }
     function checkMark(state) { return state === "pass" ? "✓" : state === "fail" ? "✕" : state === "running" ? "…" : "○" }
@@ -357,7 +366,9 @@ Scope {
                         visible: !!win.current; width: parent.width; spacing: 10
                         Repeater {
                             model: !win.current ? [] : [
-                                { k: "Packages", v: win.shownPackages ? "+" + win.shownPackages + " added" : "None" },
+                                win.isUpdate ? { k: "Packages", v: win.shownUpdate && Array.isArray(win.shownUpdate.packages)
+                                                                   ? GD.updatedCount(win.shownUpdate) + " updated" : "Not known yet" }
+                                             : { k: "Packages", v: win.shownPackages ? "+" + win.shownPackages + " added" : "None" },
                                 { k: "Settings", v: win.shownSettings ? win.shownSettings + " changed" : "None" },
                                 { k: "Risk", v: win.shownRisk.level === "elevated" ? "Higher · can be undone" : "Low · can be undone",
                                   c: win.shownRisk.level === "elevated" ? "#FFD166" : "#7FE0B0" }
@@ -395,12 +406,23 @@ Scope {
                                                  : "What changes"
                                 color: win.theme.inkSecondary; font.pixelSize: 12
                             }
+                            // An update: the signed summary, and which NixOS packages it moves to.
+                            Text {
+                                visible: !!win.shownUpdate; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                                text: win.shownUpdate ? GD.updateLine(win.shownUpdate) : ""
+                                color: win.theme.ink; font.pixelSize: 14; font.weight: 500
+                            }
+                            Text {
+                                visible: !!win.shownUpdate; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                                text: win.shownUpdate ? GD.revisions(win.shownUpdate) : ""
+                                color: win.theme.inkSecondary; font.family: "JetBrains Mono"; font.pixelSize: 12
+                            }
                             Repeater {
                                 model: win.shownItems
                                 delegate: Row {
                                     required property var modelData
                                     width: items.width; spacing: 10
-                                    Text { text: modelData.kind === "package" ? "+" : "~"; color: "#BDF0D6"; font.family: "JetBrains Mono"; font.pixelSize: 13; width: 14 }
+                                    Text { text: modelData.kind === "package" ? "+" : modelData.kind === "update" ? "↑" : "~"; color: "#BDF0D6"; font.family: "JetBrains Mono"; font.pixelSize: 13; width: 14 }
                                     Column {
                                         width: parent.width - 24; spacing: 2
                                         Text {
@@ -410,7 +432,7 @@ Scope {
                                         }
                                         Text {
                                             width: parent.width; elide: Text.ElideRight; textFormat: Text.PlainText
-                                            text: (modelData.kind === "package" ? "Software for every account" : modelData.name) + "   " + win.itemChange(modelData)
+                                            text: (modelData.kind === "package" ? "Software for every account" : modelData.kind === "update" ? "Updated" : modelData.name) + "   " + win.itemChange(modelData)
                                             color: win.theme.inkSecondary; font.family: "JetBrains Mono"; font.pixelSize: 12
                                         }
                                     }
@@ -418,7 +440,8 @@ Scope {
                             }
                             Text {
                                 visible: win.showFull; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
-                                text: win.held ? win.held.nixModule || "" : win.current ? win.current.plan.nixPreview : ""; color: "#C9D4FF"
+                                text: win.shownUpdate ? "No settings change: this computer's own configuration, built with the newer NixOS packages.\nflake.lock " + win.shownUpdate.lockHash
+                                      : win.held ? win.held.nixModule || "" : win.current ? win.current.plan.nixPreview : ""; color: "#C9D4FF"
                                 font.family: "JetBrains Mono"; font.pixelSize: 12; topPadding: 6
                             }
                         }
@@ -430,7 +453,8 @@ Scope {
                         Accessible.name: "Checks"
                         Repeater {
                             model: !win.current ? [] : [
-                                { m: "✓", c: "#7FE0B0", t: "Only allowed settings and packages are touched (checked against Guardian's rules, not by the AI)" },
+                                { m: "✓", c: "#7FE0B0", t: win.isUpdate ? "Only NixOS's packages move forward, on the same release; no settings change (checked by Guardian, not by the AI)"
+                                                                        : "Only allowed settings and packages are touched (checked against Guardian's rules, not by the AI)" },
                                 { m: win.checkMark(win.current.checks.build), c: win.checkColour(win.current.checks.build),
                                   t: win.current.checks.evaluate === "fail" ? "It could not be put together with this computer's settings" : "Built on this computer" },
                                 { m: win.checkMark(win.current.checks["vm-test"]), c: win.checkColour(win.current.checks["vm-test"]),
@@ -620,6 +644,7 @@ Scope {
         function close(): void { dialog.visible = false }
         function state(): string {
             return JSON.stringify({ visible: dialog.visible, attention: win.attention, busy: win.busy, restartNeeded: win.restartNeeded,
+                                    updatesReady: win.updatesReady,
                                     count: win.proposals.length, current: win.current ? { id: win.current.id, state: win.current.state } : null,
                                     approving: win.approving, polkitRegistered: polkit.isRegistered })
         }

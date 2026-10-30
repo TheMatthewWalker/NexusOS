@@ -9,11 +9,14 @@
 #
 # Every argument is a plain string checked by the builder; `module` is the
 # candidate's canonical module text, written to a file by the builder. No
-# Nix code is generated from user input.
-{ flake, host, module, requiredUnits ? "", timeoutSeconds ? "1800", options ? "", packages ? "" }:
+# Nix code is generated from user input. A security update has no module
+# (module = ""): `flake` is then the builder's own copy of /etc/nixos with
+# the update's flake.lock, so the candidate is the host configuration itself,
+# from newer nixpkgs.
+{ flake, host, module ? "", requiredUnits ? "", timeoutSeconds ? "1800", options ? "", packages ? "" }:
 let
   configuration = (builtins.getFlake flake).nixosConfigurations.${host};
-  candidate = configuration.extendModules { modules = [ (/. + module) ]; };
+  candidate = configuration.extendModules { modules = if module == "" then [ ] else [ (/. + module) ]; };
   pkgs = candidate.pkgs;
   lib = pkgs.lib;
   words = text: builtins.filter (word: word != "") (lib.splitString " " text);

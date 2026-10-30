@@ -152,6 +152,75 @@ public sealed class GuardianProposalsTests
     }
 
     [Fact]
+    public async Task SecurityUpdatesAreFoundCheckedAndApprovedLikeAnyChange()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        using var stack = new Stack("--update");
+        var client = stack.Factory.Authorized();
+
+        // The root update check left an update: Core proposes it and starts its checks by itself.
+        var list = await client.GetFromJsonAsync<JsonElement>("/guardian/proposals");
+        var update = Assert.Single(list.GetProperty("proposals").EnumerateArray());
+        Assert.Equal(("update", "updates"), (update.GetProperty("kind").GetString(), update.GetProperty("source").GetString()));
+        Assert.Matches("^[0-9a-f]{64}$", update.GetProperty("lockHash").GetString()!);
+        var id = update.GetProperty("id").GetString()!;
+        var ready = await WaitFor(client, id, "ready");
+        Assert.StartsWith("Security updates: 4 packages updated, including Linux 6.18.56 → 6.18.60, Firefox 144.0 → 144.0.2",
+            ready.GetProperty("title").GetString());
+        Assert.Contains("Security updates are ready", ready.GetProperty("message").GetString());
+        var linux = ready.GetProperty("items")[0];
+        Assert.Equal(("update", "linux", "Linux", "6.18.60"), (linux.GetProperty("kind").GetString(), linux.GetProperty("name").GetString(),
+            linux.GetProperty("label").GetString(), linux.GetProperty("after").GetString()));
+        list = await client.GetFromJsonAsync<JsonElement>("/guardian/proposals");
+        Assert.True(list.GetProperty("updatesReady").GetBoolean());
+        Assert.True(list.GetProperty("attention").GetBoolean());
+
+        // The broker's record names the update: nixpkgs before and after, and the package versions.
+        var record = await Json(await client.GetAsync($"/guardian/proposals/{id}/describe"));
+        Assert.Equal("update", record.GetProperty("kind").GetString());
+        var signed = record.GetProperty("update");
+        Assert.Equal(new string('a', 40), signed.GetProperty("nixpkgs").GetProperty("before").GetProperty("rev").GetString());
+        Assert.Equal(new string('b', 40), signed.GetProperty("nixpkgs").GetProperty("after").GetProperty("rev").GetString());
+        Assert.Equal(ready.GetProperty("lockHash").GetString(), signed.GetProperty("lockHash").GetString());
+        Assert.Equal("Linux", signed.GetProperty("packages")[0].GetProperty("label").GetString());
+
+        // Approved with the password, reviewed and staged as a trial boot, like any change.
+        var candidateId = ready.GetProperty("candidateId").GetString()!;
+        await stack.ApproveWithPassword(candidateId, record.GetProperty("buildHash").GetString()!);
+        var decision = await Json(await client.PostAsJsonAsync("/guardian/review",
+            new { candidateId, attestation = ready.GetProperty("attestation") }));
+        Assert.True(decision.GetProperty("eligible").GetBoolean());
+        var staged = await Json(await client.PostAsJsonAsync("/guardian/stage", new { decision = decision.GetProperty("decision").GetString() }));
+        Assert.Equal("staged", staged.GetProperty("proposal").GetProperty("state").GetString());
+
+        // Nexus can tell the person about it, and the same update is not proposed twice.
+        var told = await Json(await client.GetAsync("/guardian/updates"));
+        Assert.Equal("available", told.GetProperty("lastCheck").GetProperty("state").GetString());
+        Assert.Equal("staged", told.GetProperty("updates").GetProperty("state").GetString());
+        Assert.Contains("Linux 6.18.56 → 6.18.60", told.GetProperty("updates").GetProperty("summary").GetString());
+        Assert.Single((await client.GetFromJsonAsync<JsonElement>("/guardian/proposals")).GetProperty("proposals").EnumerateArray());
+
+        // "Check for updates": through the builder (a root path unit starts the check), once in a while.
+        var asked = await Json(await client.PostAsync("/guardian/updates/check", null));
+        Assert.True(asked.GetProperty("requested").GetBoolean());
+        Assert.True(File.Exists(Path.Combine(stack.Dir, "builder", "work", "update-requested")));
+        var again = await Json(await client.PostAsync("/guardian/updates/check", null));
+        Assert.False(again.GetProperty("requested").GetBoolean());
+    }
+
+    [Fact]
+    public async Task WithoutGuardianUpdatesAreReportedPlainly()
+    {
+        using var factory = new CoreApiFactory(("NEXUS_GUARDIAN_BUILDER_SOCKET", "/nonexistent/builder.sock"));
+        var client = factory.Authorized();
+        var told = await Json(await client.GetAsync("/guardian/updates"));
+        Assert.Contains("not reachable", told.GetProperty("guardian").GetString());
+        var asked = await Json(await client.PostAsync("/guardian/updates/check", null));
+        Assert.False(asked.GetProperty("requested").GetBoolean());
+        Assert.False((await client.GetFromJsonAsync<JsonElement>("/guardian/proposals")).GetProperty("updatesReady").GetBoolean());
+    }
+
+    [Fact]
     public async Task FailedBuildCannotBeApprovedAndARolledBackTrialIsReported()
     {
         if (!OperatingSystem.IsLinux()) return;

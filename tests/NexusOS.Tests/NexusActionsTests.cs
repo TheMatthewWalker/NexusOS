@@ -223,6 +223,28 @@ public sealed class NexusActionsTests : IDisposable
         Assert.True(rule.GetProperty("enabled").GetBoolean());
     }
 
+    [Fact]
+    public async Task Updates_are_a_look_up_and_checking_now_waits_for_Do_it()
+    {
+        Assert.Equal(ActionSafety.Read, NexusActions.ByName["get_system_updates"].Safety);
+        var stub = Model(Calls("get_system_updates", new { }), Calls("check_for_updates", new { }), Says("unused"));
+        using var factory = Factory(stub, ("NEXUS_GUARDIAN_BUILDER_SOCKET", "/nonexistent/builder.sock"));
+        var client = factory.Authorized();
+        var events = await Ask(client, "are there updates? check now");
+        // The look-up ran and its result went back to the model; the check is a card.
+        var looked = Messages(stub, 1).Last();
+        Assert.Equal("tool", looked.GetProperty("role").GetString());
+        Assert.Contains("not reachable", looked.GetProperty("content").GetString());
+        var action = OfType(events, "action").Single();
+        Assert.Equal("check_for_updates", action.GetProperty("action").GetString());
+        Assert.Equal("Check for system security updates now", action.GetProperty("summary").GetString());
+        // Do it asks Guardian's builder (no sudo); without Guardian it says so.
+        var result = await (await client.PostAsync($"/actions/{action.GetProperty("id").GetString()}/confirm", null))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("failed", result.GetProperty("status").GetString());
+        Assert.Contains("Guardian", result.GetProperty("message").GetString());
+    }
+
     // ---- system actions ----
 
     [Fact]

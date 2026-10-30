@@ -151,5 +151,14 @@ def candidate_id(baseline, host_config, module_text):
     return _digest("nexus-guardian-candidate-v1\n" + baseline + "\n" + host_config + "\n" + module_text)
 
 
+def update_candidate_id(baseline, host_config, lock_hash):
+    """An update's identity: the same host configuration, evaluated with this flake.lock."""
+    require_baseline(baseline)
+    require_host_config(host_config)
+    if not isinstance(lock_hash, str) or re.fullmatch(r"[0-9a-f]{64}", lock_hash) is None:
+        raise ValueError("An update must name its lock file's SHA-256")
+    return _digest("nexus-guardian-update-v1\n" + baseline + "\n" + host_config + "\n" + lock_hash)
+
+
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")

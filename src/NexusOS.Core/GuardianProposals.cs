@@ -23,6 +23,15 @@ using System.Text.Json.Serialization;
 // the broker (/guardian/review) and staging through Guardian's staging
 // service, which accepts only this user's permitted decisions. Everything
 // here is a record of what those root services reported.
+//
+// Security updates are proposals of their own kind ("update", source
+// "updates"): Guardian's root update check finds a newer nixpkgs on the same
+// release and the builder reports it (its "updates" operation, polled at most
+// once a minute). Core records it and starts its checks at once, since the
+// input was prepared by root and checking changes nothing; the person still
+// approves the checked build with their password, as for any change. Core
+// names an update only by its lock file's hash; the lock itself never passes
+// through here.
 public sealed class GuardianProposalRecord
 {
     public string Id { get; set; } = "";
@@ -38,6 +47,9 @@ public sealed class GuardianProposalRecord
     public JsonElement? Before { get; set; }
     public JsonElement? Attestation { get; set; }
     public string? Decision { get; set; }
+    public string? Kind { get; set; }        // null: a change; "update": security updates
+    public string? LockHash { get; set; }    // an update's flake.lock, by SHA-256
+    public JsonElement? Update { get; set; } // what the builder reported: nixpkgs before/after, then package versions
 }
 
 public sealed record GuardianProposalRequest(string? Description, GuardianChange[]? Changes, string[]? Packages = null,
@@ -49,7 +61,9 @@ public sealed class GuardianProposals(NexusStatePaths paths, GuardianBrokerClien
 {
     public const string Waiting = "waiting", Checking = "checking", Ready = "ready", Approved = "approved", Staged = "staged",
         Applied = "applied", RolledBack = "rolled-back", Declined = "declined", Failed = "failed", Dismissed = "dismissed";
-    public static readonly string[] Sources = ["nexus", "fixit", "try", "user"];
+    public const string UpdateKind = "update";
+    public static readonly string[] Sources = ["nexus", "fixit", "try", "user", "updates"];
+    public static readonly TimeSpan UpdatePollInterval = TimeSpan.FromMinutes(1);
     public const int MaxKept = 30, MaxOpen = 5, MaxRequestLength = 300;
     private static readonly string[] Open = [Waiting, Checking, Ready, Approved];
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -57,6 +71,8 @@ public sealed class GuardianProposals(NexusStatePaths paths, GuardianBrokerClien
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
     private readonly SemaphoreSlim _lock = new(1, 1);
+    private DateTimeOffset _updatesPolled = DateTimeOffset.MinValue;
+    private JsonElement? _updates;  // the builder's last "updates" answer
     private string FilePath => paths.PathFor("guardian-proposals.json");
 
     public static Dictionary<string, string> PendingChecks() =>
@@ -136,6 +152,7 @@ public sealed class GuardianProposals(NexusStatePaths paths, GuardianBrokerClien
     public Task<List<GuardianProposalRecord>> ListAsync(CancellationToken ct) =>
         Locked(async items =>
         {
+            await PollUpdatesAsync(items, false, ct);
             foreach (var p in items) await RefreshAsync(p, ct);
             return items.Where(x => x.State != Dismissed).OrderByDescending(x => x.Created).ToList();
         }, ct);
@@ -146,28 +163,145 @@ public sealed class GuardianProposals(NexusStatePaths paths, GuardianBrokerClien
         {
             var p = items.FirstOrDefault(x => x.Id == id);
             if (p is null || p.State is not (Waiting or Failed)) return p;
-            var changes = GuardianPlanner.WireChanges(p.Plan);
-            try
-            {
-                var submitted = await broker.SendAsync("submit", new { description = p.Plan.Description, changes }, ct);
-                var candidateId = CandidateIdOf(submitted);
-                var built = await builder.SendAsync("build", new { changes }, ct);
-                if (candidateId is null || CandidateIdOf(built) != candidateId)
-                {
-                    Touch(p, Failed, "Guardian and its builder did not agree on this change, so it was stopped. Nothing changed.");
-                    return p;
-                }
-                p.CandidateId = candidateId;
-                p.Checks = PendingChecks();
-                p.Attestation = null;
-                p.Decision = null;
-                Touch(p, Checking, "Guardian is building and testing the change on this computer.");
-                await Record("user", "Sent to Guardian for approval: ", p.Plan, ct, "candidate:" + candidateId);
-                if (built.TryGetProperty("job", out var job)) ApplyJob(p, job);
-            }
-            catch (GuardianBrokerException ex) { Touch(p, Failed, Plain(ex)); }
+            await SendForCheckingAsync(p, "user", ct);
             return p;
         }, ct);
+
+    // Submit to the broker and ask the builder to check it: a change by its typed
+    // changes, an update by its lock's hash only (both read the lock themselves).
+    private async Task SendForCheckingAsync(GuardianProposalRecord p, string actor, CancellationToken ct)
+    {
+        object submit, build;
+        if (p.Kind == UpdateKind)
+        {
+            var update = new { lockHash = p.LockHash };
+            (submit, build) = (new { description = p.Plan.Description, update }, new { update });
+        }
+        else
+        {
+            var changes = GuardianPlanner.WireChanges(p.Plan);
+            (submit, build) = (new { description = p.Plan.Description, changes }, new { changes });
+        }
+        try
+        {
+            var submitted = await broker.SendAsync("submit", submit, ct);
+            var candidateId = CandidateIdOf(submitted);
+            var built = await builder.SendAsync("build", build, ct);
+            if (candidateId is null || CandidateIdOf(built) != candidateId)
+            {
+                Touch(p, Failed, "Guardian and its builder did not agree on this change, so it was stopped. Nothing changed.");
+                return;
+            }
+            p.CandidateId = candidateId;
+            p.Checks = PendingChecks();
+            p.Attestation = null;
+            p.Decision = null;
+            Touch(p, Checking, p.Kind == UpdateKind
+                ? "Guardian is building and testing the security updates on this computer."
+                : "Guardian is building and testing the change on this computer.");
+            await Record(actor, actor == "user" ? "Sent to Guardian for approval: " : "Guardian is checking: ", p.Plan, ct,
+                "candidate:" + candidateId);
+            if (built.TryGetProperty("job", out var job)) ApplyJob(p, job);
+        }
+        catch (GuardianBrokerException ex) { Touch(p, Failed, Plain(ex)); }
+    }
+
+    // ---- security updates ----
+
+    // The builder's report of the root update check, at most once a minute (or now, when asked).
+    // A new update becomes a proposal and is sent for checking straight away; an
+    // older one not yet approved is replaced by it.
+    private async Task PollUpdatesAsync(List<GuardianProposalRecord> items, bool now, CancellationToken ct)
+    {
+        if (!now && time.GetUtcNow() - _updatesPolled < UpdatePollInterval) return;
+        _updatesPolled = time.GetUtcNow();
+        JsonElement report;
+        try { report = await builder.SendAsync("updates", new { }, ct); }
+        catch (GuardianBrokerException) { return; }  // No builder here (or not reachable now).
+        _updates = report;
+        if (!report.TryGetProperty("available", out var available) || available.ValueKind != JsonValueKind.Object ||
+            !available.TryGetProperty("lockHash", out var l) || l.GetString() is not { Length: 64 } lockHash ||
+            !lockHash.All(ch => ch is >= '0' and <= '9' or >= 'a' and <= 'f'))
+            return;
+        if (items.Any(x => x.Kind == UpdateKind && x.LockHash == lockHash)) return;
+        foreach (var old in items.Where(x => x.Kind == UpdateKind && x.State is Waiting or Checking or Ready or Failed))
+            Touch(old, Dismissed, "Replaced by newer security updates.");
+        var stamp = time.GetUtcNow();
+        var plan = new GuardianPlan(GuardianPlanner.PlanId("update\n" + lockHash), "Security updates for this computer", [], "",
+            "Review required — security updates from NixOS, on the same release.", "review");
+        var proposal = new GuardianProposalRecord
+        {
+            Id = Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant(),
+            Created = stamp, Updated = stamp, Source = "updates", Plan = plan,
+            Kind = UpdateKind, LockHash = lockHash, Update = available.Clone()
+        };
+        items.Add(proposal);
+        await Record("guardian", "Guardian found security updates: ", plan, ct);
+        await SendForCheckingAsync(proposal, "guardian", ct);
+    }
+
+    // What Nexus tells the person about updates (get_system_updates).
+    public Task<object> UpdatesAsync(CancellationToken ct) =>
+        Locked<object>(async items =>
+        {
+            await PollUpdatesAsync(items, true, ct);
+            var latest = items.Where(x => x.Kind == UpdateKind && x.State != Dismissed).MaxBy(x => x.Created);
+            if (latest is not null) await RefreshAsync(latest, ct);
+            JsonElement? status = _updates is { } r && r.TryGetProperty("status", out var st) && st.ValueKind == JsonValueKind.Object ? st : null;
+            return new
+            {
+                guardian = _updates is null ? "Guardian's builder is not reachable, so updates cannot be checked here." : null,
+                lastCheck = status is { } s ? new
+                {
+                    state = Text(s, "state"), message = Text(s, "message"),
+                    when = s.TryGetProperty("checkedAt", out var at) && at.TryGetInt64(out var secs)
+                        ? DateTimeOffset.FromUnixTimeSeconds(secs).ToLocalTime().ToString("dddd d MMMM yyyy, HH:mm", System.Globalization.CultureInfo.InvariantCulture)
+                        : null
+                } : null,
+                updates = latest is null ? null : new
+                {
+                    state = latest.State, message = latest.Message,
+                    summary = UpdateSummary(latest)
+                }
+            };
+        }, ct);
+
+    // Asks the root update check to run now (the builder's check-updates; a root path unit starts it).
+    public async Task<(bool Requested, string Message)> RequestUpdateCheckAsync(CancellationToken ct)
+    {
+        try
+        {
+            var answer = await builder.SendAsync("check-updates", new { }, ct);
+            _updatesPolled = DateTimeOffset.MinValue;
+            return (answer.TryGetProperty("requested", out var r) && r.ValueKind == JsonValueKind.True,
+                    Text(answer, "message") ?? "Checking for updates.");
+        }
+        catch (GuardianBrokerException ex) { return (false, Plain(ex)); }
+    }
+
+    private static string? Text(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? NexusActions.Clean(v.GetString()!, 300) : null;
+
+    // "12 packages updated, including Linux 6.18.56 → 6.18.60, Firefox 144.0 → 144.0.2", from the builder's report.
+    public static string? UpdateSummary(GuardianProposalRecord p)
+    {
+        if (p.Update is not { } u || !u.TryGetProperty("packages", out var packages) || packages.ValueKind != JsonValueKind.Array) return null;
+        var listed = packages.EnumerateArray().Select(x => (Name: Text(x, "name"), Before: Text(x, "before"), After: Text(x, "after")))
+            .Where(x => x.Name is not null).ToArray();
+        var others = u.TryGetProperty("otherPackages", out var o) && o.TryGetInt32(out var n) ? n : 0;
+        var total = listed.Length + others;
+        if (total == 0) return "No package versions change (rebuilt with fixes only).";
+        return $"{total} {(total == 1 ? "package" : "packages")} updated, including " +
+               string.Join(", ", listed.Take(5).Select(x => $"{Label(x.Name!)} {x.Before} → {x.After}"));
+    }
+
+    private static readonly Dictionary<string, string> Labels = new(StringComparer.Ordinal)
+    {
+        ["linux"] = "Linux", ["firefox"] = "Firefox", ["chromium"] = "Chromium", ["libreoffice"] = "LibreOffice",
+        ["vlc"] = "VLC", ["openssl"] = "OpenSSL", ["openssh"] = "OpenSSH", ["mesa"] = "Mesa", ["nss"] = "NSS"
+    };
+
+    public static string Label(string name) => Labels.TryGetValue(name, out var label) ? label : name;
 
     public Task<GuardianProposalRecord?> DeclineAsync(string id, CancellationToken ct) =>
         Locked<GuardianProposalRecord?>(async items =>
@@ -283,12 +417,15 @@ public sealed class GuardianProposals(NexusStatePaths paths, GuardianBrokerClien
                 if (checks.TryGetProperty(name, out var value) && value.GetString() is "pending" or "running" or "pass" or "fail")
                     p.Checks[name] = value.GetString()!;
         if (job.TryGetProperty("before", out var before) && before.ValueKind == JsonValueKind.Object) p.Before = before.Clone();
+        if (p.Kind == UpdateKind && job.TryGetProperty("update", out var update) && update.ValueKind == JsonValueKind.Object) p.Update = update.Clone();
         var state = job.TryGetProperty("state", out var s) ? s.GetString() : null;
         var message = job.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null;
         if (state == "passed" && job.TryGetProperty("attestation", out var attestation) && attestation.ValueKind == JsonValueKind.Object)
         {
             p.Attestation = attestation.Clone();
-            Touch(p, Ready, "Built and tested on this computer. Enter your password to approve it.");
+            Touch(p, Ready, p.Kind == UpdateKind
+                ? "Security updates are ready: built and tested on this computer. Enter your password to install them at the next restart."
+                : "Built and tested on this computer. Enter your password to approve it.");
         }
         else if (state == "failed") Touch(p, Failed, message is { Length: > 0 } ? NexusActions.Clean(message, 200) : "Guardian's checks did not pass. Nothing changed.");
         else p.Updated = time.GetUtcNow();
@@ -322,6 +459,7 @@ public sealed class GuardianProposals(NexusStatePaths paths, GuardianBrokerClien
             values is { } v && v.TryGetProperty(key, out var x) && x.ValueKind is JsonValueKind.True or JsonValueKind.False ? x.GetBoolean() : null;
         var options = section("options");
         var packages = section("packages");
+        if (p.Kind == UpdateKind) return UpdateView(p);
         var items = p.Plan.Changes.Select(c => (object)new
             {
                 kind = "setting", name = c.Option, label = GuardianSchema.Options[c.Option].Summary,
@@ -343,10 +481,32 @@ public sealed class GuardianProposals(NexusStatePaths paths, GuardianBrokerClien
             attestation = p.State == Ready ? p.Attestation : null, decision = p.Decision
         };
     }
+
+    // An update: each package version that changes (once built), and the nixpkgs revisions.
+    private static object UpdateView(GuardianProposalRecord p)
+    {
+        var u = p.Update;
+        var items = u is { } x && x.TryGetProperty("packages", out var list) && list.ValueKind == JsonValueKind.Array
+            ? list.EnumerateArray().Where(e => Text(e, "name") is not null).Select(e => (object)new
+            {
+                kind = "update", name = Text(e, "name"), label = Label(Text(e, "name")!), before = Text(e, "before"), after = Text(e, "after")
+            }).ToArray()
+            : [];
+        return new
+        {
+            id = p.Id, created = p.Created, updated = p.Updated, source = p.Source, request = p.Request,
+            state = p.State, message = p.Message, title = UpdateSummary(p) is { } summary ? "Security updates: " + summary : p.Plan.Description,
+            kind = UpdateKind, plan = p.Plan, items, update = p.Update, lockHash = p.LockHash,
+            risk = new { level = "review", notes = Array.Empty<string>() },
+            checks = p.Checks, candidateId = p.CandidateId,
+            attestation = p.State == Ready ? p.Attestation : null, decision = p.Decision
+        };
+    }
 }
 
 // GET/POST /guardian/proposals, /guardian/proposals/{id}[/check|/decline|/dismiss],
-// GET /guardian/proposals/{id}/describe (the broker's record), POST /guardian/stage.
+// GET /guardian/proposals/{id}/describe (the broker's record), POST /guardian/stage,
+// GET /guardian/updates and POST /guardian/updates/check (security updates).
 public static class GuardianProposalEndpoints
 {
     public static IServiceCollection AddGuardianProposals(this IServiceCollection services)
@@ -369,9 +529,19 @@ public static class GuardianProposalEndpoints
                 // The top bar: something needs the person, or something is under way.
                 attention = list.Any(x => x.State is GuardianProposals.Waiting or GuardianProposals.Ready),
                 busy = list.Any(x => x.State is GuardianProposals.Checking or GuardianProposals.Approved),
-                restartNeeded = list.Any(x => x.State == GuardianProposals.Staged)
+                restartNeeded = list.Any(x => x.State == GuardianProposals.Staged),
+                // "Security updates are ready" in the top bar.
+                updatesReady = list.Any(x => x.Kind == GuardianProposals.UpdateKind && x.State == GuardianProposals.Ready)
             });
         });
+        // Security updates: what Guardian's update check last found, and asking it to check now.
+        app.MapGet("/guardian/updates", async (GuardianProposals proposals, CancellationToken ct) =>
+            Results.Ok(await proposals.UpdatesAsync(ct)));
+        app.MapPost("/guardian/updates/check", async (GuardianProposals proposals, CancellationToken ct) =>
+        {
+            var (requested, message) = await proposals.RequestUpdateCheckAsync(ct);
+            return Results.Ok(new { requested, message });
+        }).RequireRateLimiting("journal");
         app.MapPost("/guardian/proposals", async (GuardianProposalRequest request, GuardianProposals proposals, CancellationToken ct) =>
         {
             GuardianPlan plan;

@@ -12,7 +12,9 @@ system, with `panic=N boot.panic_on_fail` on that entry only):
 
 If the candidate never reaches a healthy boot (panic, hang, reset), the
 bootloader returns to the baseline automatically; boot_check.py confirms or
-rolls back after the next boot.
+rolls back after the next boot. For a security update, the flake.lock it was
+built with is copied beside the pending trial (staged-flake.lock); only a
+confirmed trial makes it /etc/nixos's lock.
 """
 import argparse
 import json
@@ -22,6 +24,7 @@ import subprocess
 import time
 
 import grub_entries
+import system_update
 import systemd_boot
 from baseline_inspect import TRIAL_SPECIALISATION, inspect
 from guardian_schema import STORE_PATH
@@ -31,6 +34,8 @@ GRUB_CFG = "/boot/grub/grub.cfg"
 GRUBENV = "/boot/grub/grubenv"
 ESP = "/boot"
 BOOTLOADERS = ("grub", "systemd-boot")
+# A security update's flake.lock, kept with the pending trial (boot_check.py).
+STAGED_LOCK = "staged-flake.lock"
 
 
 class StagingError(Exception):
@@ -81,7 +86,8 @@ def _systemd_boot_trial(runner, trial_toplevel, baseline, esp, bootctl):
 
 def stage(broker, decision_hash, *, runner=run, observer=inspect, grub_cfg_path=GRUB_CFG,
           grubenv=GRUBENV, grub_editenv="grub-editenv", pre_stage=None, bootloader="grub", esp=ESP,
-          bootctl="bootctl", trial_of=trial_system):
+          bootctl="bootctl", trial_of=trial_system, updates_dir=None):
+    updates_dir = system_update.UPDATES_DIR if updates_dir is None else updates_dir
     if bootloader not in BOOTLOADERS:
         raise StagingError("Unsupported bootloader")
     pending = Path(broker.state_dir) / "pending-boot.json"
@@ -111,6 +117,21 @@ def stage(broker, decision_hash, *, runner=run, observer=inspect, grub_cfg_path=
             raise StagingError(f"User-data backup failed; nothing staged ({error})") from None
         record(broker.state_dir, {"event": "backed-up", "decision": decision_hash, "snapshots": snapshots})
 
+    # A security update: keep the exact lock it was built with beside the
+    # pending trial, so the boot check can make it /etc/nixos's lock once the
+    # trial is confirmed (and drop it if not).
+    flake_lock = None
+    update = broker.decision_update(decision_hash)
+    if update is not None:
+        try:
+            data = system_update.read_lock(updates_dir, update["lockHash"], owner=broker.owner)
+        except system_update.UpdateError as error:
+            record(broker.state_dir, {"event": "stage-refused", "decision": decision_hash, "reason": "update lock"})
+            raise StagingError(str(error)) from None
+        staged_lock = Path(broker.state_dir) / STAGED_LOCK
+        system_update.write_file(staged_lock, data)
+        flake_lock = {"path": str(staged_lock), "sha256": update["lockHash"], "previous": update["previousLockHash"]}
+
     runner(["nix-env", "--profile", PROFILE, "--set", toplevel])
     try:
         runner([os.path.join(toplevel, "bin", "switch-to-configuration"), "boot"])
@@ -124,11 +145,14 @@ def stage(broker, decision_hash, *, runner=run, observer=inspect, grub_cfg_path=
         runner([os.path.join(baseline, "bin", "switch-to-configuration"), "boot"])
         if bootloader == "systemd-boot":
             _forget_efi_entries(runner, bootctl)
+        (Path(broker.state_dir) / STAGED_LOCK).unlink(missing_ok=True)
         record(broker.state_dir, {"event": "stage-failed", "decision": decision_hash, "toplevel": toplevel})
         raise
     state = {"decision": decision_hash, "toplevel": toplevel, "trialSystem": trial_toplevel,
              "baseline": baseline, "bootloader": bootloader,
              "trialEntry": trial, "fallbackEntry": fallback, "stagedAt": int(time.time())}
+    if flake_lock is not None:
+        state["flakeLock"] = flake_lock
     fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as stream:
         json.dump(state, stream, sort_keys=True)

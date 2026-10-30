@@ -1,5 +1,5 @@
 """Guardian on an installed computer: systemd-boot trial boots, the local builder and its
-key, the staging service and desktop (polkit) approval. No nix, bootctl or root needed:
+key and the staging service (desktop approval: test_desktop_approve.py). No nix, bootctl or root needed:
 commands go to fake runners and services are owned by the test UID."""
 import base64
 import json
@@ -12,7 +12,6 @@ from support import BASELINE, CHANGES, DRV, TOPLEVEL, BrokerFixture
 import systemd_boot
 from attestation import load_trusted_keys, verify
 from boot_check import check
-from desktop_approve import approve as desktop_approve, requesting_uid
 from local_builder import LocalBuilder, init_keys, load_private_key
 from root_review_broker import Denied
 from stage_executor import PROFILE, StagingError, stage
@@ -206,6 +205,7 @@ class LocalBuilderTests(unittest.TestCase):
         self.assertEqual({"options": {"services.printing.enable": False}, "packages": {}}, job["before"])
         statement = verify(job["attestation"], self.fx.broker.trusted_keys)
         self.assertEqual((TOPLEVEL, DRV, BASELINE), (statement["toplevel"], statement["drvPath"], statement["baseline"]))
+        self.assertEqual(job["before"], statement["before"])     # signed, for the approval dialog
         # One evaluation of the packaged file with checked string arguments, then two builds of its results.
         evaluate, build, test = runner.commands
         self.assertIn("--impure", evaluate)
@@ -307,28 +307,6 @@ class StageServiceTests(unittest.TestCase):
                 stream.write(json.dumps({"event": event, "decision": self.decision, "at": 1}) + "\n")
                 stream.write(json.dumps({"event": "confirmed", "decision": "e" * 64, "at": 2}) + "\n")
             self.assertEqual(expected, self.service.outcome(self.fx.uid, {"decision": self.decision})["state"])
-
-
-class DesktopApprovalTests(unittest.TestCase):
-    def test_only_polkit_started_non_root_requests(self):
-        self.assertEqual(1000, requesting_uid({"PKEXEC_UID": "1000"}, 0))
-        for environ, euid in (({"PKEXEC_UID": "1000"}, 1000), ({}, 0), ({"PKEXEC_UID": "0"}, 0),
-                              ({"PKEXEC_UID": "1000; x"}, 0), ({"PKEXEC_UID": ""}, 0)):
-            with self.subTest(environ=environ, euid=euid), self.assertRaises(PermissionError):
-                requesting_uid(environ, euid)
-
-    def test_registers_one_approval_for_the_persons_own_candidate(self):
-        fx = BrokerFixture()
-        self.addCleanup(fx.close)
-        candidate = fx.submitted()
-        with self.assertRaises(Denied):
-            desktop_approve(fx.broker, "not-a-candidate", fx.uid)
-        with self.assertRaises(Denied):
-            desktop_approve(fx.broker, "f" * 24, fx.uid)
-        with self.assertRaises(Denied):
-            desktop_approve(fx.broker, candidate["candidateId"], fx.uid + 1)
-        desktop_approve(fx.broker, candidate["candidateId"], fx.uid)
-        self.assertTrue(fx.broker.status(fx.uid, {"candidateId": candidate["candidateId"]})["approvalPending"])
 
 
 if __name__ == "__main__":

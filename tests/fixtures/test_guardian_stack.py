@@ -7,7 +7,8 @@ machine is faked: the observed system, the store check, nix (the builder's
 runner answers like a working machine) and the bootloader step (staging
 claims the decision once and writes the same log). Desktop approval is the
 real desktop_approve.approve(), run when a file <dir>/approve/<candidateId>
-appears, standing in for polkit after the password. Prints READY once all
+holding the build hash appears, standing in for polkit after the password
+(pkexec ... <candidateId> <buildHash>). Prints READY once all
 three are listening.
 
   --failing-build   the builder's build step fails
@@ -79,8 +80,12 @@ def approvals():
     folder.mkdir()
     while True:
         for request in folder.iterdir():
+            build = request.read_text().strip()
             request.unlink()
-            approve(broker, request.name, uid)
+            try:
+                approve(broker, request.name, build, uid)
+            except Exception as error:  # Refused, as the helper would be; the review then finds no approval.
+                print(f"approval refused: {error}", file=sys.stderr, flush=True)
         time.sleep(0.05)
 
 

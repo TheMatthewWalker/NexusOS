@@ -18,7 +18,8 @@ using System.Text.Json.Serialization;
 //
 // Safety rules: Core never approves, decides or stages. "check" is an explicit
 // request from the person; approval happens outside Core (polkit runs
-// nexus-guardian-desktop-approve after the password); the review goes through
+// nexus-guardian-desktop-approve after the password, for the candidate and
+// build the broker itself described, not this file's text); the review goes through
 // the broker (/guardian/review) and staging through Guardian's staging
 // service, which accepts only this user's permitted decisions. Everything
 // here is a record of what those root services reported.
@@ -186,6 +187,23 @@ public sealed class GuardianProposals(NexusStatePaths paths, GuardianBrokerClien
             return Task.FromResult(p);
         }, ct);
 
+    // What the approval dialog shows: the broker's own record of the checked
+    // candidate (its "describe": settings with today's and the new value,
+    // packages, risk, candidate ID and build hash), not this file's copy, which
+    // anything running as this user could rewrite. The broker verifies the
+    // builder's attestation and remembers that build; the password approval is
+    // bound to it (desktop_approve.py). Core passes the record on unchanged.
+    public Task<(JsonElement? Record, string? Error, int Status)> DescribeAsync(string id, CancellationToken ct) =>
+        Locked<(JsonElement?, string?, int)>(async items =>
+        {
+            var p = items.FirstOrDefault(x => x.Id == id);
+            if (p is null) return (null, "No such system change.", 404);
+            if (p.State != Ready || p.CandidateId is not { } candidateId || p.Attestation is not { } attestation)
+                return (null, "This change has not passed Guardian's checks yet.", 409);
+            try { return (await broker.SendAsync("describe", new { candidateId, attestation }, ct), null, 200); }
+            catch (GuardianBrokerException ex) { return (null, ex.Message, ex.StatusCode); }
+        }, ct);
+
     // Called after /guardian/review: the broker's decision, recorded as reported.
     public Task RecordReviewAsync(string candidateId, bool eligible, string? decision, string? refusal, CancellationToken ct) =>
         Locked(items =>
@@ -327,7 +345,8 @@ public sealed class GuardianProposals(NexusStatePaths paths, GuardianBrokerClien
     }
 }
 
-// GET/POST /guardian/proposals, /guardian/proposals/{id}[/check|/decline|/dismiss], POST /guardian/stage.
+// GET/POST /guardian/proposals, /guardian/proposals/{id}[/check|/decline|/dismiss],
+// GET /guardian/proposals/{id}/describe (the broker's record), POST /guardian/stage.
 public static class GuardianProposalEndpoints
 {
     public static IServiceCollection AddGuardianProposals(this IServiceCollection services)
@@ -366,6 +385,12 @@ public static class GuardianProposalEndpoints
         app.MapGet("/guardian/proposals/{id}", async (string id, GuardianProposals proposals, CancellationToken ct) =>
             !GuardianProposals.IsValidId(id) ? Results.BadRequest(new { error = "Invalid proposal ID." })
             : await proposals.GetAsync(id, ct) is { } p ? Results.Ok(GuardianProposals.View(p)) : NotFound());
+        app.MapGet("/guardian/proposals/{id}/describe", async (string id, GuardianProposals proposals, CancellationToken ct) =>
+        {
+            if (!GuardianProposals.IsValidId(id)) return Results.BadRequest(new { error = "Invalid proposal ID." });
+            var (record, error, status) = await proposals.DescribeAsync(id, ct);
+            return record is { } r ? Results.Ok(r) : status == 404 ? NotFound() : Results.Problem(error, statusCode: status);
+        });
         Verb(app, "check", (p, id, ct) => p.CheckAsync(id, ct));
         Verb(app, "decline", (p, id, ct) => p.DeclineAsync(id, ct));
         Verb(app, "dismiss", (p, id, ct) => p.DismissAsync(id, ct));

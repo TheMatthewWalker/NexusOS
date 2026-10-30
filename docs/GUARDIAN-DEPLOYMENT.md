@@ -15,10 +15,10 @@ person enters their password; it is used from the next restart.
 
 | Piece | Runs as | What it may do |
 |---|---|---|
-| `nexus-guardian` (broker) | root, no capabilities, no network | Decide, as before. Unchanged |
+| `nexus-guardian` (broker) | root, no capabilities, no network | Decide, as before. Also `describe`: its own record of a caller's checked candidate, for the approval dialog, remembering the verified build |
 | `nexus-guardian-keys` | root oneshot, every boot | Make this computer's Ed25519 builder key once (`/var/lib/nexus-guardian-builder/builder.key`, 0600 in a 0700 root directory, never replaced) and write the broker's trusted keys: the configured `trustedBuilderKeys` plus this key |
-| `nexus-guardian-builder` | root, no capabilities, no network, writes only its work directory | For a change on the running system: evaluate the host's own configuration with the candidate overlay (`scripts/guardian/candidate-build.nix`), build it through the Nix daemon, boot it once in a throwaway VM (multi-user.target and `staging.requiredUnits` must start), and sign what it saw. Never activates anything |
-| `nexus-guardian-desktop-approve` | root, run only by polkit | Register the same single-use, 120-second approval as the root console, for the person polkit authorised (`PKEXEC_UID`) and only for a candidate they submitted |
+| `nexus-guardian-builder` | root, no capabilities, no network, writes only its work directory | For a change on the running system: evaluate the host's own configuration with the candidate overlay (`scripts/guardian/candidate-build.nix`), build it through the Nix daemon, boot it once in a throwaway VM (multi-user.target and `staging.requiredUnits` must start), and sign what it saw, including today's value of each changed setting and package. Never activates anything |
+| `nexus-guardian-desktop-approve` | root, run only by polkit | Register the same single-use, 120-second approval as the root console, for the person polkit authorised (`PKEXEC_UID`), only for an unstaged candidate they submitted, and bound to the build hash it was given, which must be the one the broker verified |
 | `nexus-guardian-stage` | root, no network | Stage the caller's own permitted, unstaged decision (`stage_executor.py`), and report the boot outcome |
 | `nexus-guardian-boot-check` | root oneshot, every boot | Confirm or roll back a trial, as before |
 
@@ -29,20 +29,44 @@ designed in [ADR-002](adr/002-guardian-candidate-model.md#desktop-approval):
 
 1. Approve and stage: Core submits the plan to the broker and asks the
    builder to check it (`POST /guardian/proposals/{id}/check`).
-2. When the checks pass, the dialog runs
-   `pkexec /run/current-system/sw/bin/nexus-guardian-desktop-approve <candidateId>`.
-   The polkit action `org.nexusos.guardian.approve` is `auth_admin` for the
-   active session only (never `_keep`), so every approval asks for the
-   password. The shell is the session's polkit agent, so the password is
-   typed in the dialog; it goes to polkit's own helper, not to Core.
-3. The dialog then asks for the usual review: `POST /guardian/review` with
-   the builder's attestation. The broker decides, as before.
-4. If eligible: `POST /guardian/stage {decision}`, then **Restart now**.
+2. When the checks pass, the dialog shows the broker's own record of the
+   candidate, fetched through Core's broker client
+   (`GET /guardian/proposals/{id}/describe`, the broker's `describe` with the
+   builder's attestation): each setting's path, today's value (signed by the
+   builder) and new value, each package, the risk, the candidate ID and the
+   build hash. Core's proposal text is shown only as "Nexus says"; if it names
+   different changes, the broker's are shown with a warning and the password
+   is not asked for until the person clicks Approve again.
+3. The dialog runs
+   `pkexec /run/current-system/sw/bin/nexus-guardian-desktop-approve <candidateId> <buildHash>`
+   with both values from that record. The polkit action
+   `org.nexusos.guardian.approve` is `auth_admin` for the active session only
+   (never `_keep`), so every approval asks for the password, and its message
+   includes `$(command_line)`, so the prompt names the candidate and build.
+   The shell is the session's polkit agent: it shows the password box in the
+   dialog only for that action whose message names exactly the dialog's
+   candidate and build; any other request (another action, or a Guardian
+   approval of something else) gets a plain window showing the action ID and
+   message. The password goes to polkit's own helper, not to Core.
+4. After the password the helper (as root, `PKEXEC_UID` naming the person)
+   re-reads the candidate from the broker: it must exist, have been submitted
+   by that person, not be staged, and its verified build must be the hash it
+   was given. The approval is bound to that candidate and build.
+5. The dialog then asks for the usual review: `POST /guardian/review` with
+   the builder's attestation. The broker uses a bound approval only with an
+   attestation of that same build, and decides as before.
+6. If eligible: `POST /guardian/stage {decision}`, then **Restart now**.
 
 A compromised Core or stolen API token still cannot approve: approving needs
-the password at polkit's prompt. A polkit rule that grants wheel everything
-without a password (some people add one) would remove that step; do not
-add such a rule on a NexusOS machine.
+the password at polkit's prompt. Code running as the person cannot get one
+change approved while the shell's dialog shows another by rewriting Core's
+proposals or starting its own approval: the dialog shows the broker's record,
+the prompt names the candidate and build, and the helper and broker check
+both. (Code that replaces the shell itself, and so the session's polkit
+agent, is not covered by this.) A polkit rule that grants wheel everything without a password
+(some people add one) would remove that step; do not add such a rule on a
+NexusOS machine. Approvals at the root console (`nexus-guardian approve`)
+show the overlay themselves and are not bound to one build.
 
 ### Trial boots on systemd-boot
 

@@ -3,7 +3,9 @@
 
 The builder holds the private key and signs; the broker holds only public keys
 and verifies. A statement names the exact system toplevel and derivation that
-passed evaluation, build and VM testing for one candidate.
+passed evaluation, build and VM testing for one candidate, and may record
+today's value of each changed setting and package as the builder evaluated it
+("before"), so what the person is shown at approval is signed as well.
 """
 import argparse
 import base64
@@ -22,8 +24,10 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from guardian_schema import DRV_PATH, ID_LENGTH, STORE_PATH, canonical, require_baseline
 
 STATEMENT_FIELDS = {"attestationVersion", "candidateId", "baseline", "toplevel", "drvPath", "checks", "builder", "issuedAt"}
+OPTIONAL_FIELDS = {"before"}
 CHECKS = ("evaluate", "build", "vm-test")
 MAX_AGE_SECONDS = 7 * 24 * 3600
+MAX_BEFORE = 64
 
 
 def key_id(public_raw):
@@ -34,8 +38,26 @@ def public_raw(private_key):
     return private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
 
 
+def build_hash(statement):
+    """The identity of one signed build: what the person approves, and what the review must present."""
+    return hashlib.sha256(canonical(statement)).hexdigest()
+
+
+def validate_before(before):
+    """{"options": {name: bool|null}, "packages": {attr: bool|null}}; null where today's value is unknown."""
+    if not isinstance(before, dict) or set(before) != {"options", "packages"}:
+        raise ValueError("before must have options and packages")
+    for section in before.values():
+        if not isinstance(section, dict) or len(section) > MAX_BEFORE:
+            raise ValueError("Invalid before section")
+        for name, value in section.items():
+            if not isinstance(name, str) or not 1 <= len(name) <= 200 or not (value is None or type(value) is bool):
+                raise ValueError("Invalid before value")
+    return before
+
+
 def validate_statement(statement):
-    if not isinstance(statement, dict) or set(statement) != STATEMENT_FIELDS:
+    if not isinstance(statement, dict) or not STATEMENT_FIELDS <= set(statement) <= STATEMENT_FIELDS | OPTIONAL_FIELDS:
         raise ValueError("Unexpected attestation statement fields")
     if statement["attestationVersion"] != 1:
         raise ValueError("Unsupported attestation version")
@@ -53,6 +75,8 @@ def validate_statement(statement):
         raise ValueError("Invalid builder name")
     if type(statement["issuedAt"]) is not int:
         raise ValueError("issuedAt must be an integer")
+    if "before" in statement:
+        validate_before(statement["before"])
     return statement
 
 

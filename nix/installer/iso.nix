@@ -34,6 +34,8 @@ in
   system.nixos.distroId = "nexusos";
   image.baseName = lib.mkForce "nexusos-${config.system.nixos.release}-live-${pkgs.stdenv.hostPlatform.system}";
   isoImage.volumeID = lib.mkForce "NEXUSOS";
+  # installation-cd-minimal turns udisks off; the desktop (Move in, Disks) uses it.
+  services.udisks2.enable = lib.mkForce true;
   isoImage.appendToMenuLabel = " live";
 
   # Everything the installer needs is on the image: the installed system's

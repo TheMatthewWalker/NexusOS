@@ -134,7 +134,8 @@ FloatingWindow {
     function uninstall(id) {
         if (busy) return;
         busy = id; message = "Removing " + nameOf(id) + "…"; change.verb = "remove";
-        change.command = ["flatpak", "uninstall", "--noninteractive", "-y", id];
+        // Apps installs for the person; one installed for everyone is removed there (polkit asks).
+        change.command = ["sh", "-c", "flatpak uninstall --user --noninteractive -y \"$1\" || flatpak uninstall --system --noninteractive -y \"$1\"", "sh", id];
         change.running = true;
     }
     onVisibleChanged: if (visible) listInstalled.running = true

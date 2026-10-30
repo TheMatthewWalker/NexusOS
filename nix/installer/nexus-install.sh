@@ -320,7 +320,7 @@ if [ -f "$ai_manifest" ]; then
   rel="${ai_manifest#/etc/nexusos-model/}"
   mkdir -p "$seed/blobs" "$(dirname "$seed/$rel")"
   cp -L --no-preserve=ownership,mode "$ai_manifest" "$seed/$rel"
-  for digest in $(grep -oE 'sha256:[0-9a-f]{64}' "$ai_manifest" | sort -u); do
+  grep -oE 'sha256:[0-9a-f]{64}' "$ai_manifest" | sort -u | while read -r digest; do
     cp -L --no-preserve=ownership,mode "/etc/nexusos-model/blobs/${digest/:/-}" "$seed/blobs/"
   done
 fi

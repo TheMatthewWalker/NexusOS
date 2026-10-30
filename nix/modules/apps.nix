@@ -74,6 +74,31 @@ in
         serviceConfig = { Type = "oneshot"; Restart = "on-failure"; RestartSec = 120; };
         script = "flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo";
       };
+      # Security updates for Flathub apps, every day once online: the
+      # person's own apps (Apps installs with --user) and any for everyone.
+      # An app that is running keeps its old version until it is restarted.
+      systemd.services.nexus-flatpak-update = {
+        description = "Update Flathub apps installed for everyone";
+        after = [ "network-online.target" "nexus-flathub.service" ];
+        wants = [ "network-online.target" ];
+        path = [ pkgs.flatpak ];
+        serviceConfig = { Type = "oneshot"; Nice = 10; IOSchedulingClass = "idle"; };
+        script = "flatpak update --system --noninteractive -y";
+      };
+      systemd.timers.nexus-flatpak-update = {
+        wantedBy = [ "timers.target" ];
+        timerConfig = { OnBootSec = "15min"; OnUnitActiveSec = "1d"; Persistent = true; RandomizedDelaySec = "1h"; };
+      };
+      systemd.user.services.nexus-flatpak-update = {
+        description = "Update your Flathub apps";
+        path = [ pkgs.flatpak ];
+        serviceConfig = { Type = "oneshot"; Nice = 10; IOSchedulingClass = "idle"; };
+        script = "flatpak update --user --noninteractive -y";
+      };
+      systemd.user.timers.nexus-flatpak-update = {
+        wantedBy = [ "timers.target" ];
+        timerConfig = { OnStartupSec = "20min"; OnUnitActiveSec = "1d"; Persistent = true; RandomizedDelaySec = "1h"; };
+      };
       # Flatpak apps find their portals (file pickers, screenshots).
       xdg.portal = {
         enable = true;

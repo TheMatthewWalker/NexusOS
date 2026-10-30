@@ -157,9 +157,8 @@ Only after a confirmed restart is `/etc/nixos/flake.lock` updated, so `nixos-reb
 
 ## Not in this alpha
 
-- Disk encryption, dual boot, and choosing partitions by hand. The installer always uses a whole disk.
+- Dual boot, and choosing partitions by hand. The installer always uses a whole disk.
 - A graphical installer. The installer runs in a terminal.
-- Guardian (AI-proposed system changes) is not switched on in installed systems yet. It needs a builder signing key to be set up on each machine.
 - A Files app of its own: Thunar is the file manager. System-wide settings (software, services) are changed in `local.nix`.
 - Nexus applying settings for you: it explains and points to the right page, and you make the change.
 

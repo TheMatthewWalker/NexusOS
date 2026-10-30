@@ -342,14 +342,22 @@ in
       partOf = [ "nexus-session.target" ];
       after = [ "nexus-session.target" ];
       wantedBy = [ "nexus-session.target" ];
-      # The session's PATH, from Hyprland, as the shell had under exec-once.
+      # Apps the shell opens find their programs: the login PATH, which
+      # Hyprland's own environment does not have.
       enableDefaultPath = false;
+      environment.PATH = lib.mkForce (lib.concatStringsSep ":" [
+        "/run/wrappers/bin" "%h/.nix-profile/bin" "/etc/profiles/per-user/%u/bin"
+        "/nix/var/nix/profiles/default/bin" "/run/current-system/sw/bin"
+      ]);
       startLimitIntervalSec = 120;
       startLimitBurst = 5;
       serviceConfig = {
         ExecStart = "${cfg.shellPackage}/bin/nexus-shell";
         Restart = "on-failure";
         RestartSec = 1;
+        # The apps the shell opened are the person's, not the shell's: a
+        # restart replaces the shell and leaves them running.
+        KillMode = "process";
         SyslogIdentifier = "nexus-shell";
       };
     };

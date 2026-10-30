@@ -1,7 +1,8 @@
 # End-to-end M4: Core-style submission -> root approval -> signed attestation ->
 # staged ONE-TIME trial boot on a real GRUB disk. A healthy trial is confirmed;
 # a broken trial panics, resets and falls back to the previous generation with
-# no human input, and the boot check restores the profile.
+# no human input, and the boot check restores the profile. Only the trial's own
+# entry (the guardian-trial specialisation) carries panic=N boot.panic_on_fail.
 { pkgs, guardianModule }:
 pkgs.testers.runNixOSTest {
   name = "nexus-guardian-trial-boot";
@@ -79,6 +80,12 @@ pkgs.testers.runNixOSTest {
     def current():
         return machine.succeed("readlink -f /run/current-system").strip()
 
+    def trial_of(toplevel):
+        return machine.succeed(f"readlink -f {toplevel}/specialisation/guardian-trial").strip()
+
+    def cmdline():
+        return machine.succeed("cat /proc/cmdline").split()
+
     machine.start(allow_reboot=True)
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("nexus-guardian.service")
@@ -87,7 +94,9 @@ pkgs.testers.runNixOSTest {
     broken = machine.succeed("cat /etc/nexus-lab/broken").strip()
     candidate_drv = machine.succeed("cat /etc/nexus-lab/candidate-drv").strip()
     broken_drv = machine.succeed("cat /etc/nexus-lab/broken-drv").strip()
-    assert "panic=5" in machine.succeed("cat /proc/cmdline")
+    # An ordinary boot does not reset on a failure; the trial-boot entry does.
+    assert "panic=5" not in cmdline(), cmdline()
+    assert "panic=5" in machine.succeed("cat /run/current-system/specialisation/guardian-trial/kernel-params").split()
 
     with subtest("Stage a healthy candidate for one trial boot"):
         decision = approved_decision("services.printing.enable", candidate, candidate_drv)
@@ -101,11 +110,13 @@ pkgs.testers.runNixOSTest {
         machine.reboot()
         machine.wait_for_unit("multi-user.target")
         machine.wait_for_unit("nexus-guardian-boot-check.service")
-        assert current() == candidate
+        assert current() == trial_of(candidate), "the trial did not boot the candidate's trial-boot entry"
+        assert "panic=5" in cmdline(), cmdline()
         assert events()[-1] == "confirmed", events()
         machine.reboot()
         machine.wait_for_unit("multi-user.target")
         assert current() == candidate, "confirmed generation did not persist"
+        assert "panic=5" not in cmdline(), "the confirmed generation's default entry resets on failure"
 
     with subtest("Broken trial boot panics and falls back with no human input"):
         decision = approved_decision("networking.networkmanager.enable", broken, broken_drv)
@@ -115,7 +126,7 @@ pkgs.testers.runNixOSTest {
         machine.wait_for_unit("multi-user.target")
         machine.wait_for_unit("nexus-guardian-boot-check.service")
         serial = re.sub(r"\x1b\[[0-9;:]*[A-Za-z]", "", machine.get_console_log()[offset:])
-        assert broken in serial, "serial log does not show the broken generation being tried"
+        assert trial_of(broken) in serial, "serial log does not show the broken generation being tried"
         assert re.search(r"Kernel panic|panic_on_fail|Rebooting in", serial), "no panic/auto-reboot evidence"
         assert current() == candidate, "did not fall back to the last confirmed generation"
         assert events()[-1] == "fell-back", events()

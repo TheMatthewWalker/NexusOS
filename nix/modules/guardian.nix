@@ -129,7 +129,7 @@ in
       panicRebootSeconds = lib.mkOption {
         type = lib.types.ints.between 1 300;
         default = 10;
-        description = "Reboot this many seconds after a kernel panic, so a failed boot falls back unattended.";
+        description = "During a trial boot, reboot this many seconds after a kernel panic, so a failed trial falls back unattended.";
       };
     };
   };
@@ -153,10 +153,20 @@ in
     };
 
     boot.loader.grub.default = lib.mkIf (cfg.staging.enable && cfg.staging.bootloader == "grub") "saved";
-    boot.kernelParams = lib.mkIf cfg.staging.enable [
-      "panic=${toString cfg.staging.panicRebootSeconds}"
-      "boot.panic_on_fail"
-    ];
+    # The trial boot's own entry: the same system, but a stage-1 failure panics
+    # and the panic resets, so a broken trial falls back unattended. Only the
+    # one-time trial boots it (stage_executor.py, TRIAL_SPECIALISATION); every
+    # other boot stops at a failure (a file system check that needs repair, say)
+    # and offers the repair shell instead of rebooting in a loop.
+    specialisation = lib.mkIf cfg.staging.enable {
+      guardian-trial.configuration = {
+        boot.kernelParams = [
+          "panic=${toString cfg.staging.panicRebootSeconds}"
+          "boot.panic_on_fail"
+        ];
+        boot.loader.grub.configurationName = "Guardian trial boot";
+      };
+    };
     systemd.services.nexus-guardian-boot-check = lib.mkIf cfg.staging.enable {
       description = "NexusOS Guardian trial-boot assessment";
       wantedBy = [ "multi-user.target" ];

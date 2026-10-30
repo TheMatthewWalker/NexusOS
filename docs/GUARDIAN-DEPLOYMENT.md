@@ -47,15 +47,19 @@ add such a rule on a NexusOS machine.
 ### Trial boots on systemd-boot
 
 Installed systems boot with systemd-boot. Staging keeps the baseline as the
-EFI default (`bootctl set-default`) and makes the candidate a one-shot entry
-(`bootctl set-oneshot`); entries are found by their exact `init=` path. With
-`panic=N boot.panic_on_fail`, a trial that fails resets and systemd-boot
-starts the baseline. The boot check then removes the EFI default (confirmed:
-loader.conf's newest entry is the candidate) or restores the baseline profile.
-`staging.bootloader` picks GRUB or systemd-boot from the configuration.
+EFI default (`bootctl set-default`) and makes the candidate's trial-boot entry
+a one-shot entry (`bootctl set-oneshot`); entries are found by their exact
+`init=` path. The trial-boot entry is the `guardian-trial` specialisation:
+the same system with `panic=N boot.panic_on_fail`, so a trial that fails
+resets and systemd-boot starts the baseline. The boot check then removes the
+EFI default (confirmed: loader.conf's newest entry is the candidate's plain
+entry) or restores the baseline profile. `staging.bootloader` picks GRUB or
+systemd-boot from the configuration; GRUB's `next_entry` names the same
+specialisation ("Guardian trial boot").
 
-Note: with `boot.panic_on_fail`, any failed boot resets instead of stopping
-at an emergency shell; earlier versions stay in the boot menu.
+Only the trial boot has those parameters. Every other boot, including the
+confirmed candidate's later boots, stops at an emergency shell on a stage-1
+failure (a file system check that needs repair, say) instead of rebooting.
 
 ### Status for the desktop
 
@@ -77,7 +81,7 @@ Import `nexusos.nixosModules.guardian` (see the README) and set:
 | `services.nexus-guardian.trustedBuilderKeys` | Base64 Ed25519 public keys of trusted builders (may be empty with `localBuilder.enable`) |
 | `services.nexus-guardian.localBuilder.enable` | This host builds, VM-tests and signs candidates itself, with a key made at first boot |
 | `services.nexus-guardian.desktopApproval.enable` | Approval with a password through polkit, and the staging service for the person's own decisions |
-| `services.nexus-guardian.staging.enable` | Trial boots (GRUB or systemd-boot, `staging.bootloader`): sets `panic=N boot.panic_on_fail` (and `boot.loader.grub.default = "saved"` on GRUB), and enables the boot check |
+| `services.nexus-guardian.staging.enable` | Trial boots (GRUB or systemd-boot, `staging.bootloader`): adds the `guardian-trial` specialisation (the trial-boot entry, with `panic=N boot.panic_on_fail`; no other entry has them), sets `boot.loader.grub.default = "saved"` on GRUB, and enables the boot check |
 | `services.nexus-guardian.staging.requiredUnits` | Units that must be active before a trial is confirmed |
 
 **Never** list the lab key in `nix/tests/lab-builder.pub`: it is public.

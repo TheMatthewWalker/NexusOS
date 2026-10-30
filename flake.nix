@@ -113,6 +113,13 @@
         };
         nexus-core = self.packages.${system}.nexus-core;
         nexus-shell = self.packages.${system}.nexus-shell;
+        # The installer image and the installed system evaluate (option
+        # conflicts between NexusOS and the installer profile show here),
+        # without building the 5 GB image.
+        iso-evaluates = pkgs.writeText "iso-evaluates" ''
+          ${builtins.unsafeDiscardStringContext self.packages.${system}.iso.drvPath}
+          ${builtins.unsafeDiscardStringContext self.nixosConfigurations.nexus-reference.config.system.build.toplevel.drvPath}
+        '';
         # Hyprland's own parser checks the generated configuration (window
         # rules, binds and options change between Hyprland releases).
         hyprland-config = let

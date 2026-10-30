@@ -7,11 +7,16 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
       ollamaModel = pkgs.callPackage ./nix/packages/ollama-model.nix { };
-      # The local model the installer image carries, once pinned with
-      # `nix run .#lock-model` (nix/models/). Without the lock file the image
-      # leaves the model to download after installation.
-      modelLock = ./nix/models/qwen3-8b.json;
-      bundledModel = if builtins.pathExists modelLock then ollamaModel.fromLock modelLock else null;
+      # The local models the installer image carries, once pinned with
+      # `nix run .#lock-model [-- name:tag]` (nix/models/*.json): one per
+      # kind of computer (qwen3:8b with a graphics card, qwen3:4b without).
+      # The installer copies the one chosen for the computer; a model not on
+      # the image downloads after installation.
+      modelDir = ./nix/models;
+      modelLocks = pkgs.lib.optionals (builtins.pathExists modelDir)
+        (map (f: modelDir + "/${f}") (builtins.filter (pkgs.lib.hasSuffix ".json") (builtins.attrNames (builtins.readDir modelDir))));
+      bundledModel = if modelLocks == [ ] then null
+        else pkgs.symlinkJoin { name = "nexus-models"; paths = map ollamaModel.fromLock modelLocks; };
     in {
       packages.${system} = {
         nexus-guardian = pkgs.callPackage ./nix/packages/nexus-guardian.nix { };

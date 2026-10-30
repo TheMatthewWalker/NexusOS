@@ -130,9 +130,12 @@ let
   # The login screen: greeter.qml in cage, a kiosk compositor. If it cannot
   # start (it exits within seconds without anyone logging in), the text
   # greeter takes over, so a broken login screen never locks anyone out.
+  # Who the login screen shows lives in /etc/nexus/greeter.env, not in this
+  # script: the script then ends up in greetd.toml the same on every computer,
+  # so an install from the USB stick needs nothing built for it (building a
+  # TOML file needs tools the stick does not carry).
   greeter = pkgs.writeShellScript "nexus-greeter-session" ''
-    export NEXUS_GREETER_USER=${lib.escapeShellArg (if cfg.greeter.user == null then "" else cfg.greeter.user)}
-    export NEXUS_GREETER_NAME=${lib.escapeShellArg cfg.greeter.fullName}
+    set -a; . /etc/nexus/greeter.env; set +a
     export NEXUS_GREETER_SESSION=${lib.escapeShellArg hyprland}
     export XDG_CACHE_HOME="''${XDG_RUNTIME_DIR:-/tmp}/cache"
     export WLR_NO_HARDWARE_CURSORS=1
@@ -301,6 +304,10 @@ in
     environment.etc."nexus/hyprland.conf".source = hyprlandConf;
     environment.etc."nexus/hyprlock.conf".source = hyprlockConf;
     environment.etc."nexus/desktop-apps.json".text = builtins.toJSON cfg.apps;
+    environment.etc."nexus/greeter.env".text = ''
+      NEXUS_GREETER_USER=${lib.escapeShellArg (if cfg.greeter.user == null then "" else cfg.greeter.user)}
+      NEXUS_GREETER_NAME=${lib.escapeShellArg cfg.greeter.fullName}
+    '';
     # gtk3 provides gtk-launch; Settings uses hyprsunset (night light),
     # brightnessctl, lspci (About) and xdg-open (Open folder). Explain mode
     # points with slurp, takes the area's picture with grim and reads the

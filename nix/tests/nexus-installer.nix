@@ -103,10 +103,15 @@ pkgs.testers.runNixOSTest {
         installer.succeed(
             "nexus-install --disk /dev/vda --user alice --full-name 'Alice Test'"
             " --password-file /tmp/pw --hostname nexus-test --timezone Europe/London"
-            " --extra-module /tmp/test.nix --yes >&2",
+            " --extra-module /tmp/test.nix --model nexus-test:tiny --yes >&2",
             timeout=7200)
         installer.succeed("test -f /mnt/etc/nixos/flake.lock && test -f /mnt/etc/nixos/nexusos/flake.nix")
         installer.succeed("grep -q 'nexusos.user = \"alice\"' /mnt/etc/nixos/local.nix")
+        # The hardware scan: no graphics card in this VM, so the model runs on the
+        # processor; the model asked for is the one written down and copied.
+        installer.succeed("grep -q 'nexusos.hardware.gpu = \"none\"' /mnt/etc/nixos/local.nix")
+        installer.succeed("grep -qE 'nexusos.hardware.memoryGiB = [0-9]+;' /mnt/etc/nixos/local.nix")
+        installer.succeed("grep -q 'services.nexus-core.ollamaModel = \"nexus-test:tiny\"' /mnt/etc/nixos/local.nix")
         installer.succeed("test -f /mnt/var/lib/nexus-model-seed/manifests/registry.ollama.ai/library/nexus-test/tiny")
         installer.succeed("umount -R /mnt")
         installer.succeed("sync")

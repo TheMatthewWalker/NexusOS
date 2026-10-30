@@ -17,14 +17,15 @@ On any Linux machine with Nix installed and flakes turned on:
 ```sh
 git clone https://github.com/TheMatthewWalker/NexusOS
 cd NexusOS
-nix run .#lock-model      # optional: put the local AI model (about 5 GB) on the image
+nix run .#lock-model                 # optional: the AI model for computers with a graphics card (about 5 GB)
+nix run .#lock-model -- qwen3:4b     # optional: the one for computers without (about 2.5 GB)
 nix build .#iso
 ls result/iso/            # nexusos-26.05-live-x86_64-linux.iso
 ```
 
 The build takes a while the first time; most of it is downloaded from the NixOS cache.
 
-`nix run .#lock-model` pins the default model, `qwen3:8b`, by writing `nix/models/qwen3-8b.json`: the list of the model's files with their SHA-256 checksums, from the Ollama registry. The image build then downloads the model and Nix checks every file against that list. Commit the file to keep it. Without it, the image is about 5 GB smaller and the model downloads after installation.
+`nix run .#lock-model` pins a model by writing `nix/models/<name>-<tag>.json` (for example `qwen3-8b.json`): the list of the model's files with their SHA-256 checksums, from the Ollama registry. The image build then downloads every pinned model and Nix checks each file against that list. Commit the files to keep them. The installer copies only the model it chose for the computer (see "Hardware" below); a model that is not on the image downloads after installation, once the computer is online.
 
 ## 2. Write it to a USB stick
 
@@ -85,6 +86,29 @@ Open **Settings, Network**: click the Wi-Fi icon in the top bar, the Network pla
 Nexus reads a built-in guide to NexusOS with every question, plus any notes you write. Put text or Markdown files in `~/.config/nexusos/assistant/` (**Settings, Privacy and AI, Open folder**): who you are, what you use the computer for, how you like answers. They are read each time, so a change takes effect on the next question. Nothing is uploaded or used to retrain the model.
 
 Nexus can also do things for you, but only from a fixed list of actions, never by running commands. Looking something up (your computer's state, its health, your files, your apps, today's activity) happens at once. Anything that changes something (opening an app, night light or volume, installing an app from Flathub, an automation, a picture) appears under the answer as a card saying what it will do: nothing happens until you press **Do it**, and changes to your settings can be undone in **Settings, Timeline**. Changes to the system itself (software for every account, services) are sent to Guardian with **Review the change**, and happen only once you approve them there. A cloud model, if you turn one on, is never given your files or your activity.
+
+## Hardware
+
+The installer looks at the computer and sets it up; you do not pick drivers. The summary before the install shows what it found:
+
+```
+  Processor: Intel(R) Core(TM) i5-1235U, 16 GB memory, laptop
+  Graphics:  Intel Iris Xe Graphics (built-in drivers)
+  Local AI:  qwen3:4b, on the processor, from the USB stick
+```
+
+| Found | What NexusOS does |
+|---|---|
+| Intel or AMD built-in graphics | The kernel and Mesa drivers, with video decoding (VA-API) for both makers |
+| Intel laptop | Intel's thermal daemon, so the processor does not throttle hard |
+| NVIDIA card | Its driver, below |
+| AMD card with 6 GB of its own memory or more | The local model runs on it (Vulkan) |
+| A graphics card for AI (NVIDIA, or AMD as above) | Local model `qwen3:8b` |
+| No such card, 8 GB of memory or more | `qwen3:4b` on the processor: about twice as fast there as the 8B model |
+| Less than 8 GB of memory | `qwen3:1.7b` |
+| No graphics card for AI and less than 16 GB of memory | Image generation is off (it needs about 8 GB of memory and a 7 GB download) |
+
+What it found is in `/etc/nixos/local.nix` under `nexusos.hardware`. To use another model, run `sudo nexus-install --model qwen3:8b`, or later set `services.nexus-core.ollamaModel` in `local.nix` and rebuild.
 
 ## NVIDIA graphics
 

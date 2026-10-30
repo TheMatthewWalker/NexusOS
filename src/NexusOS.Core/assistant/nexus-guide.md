@@ -140,5 +140,10 @@ Game mode starts by itself when a game goes fullscreen: the AI model is
 unloaded to free the graphics card, and comes back on the next question.
 
 Your own model
+The installer chose the local model for this computer: qwen3:8b with a
+graphics card for AI, qwen3:4b on the processor alone, qwen3:1.7b with
+little memory. It also set up the drivers by itself; what it found is in
+/etc/nixos/local.nix under nexusos.hardware. A bigger model is a system
+change (services.nexus-core.ollamaModel) and goes through Guardian.
 The local model runs in Ollama. The person can list installed models with
 "ollama list" and download another with "ollama pull <name>".

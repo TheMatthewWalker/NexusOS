@@ -10,7 +10,7 @@
 set -euo pipefail
 
 source_dir=/etc/nexusos
-disk="" user="" full_name="" password_file="" host="nexus" timezone="" assume_yes=0 extra_module="" nvidia=auto
+disk="" user="" full_name="" password_file="" host="nexus" timezone="" assume_yes=0 extra_module="" nvidia=auto model=""
 
 usage() {
   cat <<'EOF'
@@ -24,6 +24,7 @@ Usage: nexus-install [options]
   --source DIR          NexusOS source to install (default: /etc/nexusos)
   --extra-module FILE   also include this NixOS module (used by the VM test)
   --no-nvidia           do not set up the NVIDIA driver, even if a card is found
+  --model NAME:TAG      the local AI model (default: chosen for this computer)
   --yes                 do not ask for confirmation before erasing the disk
 EOF
 }
@@ -39,6 +40,7 @@ while [ $# -gt 0 ]; do
     --source) source_dir="$2"; shift 2 ;;
     --extra-module) extra_module="$2"; shift 2 ;;
     --no-nvidia) nvidia=off; shift ;;
+    --model) model="$2"; shift 2 ;;
     --yes) assume_yes=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -91,11 +93,12 @@ else
   while true; do
     read -rsp "Password: " password; echo
     read -rsp "Password again: " again; echo
-    [ "$password" = "$again" ] && break
-    echo "The passwords did not match. Try again."
+    if [ "$password" != "$again" ]; then echo "The passwords did not match. Try again."
+    elif [ ${#password} -lt 10 ]; then echo "Use at least 10 characters: it also approves system changes."
+    else break; fi
   done
 fi
-[ ${#password} -ge 6 ] || fail "use a password of at least 6 characters"
+[ ${#password} -ge 10 ] || fail "use a password of at least 10 characters"
 
 [[ "$host" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,62}$ ]] || fail "computer names use letters, digits and -"
 if [ -z "$timezone" ]; then
@@ -104,7 +107,10 @@ if [ -z "$timezone" ]; then
 fi
 [ -e "/etc/zoneinfo/$timezone" ] || [ "$timezone" = UTC ] || fail "unknown time zone $timezone"
 
-# --- Graphics ---------------------------------------------------------------
+# --- Hardware ---------------------------------------------------------------
+# Found here, written to local.nix, acted on by nix/modules/hardware.nix and
+# nix/modules/nvidia.nix: nobody picks drivers by hand.
+#
 # An NVIDIA card needs its own driver. Laptops that also have a built-in Intel
 # or AMD GPU use PRIME offload, which needs both cards' PCI bus IDs.
 # lspci -Dnn lines look like:
@@ -115,8 +121,13 @@ bus_id() {  # 0000:01:00.0 -> PCI:1:0:0 (decimal, as NixOS expects)
   bus="${slot%%:*}"; dev="${slot#*:}"; fn="${dev#*.}"; dev="${dev%.*}"
   printf 'PCI:%d:%d:%d' "$((16#$bus))" "$((16#$dev))" "$((16#$fn))"
 }
+# Where the scan reads from; the tests (tests/installer) point these at recordings.
+proc="${NEXUS_PROC:-/proc}" sys="${NEXUS_SYS:-/sys}"
+gpu_name() { sed -E 's/^[^ ]+ [^:]+: (.*) \[[0-9a-f]{4}:[0-9a-f]{4}\].*/\1/' <<<"$1"; }
+gpus="$(lspci -Dnn 2>/dev/null | grep -E '\[(0300|0302|0380)\]' || true)"
+intel="$(grep -E '\[8086:[0-9a-f]{4}\]' <<<"$gpus" | head -n1 || true)"
+amd="$(grep -E '\[1002:[0-9a-f]{4}\]' <<<"$gpus" | head -n1 || true)"
 if [ "$nvidia" = auto ]; then
-  gpus="$(lspci -Dnn | grep -E '\[(0300|0302|0380)\]' || true)"
   nvidia_lines="$(grep -E '\[10de:[0-9a-f]{4}\]' <<<"$gpus" || true)"
   if [ -n "$nvidia_lines" ]; then
     first="$(head -n1 <<<"$nvidia_lines")"
@@ -125,16 +136,56 @@ if [ "$nvidia" = auto ]; then
     device="$(grep -oE '\[10de:[0-9a-f]{4}\]' <<<"$first" | cut -c7-10)"
     # NVIDIA's open modules and current driver need Turing (device 0x1e00) or newer.
     if [ "$((16#$device))" -lt "$((16#1e00))" ]; then nvidia_open=false nvidia_driver=legacy_580; fi
-    intel="$(grep -E '\[8086:[0-9a-f]{4}\]' <<<"$gpus" | head -n1 || true)"
-    amd="$(grep -E '\[1002:[0-9a-f]{4}\]' <<<"$gpus" | head -n1 || true)"
     [ -n "$intel" ] && intel_bus="$(bus_id "${intel%% *}")"
     [ -n "$amd" ] && amd_bus="$(bus_id "${amd%% *}")"
   fi
 fi
-if [ -z "$nvidia_lines" ]; then graphics="no NVIDIA card (built-in drivers)"
-elif [ -n "$intel_bus$amd_bus" ]; then graphics="$nvidia_name, with the built-in GPU running the desktop (PRIME offload)"
-else graphics="$nvidia_name"
+# An AMD GPU's own memory (amdgpu reports it; built-in ones show a small carve-out).
+amd_vram_gib=0
+for f in "$sys"/class/drm/card*/device/mem_info_vram_total; do
+  [ -r "$f" ] || continue
+  grep -q 0x1002 "$(dirname "$f")/vendor" 2>/dev/null || continue
+  v=$(( $(cat "$f") / 1073741824 )); [ "$v" -gt "$amd_vram_gib" ] && amd_vram_gib=$v
+done
+if [ -n "$nvidia_lines" ]; then gpu=nvidia
+elif [ -n "$amd" ]; then gpu=amd
+elif [ -n "$intel" ]; then gpu=intel
+else gpu=none
 fi
+case "$(grep -m1 '^vendor_id' "$proc/cpuinfo" 2>/dev/null | awk '{print $3}')" in
+  GenuineIntel) cpu=intel ;; AuthenticAMD) cpu=amd ;; *) cpu=other ;;
+esac
+cpu_name="$(grep -m1 '^model name' "$proc/cpuinfo" 2>/dev/null | cut -d: -f2- | sed 's/^ *//')"
+memory_gib=$(( ($(awk '/^MemTotal:/ {print $2}' "$proc/meminfo") + 524288) / 1048576 ))
+# A battery, or a portable chassis type (SMBIOS: 8-10 portable/laptop/notebook,
+# 14 sub-notebook, 31 convertible, 32 detachable).
+laptop=false
+if ls "$sys"/class/power_supply/BAT* > /dev/null 2>&1; then laptop=true
+else
+  case "$(cat "$sys/class/dmi/id/chassis_type" 2>/dev/null)" in 8|9|10|14|31|32) laptop=true ;; esac
+fi
+# The model nix/modules/hardware.nix chooses for this computer (kept in step with it).
+if [ "$gpu" = nvidia ] || { [ "$gpu" = amd ] && [ "$amd_vram_gib" -ge 6 ]; }; then ai_model="qwen3:8b" ai_where="on the graphics card"
+elif [ "$memory_gib" -ge 8 ]; then ai_model="qwen3:4b" ai_where="on the processor"
+else ai_model="qwen3:1.7b" ai_where="on the processor"
+fi
+if [ -n "$model" ]; then
+  [[ "$model" =~ ^[a-z0-9][a-z0-9._-]*:[a-z0-9._-]+$ ]] || fail "--model takes a library model as name:tag, for example qwen3:4b"
+  ai_model="$model" ai_where="as asked"
+fi
+models_dir="${NEXUS_MODELS:-/etc/nexusos-model}/manifests/registry.ollama.ai/library"
+ai_manifest="$models_dir/${ai_model%%:*}/${ai_model#*:}"
+if [ -f "$ai_manifest" ]; then ai_where="$ai_where, from the USB stick"
+else ai_where="$ai_where, downloaded once the computer is online"
+fi
+
+if [ -n "$nvidia_lines" ] && [ -n "$intel_bus$amd_bus" ]; then graphics="$nvidia_name, with the built-in GPU running the desktop (PRIME offload)"
+elif [ -n "$nvidia_lines" ]; then graphics="$nvidia_name"
+elif [ -n "$amd" ]; then graphics="$(gpu_name "$amd") (built-in drivers)"
+elif [ -n "$intel" ]; then graphics="$(gpu_name "$intel") (built-in drivers)"
+else graphics="basic display (no graphics processor found)"
+fi
+[ "$nvidia" = off ] && [ -n "$(grep -E '\[10de:' <<<"$gpus" || true)" ] && graphics="$graphics; NVIDIA card left without its driver (--no-nvidia)"
 
 # --- Confirm ----------------------------------------------------------------
 say "Ready to install"
@@ -142,7 +193,9 @@ echo "  Disk:      $disk ($(lsblk -dno SIZE "$disk")) — everything on it will 
 echo "  User:      $user"
 echo "  Computer:  $host"
 echo "  Time zone: $timezone"
+echo "  Processor: ${cpu_name:-unknown}, ${memory_gib} GB memory$([ "$laptop" = true ] && echo ", laptop")"
 echo "  Graphics:  $graphics"
+echo "  Local AI:  $ai_model, $ai_where"
 if [ "$assume_yes" -ne 1 ]; then
   echo
   read -rp "Type the disk name ($disk) to erase it and install: " answer
@@ -220,11 +273,17 @@ cat > /mnt/etc/nixos/local.nix <<EOF
   time.timeZone = $(nix_string "$timezone");
 }
 EOF
-if [ -n "$nvidia_lines" ]; then
-  # Insert before the closing brace of local.nix.
-  sed -i '$d' /mnt/etc/nixos/local.nix
-  {
-    echo "  # Found by nexus-install: $nvidia_name"
+# What the hardware scan found (nix/modules/hardware.nix), before the closing brace.
+sed -i '$d' /mnt/etc/nixos/local.nix
+{
+  echo "  # Found by nexus-install: ${cpu_name:-processor}; $graphics"
+  echo "  nexusos.hardware.cpu = \"$cpu\";"
+  echo "  nexusos.hardware.gpu = \"$gpu\";"
+  [ "$amd_vram_gib" -eq 0 ] || echo "  nexusos.hardware.gpuMemoryGiB = $amd_vram_gib;"
+  echo "  nexusos.hardware.memoryGiB = $memory_gib;"
+  echo "  nexusos.hardware.laptop = $laptop;"
+  [ -z "$model" ] || echo "  services.nexus-core.ollamaModel = \"$model\";"
+  if [ -n "$nvidia_lines" ]; then
     echo "  nexusos.nvidia.enable = true;"
     [ "$nvidia_open" = true ] || echo "  nexusos.nvidia.open = false;"
     [ "$nvidia_driver" = stable ] || echo "  nexusos.nvidia.driver = \"$nvidia_driver\";"
@@ -233,9 +292,9 @@ if [ -n "$nvidia_lines" ]; then
       [ -z "$intel_bus" ] || echo "  nexusos.nvidia.prime.intelBusId = \"$intel_bus\";"
       [ -z "$amd_bus" ] || echo "  nexusos.nvidia.prime.amdgpuBusId = \"$amd_bus\";"
     fi
-    echo "}"
-  } >> /mnt/etc/nixos/local.nix
-fi
+  fi
+  echo "}"
+} >> /mnt/etc/nixos/local.nix
 
 # --- Install ----------------------------------------------------------------
 say "Installing NexusOS (this takes a while)"
@@ -252,12 +311,18 @@ fi
 nix --extra-experimental-features "nix-command flakes" flake lock "path:/mnt/etc/nixos" "${offline[@]}"
 nixos-install --root /mnt --flake "path:/mnt/etc/nixos#nexus" --no-root-passwd --no-channel-copy "${offline[@]}"
 
-# The local model, if the image carries one: first boot hands it to Ollama
-# (nexus-model-pull), so Nexus answers without downloading it.
-if [ -d /etc/nexusos-model/manifests ]; then
-  say "Copying the local AI model"
-  mkdir -p /mnt/var/lib/nexus-model-seed
-  cp -rL --no-preserve=ownership,mode /etc/nexusos-model/. /mnt/var/lib/nexus-model-seed/
+# The local model, if the image carries the one chosen above: first boot
+# hands it to Ollama (nexus-model-pull), so Nexus answers without
+# downloading it. Only that model's manifest and files are copied.
+if [ -f "$ai_manifest" ]; then
+  say "Copying the local AI model ($ai_model)"
+  seed=/mnt/var/lib/nexus-model-seed
+  rel="${ai_manifest#/etc/nexusos-model/}"
+  mkdir -p "$seed/blobs" "$(dirname "$seed/$rel")"
+  cp -L --no-preserve=ownership,mode "$ai_manifest" "$seed/$rel"
+  for digest in $(grep -oE 'sha256:[0-9a-f]{64}' "$ai_manifest" | sort -u); do
+    cp -L --no-preserve=ownership,mode "/etc/nexusos-model/blobs/${digest/:/-}" "$seed/blobs/"
+  done
 fi
 
 say "Setting your password"

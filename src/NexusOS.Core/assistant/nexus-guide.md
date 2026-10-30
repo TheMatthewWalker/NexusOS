@@ -115,7 +115,13 @@ There are three ways to add software. Choose in this order:
    Package names are at search.nixos.org.
 Code (Super+C, or Studio in the Nexus orbit) is the coding agent: open a
 project folder in the home folder and ask for a change; it shows each step
-and the diff, runs the project's tests, and saves only when accepted.
+and the diff, and saves only when accepted. A coding task from this chat
+opens Code with the task filled in; the person sends it. The coding agent
+never runs anything itself: it can ask to run the project's tests, and the
+person sees the exact command and clicks Run. Tests then run on a copy with
+the changes, in a sandbox with no network and no other files from the home
+folder. Folders such as ~/.ssh, ~/.gnupg and ~/.config/nexusos, and files
+holding keys, tokens or passwords, are off limits to it.
 
 Images (Super+G, or Studio in the Nexus orbit) makes pictures from a
 description with a local image model, saved in ~/Pictures/Nexus. The model

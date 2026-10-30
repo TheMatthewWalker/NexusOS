@@ -350,13 +350,15 @@ async IAsyncEnumerable<JsonElement> StreamEvents(string path, object body)
 //   {"id":10,"op":"code-start","folder":"~/projects/app"} -> {"type":"code-session","data":{"id":..,"folder":..,"tests":..}}
 //   {"id":11,"op":"code-send","session":"..","text":"fix the bug"} -> step events, changes, message, done
 //   {"id":12,"op":"code-accept","session":"..","files":["a.py"]|null} | code-reject | code-undo
+//   {"id":13,"op":"code-run","session":"..","run":".."}  the person's Run on the agent's test card -> {"type":"code-result","data":{"type":"test-result",..}}
+//   {"id":14,"op":"code-dismiss","session":"..","run":".."} | {"id":15,"op":"code-stop","session":".."}
 // Images (ImageStudio.cs):
 //   {"op":"images-status"} | {"op":"images-list"} | {"op":"images-delete","name":".."}
 //   {"op":"images-generate","prompt":"..","shape":"landscape","count":4,"style":"painterly","seed":-1}
 // Any other Core request the desktop's pages need, limited to these areas:
 //   {"op":"api","method":"GET","path":"/journal?limit=50"}  -> {"type":"api","data":...}
 //   {"op":"api","method":"POST","path":"/fixit","body":{"problem":"no sound"}}
-// Streaming requests (chat, code-send) and image generation run alongside the others, so a long
+// Streaming requests (chat, code-send), test runs and image generation run alongside the others, so a long
 // answer never holds up a health check or a click.
 async Task<int> Bridge()
 {
@@ -407,6 +409,17 @@ async Task<int> Bridge()
             });
             continue;
         }
+        if (op == "code-run")
+        {
+            var runPath = $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/runs/{Uri.EscapeDataString(Arg("run"))}/confirm";
+            _ = Task.Run(async () =>
+            {
+                try { Emit(id, await Call(HttpMethod.Post, runPath, new { }, "code-result")); }
+                catch (HttpRequestException) { Emit(id, new { type = "error", message = "Nexus Core is not reachable." }); }
+                catch (TaskCanceledException) { Emit(id, new { type = "error", message = "The tests took too long." }); }
+            });
+            continue;
+        }
         if (op is "chat" or "code-send")
         {
             var path = op == "chat" ? "/chat/stream" : $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/messages";
@@ -443,6 +456,12 @@ async Task<int> Bridge()
                 case "code-reject":
                 case "code-undo":
                     Emit(id, await Call(HttpMethod.Post, $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/{op[5..]}", new { }, "code-result"));
+                    break;
+                case "code-dismiss":
+                    Emit(id, await Call(HttpMethod.Post, $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/runs/{Uri.EscapeDataString(Arg("run"))}/dismiss", new { }, "code-result"));
+                    break;
+                case "code-stop":
+                    Emit(id, await Call(HttpMethod.Post, $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/runs/stop", new { }, "code-result"));
                     break;
                 case "suggest":
                     var model = req.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.True;

@@ -18,4 +18,6 @@ pkgs: with pkgs; [
   remarshal
   # What the hardware scan can turn on beyond the reference system.
   thermald
+  # Encrypted disks: the initrd that unlocks them is built for each computer.
+  cryptsetup
 ]

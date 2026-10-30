@@ -98,6 +98,9 @@ pkgs.testers.runNixOSTest {
       # Boot the default entry at once: in the test harness the boot menu's
       # countdown can stop and wait for a key that never comes.
       boot.loader.timeout = 0;
+      # The serial line last, so it is the console the initrd asks for the
+      # disk's password on, and the test can answer there.
+      boot.kernelParams = [ "console=ttyS0,115200" ];
     }
     EOF""")
         installer.succeed(
@@ -121,11 +124,19 @@ pkgs.testers.runNixOSTest {
     target.state_dir = installer.state_dir
     target.start()
 
+    with subtest("the encrypted disk opens with alice's password"):
+        target.wait_for_console_text("Passphrase for", timeout=600)
+        target.send_console("nexus-test-pw\n")
+
     with subtest("the installed system boots as NexusOS"):
         target.wait_for_unit("multi-user.target")
         target.succeed("grep -q '^NAME=NexusOS' /etc/os-release")
         assert "nexus-test" in target.succeed("hostname")
         target.succeed("test -e /boot/loader/loader.conf")
+        # The root filesystem is inside LUKS2, which the hardware scan wrote down.
+        target.succeed("cryptsetup status nexusos-root | grep -q 'type:    LUKS2'")
+        target.succeed("findmnt -no SOURCE / | grep -qx /dev/mapper/nexusos-root")
+        target.succeed("grep -q 'boot.initrd.luks.devices' /etc/nixos/hardware-configuration.nix")
 
     with subtest("alice exists, with her password set and sudo through wheel"):
         target.succeed("id alice | grep -q wheel")

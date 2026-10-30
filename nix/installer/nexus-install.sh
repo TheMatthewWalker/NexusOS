@@ -10,7 +10,7 @@
 set -euo pipefail
 
 source_dir=/etc/nexusos
-disk="" user="" full_name="" password_file="" host="nexus" timezone="" assume_yes=0 extra_module="" nvidia=auto model=""
+disk="" user="" full_name="" password_file="" host="nexus" timezone="" assume_yes=0 extra_module="" nvidia=auto model="" encrypt=1
 
 usage() {
   cat <<'EOF'
@@ -25,6 +25,7 @@ Usage: nexus-install [options]
   --extra-module FILE   also include this NixOS module (used by the VM test)
   --no-nvidia           do not set up the NVIDIA driver, even if a card is found
   --model NAME:TAG      the local AI model (default: chosen for this computer)
+  --no-encrypt          do not encrypt the disk (by default your password unlocks it at start-up)
   --yes                 do not ask for confirmation before erasing the disk
 EOF
 }
@@ -41,6 +42,7 @@ while [ $# -gt 0 ]; do
     --extra-module) extra_module="$2"; shift 2 ;;
     --no-nvidia) nvidia=off; shift ;;
     --model) model="$2"; shift 2 ;;
+    --no-encrypt) encrypt=0; shift ;;
     --yes) assume_yes=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -190,6 +192,11 @@ fi
 # --- Confirm ----------------------------------------------------------------
 say "Ready to install"
 echo "  Disk:      $disk ($(lsblk -dno SIZE "$disk")) — everything on it will be erased"
+if [ "$encrypt" -eq 1 ]; then
+  echo "  Encrypted: yes; your password unlocks the disk when the computer starts"
+else
+  echo "  Encrypted: no (--no-encrypt)"
+fi
 echo "  User:      $user"
 echo "  Computer:  $host"
 echo "  Time zone: $timezone"
@@ -205,6 +212,7 @@ fi
 # --- Partition and format ---------------------------------------------------
 say "Preparing $disk"
 umount -R /mnt 2>/dev/null || true
+cryptsetup close nexusos-root 2>/dev/null || true
 wipefs -af "$disk" > /dev/null
 parted -s "$disk" -- mklabel gpt \
   mkpart ESP fat32 1MiB 1GiB set 1 esp on \
@@ -225,11 +233,21 @@ boot_part="${parts[0]}" root_part="${parts[1]}"
 # new partitions; wipe them so nothing mistakes a partition for its old self.
 wipefs -af "$boot_part" "$root_part" > /dev/null
 mkfs.fat -F 32 -n BOOT "$boot_part" > /dev/null
-mkfs.ext4 -q -F -L nexusos "$root_part"
+# Encryption: LUKS2 around the root filesystem, unlocked with the person's
+# password before anything else starts. Without the password, a lost or
+# stolen disk shows nothing: not the files, not Guardian's builder key.
+# nixos-generate-config finds the encrypted partition and has the initrd ask.
+root_fs="$root_part"
+if [ "$encrypt" -eq 1 ]; then
+  printf '%s' "$password" | cryptsetup luksFormat --type luks2 --batch-mode --label nexusos-crypt --key-file=- "$root_part"
+  printf '%s' "$password" | cryptsetup open --key-file=- --allow-discards "$root_part" nexusos-root
+  root_fs=/dev/mapper/nexusos-root
+fi
+mkfs.ext4 -q -F -L nexusos "$root_fs"
 udevadm settle
 [ "$(blkid -p -o value -s TYPE "$boot_part")" = vfat ] || fail "$boot_part did not format as FAT"
-[ "$(blkid -p -o value -s TYPE "$root_part")" = ext4 ] || fail "$root_part did not format as ext4"
-mount -t ext4 "$root_part" /mnt
+[ "$(blkid -p -o value -s TYPE "$root_fs")" = ext4 ] || fail "$root_fs did not format as ext4"
+mount -t ext4 "$root_fs" /mnt
 mkdir -p /mnt/boot
 mount -t vfat -o umask=0077 "$boot_part" /mnt/boot
 

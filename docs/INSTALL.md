@@ -55,13 +55,15 @@ The live desktop starts by itself, with a terminal called **Install NexusOS**:
 2. In the **Install NexusOS** terminal, press Enter. If you closed it, press Super+Return (or Ctrl+Alt+T) for a new terminal and run `sudo nexus-install`.
 3. The installer asks for:
    - the disk to install to (it lists the disks with their sizes and models);
-   - your login name, full name and password;
+   - your login name, full name and password (at least 10 characters: it also unlocks the disk and approves system changes);
    - then you type the disk name again to confirm it may be erased.
 
    It then partitions the disk, writes the configuration and installs NexusOS from the stick. That takes 5–30 minutes, depending on your disk.
 4. When it says **NexusOS is installed**, remove the stick and restart.
 
-On the first start, NexusOS asks for your password.
+Each start, NexusOS asks for your password twice: first to unlock the encrypted disk (a text prompt, before anything else runs), then on the login screen.
+
+The disk is encrypted (LUKS2) so a lost or stolen computer shows nothing without the password. If you change your login password later, the disk keeps the old one until you change it too: `sudo cryptsetup luksChangeKey /dev/disk/by-label/nexusos-crypt`. To install without encryption, run `sudo nexus-install --no-encrypt`.
 
 ![The installed system's login screen, then the NexusOS desktop](evidence/img/M7-installed-desktop.png)
  If the stick carried the local model, Nexus can answer straight away. Otherwise NexusOS downloads the model in the background once it is online (about 5 GB); until then, Nexus says it is unavailable and apps work as normal.
@@ -132,7 +134,7 @@ Windows keeps the Super (Windows) key for itself, so Super shortcuts do not reac
 
 | Step | Detail |
 |---|---|
-| Disk | A GPT table with a 1 GiB EFI system partition (`BOOT`) and an ext4 root (`nexusos`) |
+| Disk | A GPT table with a 1 GiB EFI system partition (`BOOT`) and an ext4 root (`nexusos`) inside LUKS2 encryption (`nexusos-crypt`), unlocked with your password |
 | Source | The NexusOS source from the stick is copied to `/etc/nixos/nexusos` |
 | Configuration | `/etc/nixos/flake.nix` imports NexusOS. `/etc/nixos/local.nix` holds your user name, computer name and time zone. `/etc/nixos/hardware-configuration.nix` is generated for your hardware |
 | Boot loader | systemd-boot, keeping the last 20 system versions. Pick an older one at start-up if an update goes wrong |

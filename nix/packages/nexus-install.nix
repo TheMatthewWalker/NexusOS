@@ -1,7 +1,7 @@
 { writeShellApplication, parted, dosfstools, e2fsprogs, util-linux, nixos-install-tools
-, nix, coreutils, gnugrep, gawk, gnused, systemd, pciutils, curl }:
+, nix, coreutils, gnugrep, gawk, gnused, systemd, pciutils, curl, cryptsetup }:
 writeShellApplication {
   name = "nexus-install";
-  runtimeInputs = [ parted dosfstools e2fsprogs util-linux nixos-install-tools nix coreutils gnugrep gawk gnused systemd pciutils curl ];
+  runtimeInputs = [ parted dosfstools e2fsprogs util-linux nixos-install-tools nix coreutils gnugrep gawk gnused systemd pciutils curl cryptsetup ];
   text = builtins.readFile ../installer/nexus-install.sh;
 }

@@ -15,6 +15,8 @@ pkgs.testers.runNixOSTest {
     users.users.alice = { isNormalUser = true; uid = 1000; password = "nexus"; };
     services.nexus-desktop = {
       enable = true;
+      # No Welcome window over the desktop the test drives.
+      firstRun = false;
       autologinUser = "alice";
       # Software rendering in a VM: keep the test fast and deterministic.
       reducedMotion = true;
@@ -88,10 +90,27 @@ pkgs.testers.runNixOSTest {
                 raise AssertionError(f"{name}: nothing drawn at {x},{y} after {timeout}s")
             time.sleep(5)
 
+    def user_unit(args):
+        return alice("XDG_RUNTIME_DIR=/run/user/1000 systemctl --user " + args).strip()
+
+    def unit_value(unit, prop):
+        return user_unit(f"show -p {prop} --value {unit}")
+
+    def until(check, timeout, what):
+        deadline = time.time() + timeout
+        while not check():
+            if time.time() > deadline:
+                diagnostics()
+                raise AssertionError(f"{what} after {timeout}s")
+            time.sleep(2)
+
     def diagnostics():
         print(machine.execute("journalctl -b --no-pager -t nexus-shell | tail -60")[1])
+        print(machine.execute("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 systemctl --user status --no-pager nexus-shell nexus-session.target'")[1])
         print(machine.execute("journalctl -b --no-pager --user-unit nexus-core -M alice@ | tail -20")[1])
-        print(machine.execute("ps -eo pid,user,args | grep -E 'quickshell|nexus|Hyprland' | grep -v grep")[1])
+        print(machine.execute("ps -eo pid,user,args | grep -E 'quickshell|nexus|Hyprland|kitty' | grep -v grep")[1])
+        print(machine.execute("su - alice -c 'HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl clients; HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl layers'")[1])
+        machine.screenshot("diagnostics")
 
     def open_from_orbit(app, clients_before):
         """Bring every app into orbit, then open one. Software rendering can drop a
@@ -132,11 +151,34 @@ pkgs.testers.runNixOSTest {
             "su - alice -c 'HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl layers' | grep -q nexus-spaceui",
             timeout=600)
         layers = hypr("layers")
-        for ns in ("nexus-spaceui", "nexus-wallpaper", "nexus-system-panel", "nexus-reserve"):
+        for ns in ("nexus-spaceui", "nexus-wallpaper", "nexus-orbital-controls", "nexus-top-bar", "nexus-reserve"):
             assert ns in layers, f"{ns} missing:\n{layers}"
         print(machine.execute("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' 2>&1")[1])
         wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":true'", 300)
         wait_drawn("01-desktop", *LAUNCHER, r=10, threshold=300)
+
+    with subtest("the shell is a user service and comes back after a crash"):
+        assert user_unit("is-active nexus-shell.service") == "active"
+        assert user_unit("is-active nexus-session.target") == "active"
+        pid = unit_value("nexus-shell.service", "MainPID")
+        assert pid != "0", pid
+        # The service's own process is the shell itself, not a child of Hyprland's exec-once.
+        cgroup = machine.succeed(f"cat /proc/{pid}/cgroup")
+        assert "nexus-shell.service" in cgroup, cgroup
+        args = machine.succeed(f"tr '\\0' ' ' < /proc/{pid}/cmdline")
+        assert "shell.qml" in args, args
+        # The shell is the session's polkit agent (the Guardian password prompt).
+        wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call guardian state' | grep -q '\"polkitRegistered\":true'", 120)
+        restarts = int(unit_value("nexus-shell.service", "NRestarts"))
+        machine.succeed(f"kill -9 {pid}")
+        until(lambda: unit_value("nexus-shell.service", "MainPID") not in ("0", pid), 60, "the shell did not come back")
+        assert user_unit("is-active nexus-shell.service") == "active"
+        assert int(unit_value("nexus-shell.service", "NRestarts")) == restarts + 1
+        # Back with everything: its layers, Core, the polkit agent and the launcher.
+        wait("su - alice -c 'HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl layers' | grep -q nexus-top-bar", 300)
+        wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":true'", 300)
+        wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call guardian state' | grep -q '\"polkitRegistered\":true'", 120)
+        wait_drawn("01-desktop-after-crash", *LAUNCHER, r=10, threshold=300)
 
     with subtest("the launcher opens the full core"):
         click(*LAUNCHER)
@@ -168,7 +210,15 @@ pkgs.testers.runNixOSTest {
         wait_drawn("05-offline", *CORE, r=20, threshold=450)
         open_from_orbit("terminal", 1)
         alice("XDG_RUNTIME_DIR=/run/user/1000 systemctl --user start nexus-core")
-        wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":true'", 60)
+        # Core takes a while to start under software emulation.
+        wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":true'", 180)
+
+    with subtest("Core comes back after a crash"):
+        restarts = int(unit_value("nexus-core.service", "NRestarts"))
+        user_unit("kill -s KILL nexus-core.service")
+        until(lambda: int(unit_value("nexus-core.service", "NRestarts")) > restarts, 60, "Core was not restarted")
+        wait("su - alice -c 'nexus health'", 180)
+        wait("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call nexus state' | grep -q '\"online\":true'", 180)
 
     with subtest("the lock screen covers the shell"):
         before = shot("06-before-lock")

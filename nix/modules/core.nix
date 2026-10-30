@@ -8,6 +8,8 @@ let
     NEXUS_OLLAMA_MODEL = cfg.ollamaModel;
     NEXUS_CLOUD_EGRESS_ALLOWED = lib.boolToString cfg.allowCloudEgress;
     NEXUS_GUARDIAN_SOCKET = "/run/nexus-guardian/review.sock";
+    # The coding agent runs a project's tests only inside bubblewrap, never without it.
+    NEXUS_BWRAP = "${pkgs.bubblewrap}/bin/bwrap";
   } // cfg.extraEnvironment;
 in
 {
@@ -23,7 +25,7 @@ in
     };
     ollamaModel = lib.mkOption {
       type = lib.types.str;
-      default = "llama3.2:3b";
+      default = "qwen3:8b";
       description = "Local Ollama model used by the default provider.";
     };
     allowCloudEgress = lib.mkOption {
@@ -41,6 +43,8 @@ in
 
   config = lib.mkIf cfg.enable {
     environment.systemPackages = [ cfg.package ];
+    # bubblewrap (the coding agent's test sandbox) runs unprivileged, in a user namespace.
+    security.allowUserNamespaces = lib.mkDefault true;
     systemd.user.services.nexus-core = {
       description = "Nexus Core (per-user AI daemon)";
       wantedBy = [ "default.target" ];
@@ -48,10 +52,16 @@ in
       # also get a user manager, and have no writable home for Core's state.
       unitConfig.ConditionUser = "!@system";
       inherit environment;
+      # Core always comes back, however often it fails: the wait between
+      # restarts grows from 2 seconds to a minute, and it is never given up on
+      # (only `systemctl --user stop` keeps it stopped).
+      startLimitIntervalSec = 0;
       serviceConfig = {
         ExecStart = "${cfg.package}/bin/nexus-core";
-        Restart = "on-failure";
+        Restart = "always";
         RestartSec = 2;
+        RestartSteps = 6;
+        RestartMaxDelaySec = 60;
         NoNewPrivileges = true;
         UMask = "0077";
       };

@@ -39,6 +39,9 @@ else
 builder.Services.AddHttpClient("ai", client => client.Timeout = TimeSpan.FromSeconds(180))
     .RedactLoggedHeaders(_ => true)
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false });
+// The local image model (ImageStudio.cs): loopback only, and an image can take minutes on a CPU.
+builder.Services.AddHttpClient("images", client => client.Timeout = TimeSpan.FromMinutes(10))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false });
 builder.Services.AddHttpClient("cloud", client => client.Timeout = TimeSpan.FromSeconds(180))
     .RedactLoggedHeaders(_ => true)
     .ConfigurePrimaryHttpMessageHandler(() => CloudHttp.CreateHandler(CloudConnector.Default));
@@ -59,17 +62,24 @@ builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceActivity>();
 builder.Services.AddSingleton<InferenceConcurrencyGate>();
 builder.Services.AddSingleton<InferenceTokenSettings>();
+builder.Services.AddSingleton<AssistantContextBuilder>();
+builder.Services.AddSingleton<CodingAgent>();
+builder.Services.AddSingleton<ImageStudio>();
 // Automations in plain words: rule store, engine, parser and timer (RuleEndpoints.cs).
 builder.Services.AddRules();
 builder.Services.AddHostedService<IdleModelEvictionService>();
 builder.Services.AddSingleton<MemoryTelemetry>();
 builder.Services.AddSingleton<GuardianBrokerClient>();
+// System changes waiting for the person, for the Guardian dialog (GuardianProposals.cs).
+builder.Services.AddGuardianProposals();
 builder.Services.AddSingleton<GuardianProposer>();
 builder.Services.AddSingleton<AppSuggester>();
 builder.Services.AddSingleton<LocalApiToken>();
 // Fix it and the health report: read-only probes and the fix library (FixIt.cs).
 builder.Services.AddFixIt();
 builder.Services.AddNexusSearch(); // Private search (M8): SearchEndpoints.cs
+builder.Services.AddWorkspaces(); // Workspaces that remember: Workspaces.cs
+builder.Services.AddNexusActions(); // What Nexus can do from the chat: NexusActions.cs, NexusChat.cs
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -116,7 +126,8 @@ app.MapPost("/providers/select", (SelectRequest request, ProviderStore store) =>
 app.MapDelete("/history", async (ConversationStore history, RuleStore rules, CancellationToken ct) =>
     { await history.ClearAsync(ct); await rules.ClearRunsAsync(ct); return Results.NoContent(); });
 app.MapGet("/history", async (ConversationStore history, CancellationToken ct) => Results.Ok(await history.RecentAsync(50, ct)));
-app.MapPost("/chat", async (ChatRequest request, ModelRouter router, ConversationStore history, InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
+app.MapPost("/chat", async (ChatRequest request, ModelRouter router, ConversationStore history, AssistantContextBuilder assistant,
+    InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
@@ -126,7 +137,7 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
     {
         activity.BeginRequest();
         (string response, string provider) answer;
-        try { answer = await router.AskAsync(request.Prompt, ct); }
+        try { answer = await router.AskAsync(request.Prompt, ct, await assistant.BuildAsync(request.Prompt, ct)); }
         finally { activity.EndRequest(); }
         var (response, provider) = answer;
         await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, provider, request.Prompt, response), ct);
@@ -139,17 +150,20 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
 }).RequireRateLimiting("ai");
 // Streams the answer as newline-delimited JSON events:
 //   {"type":"delta","text":"..."}  repeated, then {"type":"done","provider":"..."}
+// With actions (NexusChat.cs), between them:
+//   {"type":"tool","name":"search_files","status":"running|done|rejected","summary":"Searching your files"}
+//   {"type":"action","id":"..","actionId":"..","action":"change_setting","args":{..},"safety":"personal|system","summary":"Turn night light on",
+//    "plan":{..} for system actions}  -- waits for POST /actions/{id}/confirm or /decline
 // An error before the first piece is an ordinary HTTP problem response; an
 // error mid-answer becomes {"type":"error","message":"..."}. Only completed
 // answers are written to history.
-app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, ModelRouter router, ConversationStore history,
-    InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
+app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, NexusChat chat, ConversationStore history,
+    AssistantContextBuilder assistant, InferenceActivity activity, InferenceConcurrencyGate concurrency, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
     using var slot = await concurrency.TryEnterAsync(ct);
     if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
-    var answer = new System.Text.StringBuilder();
     var started = false;
     async Task WriteEvent(object value)
     {
@@ -165,14 +179,10 @@ app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, ModelR
     activity.BeginRequest();
     try
     {
-        var (pieces, provider) = router.Stream(request.Prompt, ct);
-        await foreach (var piece in pieces)
-        {
-            answer.Append(piece);
-            await WriteEvent(new { type = "delta", text = piece });
-        }
-        await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, provider, request.Prompt, answer.ToString()), ct);
-        await WriteEvent(new { type = "done", provider });
+        var context = await assistant.BuildAsync(request.Prompt, ct, chat.ReservedChars);
+        var turn = await chat.RunAsync(request.Prompt, context, WriteEvent, ct);
+        await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, turn.Provider, request.Prompt, turn.ForHistory), ct);
+        await WriteEvent(new { type = "done", provider = turn.Provider });
         return Results.Empty;
     }
     catch (ProviderException ex)
@@ -209,8 +219,10 @@ app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
 });
 // The model may only *propose* a typed plan; the response is a preview the
 // user must explicitly submit. Invalid model output is rejected outright.
+// A plan is also recorded as a proposal for the Guardian dialog ("waiting":
+// nothing is sent to the broker until the person chooses Approve there).
 app.MapPost("/guardian/propose", async (GuardianProposeRequest request, GuardianProposer proposer,
-    InferenceConcurrencyGate concurrency, ActivityJournal journal, CancellationToken ct) =>
+    InferenceConcurrencyGate concurrency, ActivityJournal journal, GuardianProposals proposals, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Request) || request.Request.Length > GuardianProposer.MaxRequestLength)
         return Results.BadRequest(new { error = $"Request must be 1-{GuardianProposer.MaxRequestLength} characters." });
@@ -222,10 +234,13 @@ app.MapPost("/guardian/propose", async (GuardianProposeRequest request, Guardian
         if (proposal.Plan is { } proposed)
             await journal.AppendAsync(new JournalRecord(JournalKinds.System, "nexus",
                 Summary("Nexus proposed a system change: ", proposed.Description), Ref: "plan:" + proposed.Id), ct);
-        return proposal.Plan is null
-            ? Results.Ok(new { proposed = false, refusal = proposal.Refusal, provider = proposal.Provider })
-            : Results.Ok(new { proposed = true, plan = proposal.Plan, provider = proposal.Provider,
-                               submitted = false, next = "Review the plan, then POST it to /guardian/submit." });
+        if (proposal.Plan is null)
+            return Results.Ok(new { proposed = false, refusal = proposal.Refusal, provider = proposal.Provider });
+        object? waiting = null;
+        try { waiting = GuardianProposals.View(await proposals.AddAsync(proposal.Plan, "nexus", request.Request, ct)); }
+        catch (ArgumentException) { }  // Too many waiting already: still a preview.
+        return Results.Ok(new { proposed = true, plan = proposal.Plan, provider = proposal.Provider, proposal = waiting,
+                                submitted = false, next = "The person reviews it in the Guardian dialog; nothing changes unless they approve it there." });
     }
     catch (ProposalRejectedException ex) { return Results.Problem(ex.Message, statusCode: 422); }
     catch (ProviderException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
@@ -270,7 +285,7 @@ app.MapGet("/guardian/candidates/{candidateId}", async (string candidateId, Guar
     catch (GuardianBrokerException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
 });
 app.MapPost("/guardian/review", async (GuardianReviewRequest request, GuardianBrokerClient broker, ActivityJournal journal,
-    CancellationToken ct) =>
+    GuardianProposals proposals, CancellationToken ct) =>
 {
     if (request.CandidateId is not { Length: 24 } || !request.CandidateId.All(Uri.IsHexDigit) ||
         request.Attestation.ValueKind != System.Text.Json.JsonValueKind.Object)
@@ -284,6 +299,8 @@ app.MapPost("/guardian/review", async (GuardianReviewRequest request, GuardianBr
         await journal.AppendAsync(new JournalRecord(JournalKinds.System, "guardian",
             eligible ? "Guardian approved a change for staging" : "Guardian found a change not eligible for staging",
             Ref: "candidate:" + request.CandidateId), ct);
+        var hash = decision.TryGetProperty("decision", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.String ? d.GetString() : null;
+        await proposals.RecordReviewAsync(request.CandidateId, eligible, hash, null, ct);
         return Results.Ok(decision);
     }
     catch (GuardianBrokerException ex)
@@ -291,6 +308,9 @@ app.MapPost("/guardian/review", async (GuardianReviewRequest request, GuardianBr
         if (ex.StatusCode == 422)
             await journal.AppendAsync(new JournalRecord(JournalKinds.System, "guardian", "Guardian refused a review",
                 Ref: "candidate:" + request.CandidateId), ct);
+        if (ex.StatusCode == 422)
+            await proposals.RecordReviewAsync(request.CandidateId, false, null,
+                "Not approved: your approval was missing or ran out (it lasts two minutes). Approve again.", ct);
         return Results.Problem(ex.Message, statusCode: ex.StatusCode);
     }
 });
@@ -340,6 +360,7 @@ app.MapDelete("/journal", async (string? day, ActivityJournal journal, Cancellat
     return Results.Ok(new { day, erased = await journal.ForgetDayAsync(date, ct) });
 }).RequireRateLimiting("journal");
 app.MapTryApps();
+app.MapGuardianProposals();
 app.MapGet("/inference/telemetry", async (MemoryTelemetry telemetry, CancellationToken ct) =>
     Results.Ok(await telemetry.ReadAsync(ct)));
 // /rules, /rules/parse, /events and /rules/pending-actions (RuleEndpoints.cs).
@@ -347,7 +368,7 @@ app.MapRules();
 app.MapGet("/inference/status", async (ModelRouter router, CancellationToken ct) =>
 {
     var provider = router.Current;
-    return Results.Ok(new { backend = provider.Name, available = await provider.IsAvailableAsync(ct),
+    return Results.Ok(new { backend = provider.Name, model = provider.Model, available = await provider.IsAvailableAsync(ct),
                             unloadSupported = provider.SupportsUnload });
 });
 app.MapPost("/inference/unload", async (ModelRouter router, CancellationToken ct) =>
@@ -367,6 +388,10 @@ app.MapGet("/system", () => Results.Ok(new
 // POST /fixit, POST /fixit/apply, GET /health/report (FixIt.cs).
 app.MapFixIt();
 app.MapNexusSearch();
+app.MapWorkspaces();
+app.MapCoding();
+app.MapImages();
+app.MapNexusActions();
 app.Run();
 
 // Journal summaries are one short line: drop control characters and truncate.

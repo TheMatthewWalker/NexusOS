@@ -11,6 +11,8 @@ stdenvNoCC.mkDerivation {
       ../../shell/tools
       ../../shell/layout.json
       ../../docs/design/spaceui/design-tokens.json
+      ../../nix/bundles
+      ../../schema/guardian-options.json
     ];
   };
   nativeBuildInputs = [ (python3.withPackages (ps: [ ps.pillow ])) qt6.qtshadertools makeWrapper ];
@@ -32,6 +34,9 @@ stdenvNoCC.mkDerivation {
     # runtime dir holds only their own shell, so the display filter is not needed.
     makeWrapper ${quickshell}/bin/quickshell $out/bin/nexus-shell-ipc \
       --add-flags "ipc -p $out/share/nexus-shell/shell.qml --any-display"
+    # The login screen (greeter.qml), run by greetd inside cage.
+    makeWrapper ${quickshell}/bin/quickshell $out/bin/nexus-greeter \
+      --add-flags "-p $out/share/nexus-shell/greeter.qml"
     runHook postInstall
   '';
   meta = {

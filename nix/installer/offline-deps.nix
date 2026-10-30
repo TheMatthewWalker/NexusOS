@@ -13,4 +13,11 @@ pkgs: with pkgs; [
   switch-to-configuration-ng texinfo unionfs-fuse lndir shellcheck-minimal systemdMinimal.out
   curl zstd.bin mypy bootspec
   microcode-intel microcode-amd
+  # pkgs.formats (TOML, YAML) convert with remarshal: anything such a file
+  # holds that differs per computer is built during the install.
+  remarshal
+  # What the hardware scan can turn on beyond the reference system.
+  thermald
+  # Encrypted disks: the initrd that unlocks them is built for each computer.
+  cryptsetup
 ]

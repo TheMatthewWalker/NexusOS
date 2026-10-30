@@ -1,0 +1,42 @@
+{
+  "id": "office",
+  "label": "Office",
+  "order": 3,
+  "keywords": [
+    "office",
+    "job",
+    "business",
+    "documents",
+    "spreadsheets",
+    "spreadsheet",
+    "email",
+    "mail",
+    "admin",
+    "accounts",
+    "printing",
+    "print",
+    "meetings",
+    "reports"
+  ],
+  "apps": [
+    {
+      "flathub": "org.mozilla.Thunderbird",
+      "name": "Thunderbird",
+      "detail": "Email and calendar"
+    },
+    {
+      "flathub": "com.github.jeromerobert.pdfarranger",
+      "name": "PDF Arranger",
+      "detail": "Merge, split and reorder PDF pages"
+    }
+  ],
+  "system": [
+    {
+      "option": "services.printing.enable",
+      "enabled": true,
+      "name": "Printing",
+      "detail": "Lets this computer use printers (a system service)"
+    }
+  ],
+  "settings": []
+}

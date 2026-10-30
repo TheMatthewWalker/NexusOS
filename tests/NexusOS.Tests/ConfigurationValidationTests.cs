@@ -27,5 +27,5 @@ public sealed class ConfigurationValidationTests
 
     [Fact]
     public void DefaultTokenBudget() =>
-        Assert.Equal(new InferenceTokenBudget(4096, 512, 3584), new InferenceTokenSettings(TestConfig.Of()).Budget);
+        Assert.Equal(new InferenceTokenBudget(8192, 1024, 7168), new InferenceTokenSettings(TestConfig.Of()).Budget);
 }

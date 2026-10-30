@@ -30,4 +30,42 @@ public sealed class GuardianPlannerTests
     public void WarnsForSshEnable() =>
         Assert.Contains("Elevated", GuardianPlanner.Preview("SSH",
             [new GuardianChange("services.openssh.enable", true)]).Risk);
+
+    // SSH turned on through NexusOS is always key-only; the settings come from the schema, not the proposal.
+    [Fact]
+    public void SshIsKeyOnlyWhenTurnedOn()
+    {
+        var plan = GuardianPlanner.Preview("SSH", [new GuardianChange("services.printing.enable", false),
+                                                   new GuardianChange("services.openssh.enable", true)]);
+        Assert.Equal("{\n" +
+                     "  services.openssh.enable = true;\n" +
+                     "  services.openssh.settings.KbdInteractiveAuthentication = false;\n" +
+                     "  services.openssh.settings.PasswordAuthentication = false;\n" +
+                     "  services.openssh.settings.PermitRootLogin = \"no\";\n" +
+                     "  services.printing.enable = false;\n" +
+                     "}\n", plan.NixPreview);
+        Assert.Contains("Key-only", plan.Risk);
+        // The plan's changes are still only what was proposed.
+        Assert.Equal(["services.openssh.enable", "services.printing.enable"], plan.Changes.Select(x => x.Option));
+        Assert.Equal("{\n  services.openssh.enable = false;\n}\n",
+            GuardianPlanner.Preview("SSH off", [new GuardianChange("services.openssh.enable", false)]).NixPreview);
+    }
+
+    [Theory]
+    [InlineData("services.openssh.settings.PasswordAuthentication", true)]
+    [InlineData("services.openssh.settings.PasswordAuthentication", false)]
+    [InlineData("services.openssh.settings.KbdInteractiveAuthentication", true)]
+    [InlineData("services.openssh.settings.PermitRootLogin", true)]
+    [InlineData("services.openssh.openFirewall", true)]
+    public void SshAuthenticationCannotBeProposed(string option, bool enabled)
+    {
+        Assert.False(GuardianSchema.Options.ContainsKey(option));
+        Assert.Throws<ArgumentException>(() => GuardianPlanner.Preview("SSH with passwords",
+            [new GuardianChange("services.openssh.enable", true), new GuardianChange(option, enabled)]));
+        Assert.Throws<ArgumentException>(() => GuardianPlanner.Preview("SSH with passwords", [new GuardianChange(option, enabled)]));
+    }
+
+    [Fact]
+    public void EveryProposableOptionIsAPlainSwitch() =>
+        Assert.All(GuardianSchema.Options.Values, spec => Assert.Equal("bool", spec.Type));
 }

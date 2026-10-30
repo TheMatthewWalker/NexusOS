@@ -62,7 +62,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def do_POST(self):
-        if self.path not in ("/api/generate", "/api/embed", "/v1/chat/completions"):
+        if self.path not in ("/api/generate", "/api/chat", "/api/embed", "/v1/chat/completions"):
             self.send_error(404)
             return
         try:
@@ -79,6 +79,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(inputs, list) or not inputs or not all(isinstance(x, str) for x in inputs):
                     raise ValueError("Missing input")
                 content = json.dumps({"model": body["model"], "embeddings": [mock_embedding(x) for x in inputs]}).encode()
+            elif self.path == "/api/chat":
+                content = json.dumps({"message": {"role": "assistant", "content": "Nexus mock response: " + last_user(body)},
+                                      "done": True}).encode()
             elif self.path == "/v1/chat/completions":
                 message = body.get("messages", [{}])[0].get("content", "")
                 content = json.dumps({"choices":[{"message":{"role":"assistant","content":"Nexus llama mock: " + message}}]}).encode()
@@ -102,6 +105,8 @@ class Handler(BaseHTTPRequestHandler):
         """Streaming replies, word by word: Ollama NDJSON or OpenAI-style SSE."""
         if self.path == "/v1/chat/completions":
             text = "Nexus llama mock: " + body.get("messages", [{}])[0].get("content", "")
+        elif self.path == "/api/chat":
+            text = "Nexus mock response: " + last_user(body)
         elif isinstance(body.get("prompt"), str):
             text = "Nexus mock response: " + body["prompt"]
         else:
@@ -112,6 +117,10 @@ class Handler(BaseHTTPRequestHandler):
             lines = ["data: " + json.dumps({"choices": [{"delta": {"content": p}}]}) + "\n\n" for p in pieces]
             lines.append("data: [DONE]\n\n")
             kind = "text/event-stream"
+        elif self.path == "/api/chat":
+            lines = [json.dumps({"message": {"role": "assistant", "content": p}, "done": False}) + "\n" for p in pieces]
+            lines.append(json.dumps({"message": {"role": "assistant", "content": ""}, "done": True}) + "\n")
+            kind = "application/x-ndjson"
         else:
             lines = [json.dumps({"response": p, "done": False}) + "\n" for p in pieces]
             lines.append(json.dumps({"response": "", "done": True}) + "\n")
@@ -125,6 +134,14 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
             self.wfile.flush()
         self.wfile.write(b"0\r\n\r\n")
+
+def last_user(body):
+    """The latest question in an /api/chat request (Core puts its guide and earlier turns first)."""
+    users = [m.get("content", "") for m in body.get("messages", []) if m.get("role") == "user"]
+    if not users or not isinstance(users[-1], str):
+        raise ValueError("Missing user message")
+    return users[-1]
+
 
 if __name__ == "__main__":
     ThreadingHTTPServer(("127.0.0.1", 11435), Handler).serve_forever()

@@ -1,6 +1,8 @@
 // Nexus shell: the SpaceUI desktop for Hyprland, in Quickshell (ADR-003).
-// It draws the wallpaper, the bottom Nexus launcher, the full Nexus core with
-// its app orbit and chat, and the system panel. Hyprland manages the windows.
+// It draws the wallpaper, the top bar, the bottom Nexus launcher, the full
+// Nexus core with its app orbit and chat, the orbital controls in the
+// bottom-right corner, and Settings. Hyprland manages the windows: floating
+// by default (Desktop B), or tiled (Settings, Desktop).
 //
 // Safety rules it keeps (docs/design/spaceui/README.md):
 //  - the AI only suggests: apps open only when the user picks them;
@@ -33,6 +35,7 @@ ShellRoot {
     property string error: ""
     property int chatId: -1
     property string lastPrompt: ""
+    property string toolNote: ""            // a look-up Nexus is running, e.g. "Searching your files"
     property int suggestId: -1
     property real voice: 0
     // GPU budget (the local model shares the GPU with the core):
@@ -53,11 +56,15 @@ ShellRoot {
     readonly property bool gameMode: gameApp !== ""
     property int unloadId: -1
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
-    readonly property bool blurConfigured: Quickshell.env("NEXUS_BLUR") !== "0"
     onGameModeChanged: gameMode ? enterGameMode() : exitGameMode()
     Component.onCompleted: if (gameMode) enterGameMode()
     // Provisional dark theme (approved 22 Oct): deep space, light ink, glass surfaces.
-    readonly property var dark: ({
+    // High contrast (Settings, Accessibility): solid panels, white text, bright borders.
+    readonly property var dark: desktop.highContrast ? ({
+        ink: "#FFFFFF", inkSecondary: "#DCE4FF", glass: Qt.rgba(0, 0, 0, 0.96),
+        glassBorder: "#B7CAFF", focus: "#FFD166", primary: "#5A48F0", chip: "#05070F",
+        orbit: Qt.rgba(0.8, 0.85, 1.0, 0.6), error: "#FFB3C1", muted: "#C9D4FF"
+    }) : ({
         ink: "#E3EAFF", inkSecondary: "#9AA9C9", glass: Qt.rgba(0.04, 0.07, 0.15, 0.80),
         glassBorder: "#2A3A66", focus: "#86A8FF", primary: "#7C6BFF", chip: "#121B33",
         orbit: Qt.rgba(0.55, 0.62, 1.0, 0.22), error: "#FF8FA3", muted: "#7885A3"
@@ -70,16 +77,33 @@ ShellRoot {
     function open() { expanded = true }
     function collapse() {
         expanded = false; showAll = false; suggested = []; suggestedBy = "";
-        input.text = ""; reply = ""; error = ""; mode = "idle"; voice = 0;
+        input.text = ""; reply = ""; error = ""; mode = "idle"; voice = 0; toolNote = ""; actionCards.clear();
     }
     function ask(prompt) {
         if (!bridge.online) return;
-        error = ""; reply = ""; provider = ""; mode = "thinking";
+        error = ""; reply = ""; provider = ""; mode = "thinking"; toolNote = ""; actionCards.clear();
         lastPrompt = prompt;
         chatId = bridge.chat(prompt);
     }
     function openApp(id) {
+        // Settings is part of the shell itself.
+        if (id === "settings") { collapse(); settings.open("", ""); return; }
+        // Studio: making something new, images or code (each window switches to the other).
+        if (id === "studio") { collapse(); imagesWin.open(); return; }
         if (apps.open(id)) collapse();
+    }
+    function installed(id) { return id === "settings" || id === "studio" || apps.installed(id) }
+    // Switching to a window from the launcher. A minimised window (the title
+    // bar's minimise button moves it to the hidden "minimized" workspace)
+    // comes back to the current workspace first.
+    function activateWindow(toplevel) {
+        const h = Hyprland.toplevels.values.find(t => t.wayland === toplevel);
+        if (h && h.workspace && h.workspace.name.startsWith("special:") && h.address) {
+            const address = h.address.startsWith("0x") ? h.address : "0x" + h.address;
+            const ws = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 1;
+            Hyprland.dispatch("movetoworkspace " + ws + ",address:" + address);
+        }
+        toplevel.activate();
     }
     function enterGameMode() {
         hypr.exec([hyprctl, "--batch", "keyword decoration:blur:enabled false ; keyword animations:enabled false"]);
@@ -88,8 +112,9 @@ ShellRoot {
     }
     function exitGameMode() {
         unloadId = -1;
-        hypr.exec([hyprctl, "--batch", "keyword decoration:blur:enabled " + blurConfigured
-                                       + " ; keyword animations:enabled " + !reduced]);
+        // Back to the person's own choices (Settings, Desktop).
+        hypr.exec([hyprctl, "--batch", "keyword decoration:blur:enabled " + desktop.blur
+                                       + " ; keyword animations:enabled " + desktop.animations]);
     }
     // Hyprland draws fullscreen windows above the Top layer, so the toast is a
     // compositor notification: it shows over the game without the shell
@@ -107,9 +132,12 @@ ShellRoot {
             root.voice = Math.min(1, 0.35 + vowels / Math.max(4, text.length));
             voiceDecay.restart();
         }
+        // Nexus's actions (NexusActions.cs in Core): a look-up running, or a card for the person.
+        onTool: (id, ev) => { if (id === root.chatId) root.toolNote = ev.status === "running" ? (ev.summary || "Working") + "…" : "" }
+        onAction: (id, ev) => { if (id === root.chatId) { root.toolNote = ""; actionCards.offer(ev) } }
         onDone: (id, provider) => {
             if (id !== root.chatId) return;
-            root.provider = provider;
+            root.provider = provider; root.toolNote = "";
             settle.restart();
             // With the answer done the model is free: let it pick the apps,
             // falling back to the rules (and saying so) if it cannot.
@@ -137,9 +165,36 @@ ShellRoot {
         }
     }
     AppDirectory { id: apps }
+    DesktopSettings { id: desktop; gameMode: root.gameMode; bridge: bridge }
+    RuleRunner { bridge: bridge; desktop: desktop; wallpaper: wallpaper; apps: apps; wifi: settings.wifi }
+    Settings {
+        id: settings
+        theme: root.dark; bridge: bridge; desktop: desktop; reduced: root.reduced
+        onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
+        onFixIt: problem => fixItWin.open(problem)
+        onOpenWelcome: firstRun.open()
+        onMoveIn: moveInWin.open()
+    }
+    Apps { id: appsWin; theme: root.dark; bridge: bridge }
+    FixIt { id: fixItWin; theme: root.dark; bridge: bridge }
+    Search { id: searchWin; theme: root.dark; bridge: bridge; onChooseFolders: settings.open("search", "") }
+    Overview { id: overview; theme: root.dark; bridge: bridge; apps: apps; reduced: root.reduced }
+    FirstRun { id: firstRun; theme: root.dark; bridge: bridge; desktop: desktop; onMoveIn: moveInWin.open()
+               onProposeSystem: plan => guardianWin.openPlan(plan, "user") }
+    MoveIn { id: moveInWin; theme: root.dark }
+    Explain { id: explainCard; theme: root.dark; bridge: bridge; onFixIt: problem => fixItWin.open(problem)
+              onTellMeMore: { root.open(); input.text = "Tell me more about that."; root.ask(input.text) } }
+    Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }
+    Images { id: imagesWin; theme: root.dark; bridge: bridge; onSwitchToCode: codeWin.open("")
+             onUseAsWallpaper: path => wallpaper.set(path) }
+    // System changes waiting for approval, and how they are going (Guardian.qml).
+    Guardian { id: guardianWin; theme: root.dark; bridge: bridge }
+    TopBar { theme: root.dark; settings: settings; guardian: guardianWin; onOpenNexus: root.expanded ? root.collapse() : root.open()
+             onOpenApps: appsWin.open("all") }
+    OrbitalControls { theme: root.dark; settings: settings; reduced: root.reduced }
     Process { id: hypr }
     Process { id: toast }
-    Wallpaper {}
+    Wallpaper { id: wallpaper }
 
     Timer { id: voiceDecay; interval: 140; onTriggered: root.voice = 0.1 }
     Timer { id: settle; interval: 1200; onTriggered: { root.mode = "idle"; root.voice = 0 } }
@@ -156,6 +211,20 @@ ShellRoot {
     // Super+Space (bind = SUPER, Space, global, nexus:toggle) and
     // `quickshell ipc call nexus toggle` both open and close Nexus.
     GlobalShortcut { appid: "nexus"; name: "toggle"; onPressed: root.expanded ? root.collapse() : root.open() }
+    // Super+I (bind = SUPER, I, global, nexus:settings).
+    GlobalShortcut { appid: "nexus"; name: "settings"; onPressed: settings.open("", "") }
+    // Super+C (bind = SUPER, C, global, nexus:code): the coding agent.
+    GlobalShortcut { appid: "nexus"; name: "code"; onPressed: codeWin.open("") }
+    // Super+G (bind = SUPER, G, global, nexus:images): image generation.
+    GlobalShortcut { appid: "nexus"; name: "images"; onPressed: imagesWin.open() }
+    // Super+A (bind = SUPER, A, global, nexus:apps): every app, and getting new ones.
+    GlobalShortcut { appid: "nexus"; name: "apps"; onPressed: appsWin.visible ? appsWin.visible = false : appsWin.open("all") }
+    // Super+S (bind = SUPER, S, global, nexus:search): private search over the chosen folders.
+    GlobalShortcut { appid: "nexus"; name: "search"; onPressed: searchWin.visible ? searchWin.visible = false : searchWin.open() }
+    // Super+Tab (bind = SUPER, Tab, global, nexus:overview): every workspace around the core.
+    GlobalShortcut { appid: "nexus"; name: "overview"; onPressed: overview.open ? overview.hide() : overview.show() }
+    // Super+? (bind = SUPER SHIFT, slash, global, nexus:explain): point at something to have it explained.
+    GlobalShortcut { appid: "nexus"; name: "explain"; onPressed: explainCard.start() }
     IpcHandler {
         target: "nexus"
         function toggle(): void { root.expanded ? root.collapse() : root.open() }
@@ -164,6 +233,9 @@ ShellRoot {
                                     modelBusy: root.modelBusy, launcherPaused: root.launcherPaused, gameMode: root.gameMode })
         }
         function simulateBusy(on: bool): void { root.simulateBusy = on }
+        // Ask Nexus as if typed in the chat; actions() lists the cards it offered.
+        function ask(text: string): void { root.open(); input.text = text; root.ask(text) }
+        function actions(): string { return JSON.stringify(actionCards.cardList.map(c => ({ summary: c.summary, safety: c.safety, state: c.state, message: c.message }))) }
         // "Treat fullscreen as game": any fullscreen window except video players and browsers.
         function fullscreenIsGame(on: bool): void { root.fullscreenIsGame = on }
     }
@@ -283,7 +355,7 @@ ShellRoot {
                                 text: (modelData.title || modelData.appId || "?").slice(0, 1).toUpperCase()
                                 font.pixelSize: 18; font.weight: 600; color: root.dark.ink
                             }
-                            TapHandler { enabled: launcher.hoverOpen; onTapped: modelData.activate() }
+                            TapHandler { enabled: launcher.hoverOpen; onTapped: root.activateWindow(modelData) }
                             Accessible.role: Accessible.Button
                             Accessible.name: "Switch to " + modelData.title
                         }
@@ -306,6 +378,8 @@ ShellRoot {
                 opacity: root.expanded ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: root.reduced ? 0 : 220 } }
 
+                // A nebula behind the core and the chat keeps them legible over any window.
+                Nebula { anchors.fill: parent; z: -2; seed: 7; depth: 0.86 }
                 NovaCore {
                     id: bigCore
                     anchors.fill: parent
@@ -377,7 +451,7 @@ ShellRoot {
                         required property string modelData
                         required property int index
                         readonly property bool shown: root.expanded && root.visibleApps().includes(modelData)
-                        readonly property bool available: apps.installed(modelData)
+                        readonly property bool available: root.installed(modelData)
                         property real progress: 0
                         readonly property real eased: shown ? O.entryEase(progress) : 1 - O.exitEase(1 - progress)
                         readonly property var at: root.reduced ? Object.assign(O.slot(modelData), { scale: 1, opacity: progress })
@@ -476,38 +550,92 @@ ShellRoot {
                     }
                 }
 
-                // Reply, with its sources kept visibly separate.
-                Column {
+                // Reply, with its sources kept visibly separate. It scrolls: while the
+                // answer streams in it follows the newest line, unless the user has
+                // scrolled back up to read.
+                Flickable {
+                    id: replyView
                     x: root.lay.reply.x + 12; y: root.lay.reply.y
                     width: root.lay.reply.width - 24
-                    spacing: 8
-                    visible: root.reply.length > 0 || root.error.length > 0
-                    Text {
-                        width: parent.width; wrapMode: Text.Wrap
-                        textFormat: Text.PlainText      // model output is never rendered as rich text
-                        maximumLineCount: 6; elide: Text.ElideRight
-                        text: root.error ? "Nexus Core could not answer: " + root.error : root.reply
-                        font.pixelSize: 14; lineHeight: 1.5; color: root.error ? root.dark.error : root.dark.ink
+                    height: root.lay.surface.height - root.lay.reply.y - 12
+                    contentWidth: width; contentHeight: replyColumn.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    visible: root.reply.length > 0 || root.error.length > 0 || root.toolNote !== "" || actionCards.cardList.length > 0
+                    property bool follow: true
+                    onMovementEnded: follow = atYEnd
+                    onContentHeightChanged: if (follow) contentY = Math.max(0, contentHeight - height)
+                    Connections {
+                        target: root
+                        function onChatIdChanged() { replyView.follow = true; replyView.contentY = 0 }
                     }
-                    Flow {
-                        width: parent.width; spacing: 6
-                        visible: !root.error && root.provider !== ""
-                        Repeater {
-                            model: ["Answer · Nexus Core (" + root.provider + " provider)"].concat(
-                                root.suggestedBy ? ["Apps · " + ({ rules: "keyword rules, not AI", model: "chosen by the model",
-                                                                 "rules-fallback": "keyword rules (model unavailable)" })[root.suggestedBy]] : [])
-                            delegate: Rectangle {
-                                required property string modelData
-                                width: chip.implicitWidth + 20; height: 28; radius: 14
-                                color: root.dark.chip
-                                Text { id: chip; anchors.centerIn: parent; text: modelData; font.pixelSize: 13; color: root.dark.inkSecondary }
+                    WheelHandler {
+                        onWheel: event => {
+                            replyView.contentY = Math.max(0, Math.min(replyView.contentHeight - replyView.height,
+                                                                     replyView.contentY - event.angleDelta.y / 2));
+                            replyView.follow = replyView.atYEnd;
+                        }
+                    }
+                    Keys.onUpPressed: { follow = false; contentY = Math.max(0, contentY - 40) }
+                    Keys.onDownPressed: { contentY = Math.min(Math.max(0, contentHeight - height), contentY + 40); follow = atYEnd }
+                    Column {
+                        id: replyColumn
+                        width: replyView.width - 10
+                        spacing: 8
+                        Text {
+                            id: replyText
+                            visible: text !== ""             // a reply can be just an action card
+                            width: parent.width; wrapMode: Text.Wrap
+                            textFormat: Text.PlainText      // model output is never rendered as rich text
+                            text: root.error ? "Nexus Core could not answer: " + root.error : root.reply
+                            font.pixelSize: 14; lineHeight: 1.5; color: root.error ? root.dark.error : root.dark.ink
+                        }
+                        Text {
+                            visible: root.toolNote !== "" && !root.error
+                            text: root.toolNote
+                            font.pixelSize: 13; font.italic: true; color: root.dark.inkSecondary
+                        }
+                        // What Nexus offers to do: nothing happens until the person picks "Do it".
+                        ActionCards {
+                            id: actionCards
+                            width: parent.width
+                            theme: root.dark; bridge: bridge; apps: apps; settings: settings; desktop: desktop
+                            appsWin: appsWin; imagesWin: imagesWin; codeWin: codeWin; fixItWin: fixItWin
+                            overview: overview; moveInWin: moveInWin; firstRun: firstRun
+                            onOpened: root.collapse()
+                            onOpenRole: role => root.openApp(role)
+                            // The Guardian approval dialog, where the desktop has one (Guardian.qml).
+                            onReview: card => {
+                                try { guardianWin.open(card.plan ? card.plan.id : card.id, card.plan); actionCards.reviewTaken = true }
+                                catch (e) { actionCards.reviewTaken = false }
                             }
                         }
+                        Flow {
+                            width: parent.width; spacing: 6
+                            visible: !root.error && root.provider !== ""
+                            Repeater {
+                                model: ["Answer · Nexus Core (" + root.provider + " provider)"].concat(
+                                    root.suggestedBy ? ["Apps · " + ({ rules: "keyword rules, not AI", model: "chosen by the model",
+                                                                     "rules-fallback": "keyword rules (model unavailable)" })[root.suggestedBy]] : [])
+                                delegate: Rectangle {
+                                    required property string modelData
+                                    width: chip.implicitWidth + 20; height: 28; radius: 14
+                                    color: root.dark.chip
+                                    Text { id: chip; anchors.centerIn: parent; text: modelData; font.pixelSize: 13; color: root.dark.inkSecondary }
+                                }
+                            }
+                        }
+                    }
+                    // Scroll position, shown only when there is more than fits.
+                    Rectangle {
+                        visible: replyView.contentHeight > replyView.height
+                        x: replyView.width - 4; width: 3; radius: 1.5
+                        y: replyView.contentY + replyView.visibleArea.yPosition * replyView.height
+                        height: Math.max(24, replyView.visibleArea.heightRatio * replyView.height)
+                        color: root.dark.glassBorder
                     }
                 }
             }
         }
     }
-
-    SystemPanel { theme: root.dark; reduced: root.reduced }
 }

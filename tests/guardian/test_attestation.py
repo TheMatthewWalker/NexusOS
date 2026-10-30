@@ -35,6 +35,16 @@ class AttestationTests(unittest.TestCase):
                 continue
             self.assertIsNone(verify(forged, self.trusted), field)
 
+    def test_todays_values_are_optional_signed_and_strictly_typed(self):
+        before = {"options": {"services.printing.enable": False}, "packages": {"hello": None}}
+        self.assertEqual(before, verify(sign(statement(self.candidate, before=before), self.key), self.trusted)["before"])
+        for bad in ({"options": {}}, {"options": {"x": "yes"}, "packages": {}}, {"options": [], "packages": {}},
+                    {"options": {}, "packages": {}, "extra": {}}):
+            with self.subTest(before=bad), self.assertRaises(ValueError):
+                sign(statement(self.candidate, before=bad), self.key)
+        with self.assertRaises(ValueError):
+            sign(statement(self.candidate, notes="x"), self.key)
+
     def test_failed_check_signature_is_valid_but_reports_failure(self):
         verified = verify(sign(statement(self.candidate, checks={"evaluate": True, "build": False, "vm-test": True}), self.key), self.trusted)
         self.assertFalse(verified["checks"]["build"])

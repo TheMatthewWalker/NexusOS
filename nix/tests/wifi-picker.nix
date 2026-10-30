@@ -1,8 +1,8 @@
-# The system panel's Wi-Fi list, end to end. A simulated Wi-Fi radio
+# Settings, Network: the Wi-Fi list, end to end. A simulated Wi-Fi radio
 # (mac80211_hwsim) runs two access points: "NexusHome" (WPA2, with a password)
 # and "NexusCafe" (open). NetworkManager drives a second simulated radio, and
-# real kernel input (ydotool) opens the panel, picks a network, types the
-# password and presses Enter.
+# real kernel input (ydotool) clicks the orbital controls' Network planet,
+# picks a network, types the password and presses Enter.
 { pkgs, desktopModule }:
 let
   password = "correct horse battery";
@@ -18,10 +18,15 @@ pkgs.testers.runNixOSTest {
     users.users.alice = { isNormalUser = true; uid = 1000; password = "nexus"; extraGroups = [ "networkmanager" ]; };
     services.nexus-desktop = {
       enable = true;
+      # No Welcome window over the desktop the test drives.
+      firstRun = false;
       autologinUser = "alice";
       reducedMotion = true;
       blur = false;
       coreDetail = 16;
+      # Without title bars the window's content starts at its position, which
+      # keeps the clicks below simple.
+      titleBars = false;
       # No key repeat: under software emulation a key can stay "down" long
       # enough to repeat, which would garble typed passwords.
       extraHyprlandConfig = ''
@@ -91,7 +96,7 @@ pkgs.testers.runNixOSTest {
     import time
 
     W, H = 1280, 800
-    MARK = (W - 23 - 17, 10 + 17)        # the collapsed system panel (design tokens: orbitalControl.collapsed)
+    MARK = (W - 23 - 17, H - 16 - 17)    # the collapsed orbital controls, bottom right (OrbitalControls.qml)
     PASSWORD = "${password}"
 
     def hypr(args):
@@ -118,14 +123,34 @@ pkgs.testers.runNixOSTest {
     def type_text(text):
         machine.succeed("YDOTOOL_SOCKET=/run/ydotoold/socket ydotool type --key-delay 40 " + repr(text))
 
+    def ipc(args):
+        return machine.succeed("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call " + args + "'")
+
+    def window_origin():
+        """Where the Settings window's content starts on screen."""
+        clients = json.loads(hypr("clients -j"))
+        win = next(c for c in clients if c["title"] == "Settings")
+        return win["at"]
+
     def panel():
-        out = machine.succeed("su - alice -c 'XDG_RUNTIME_DIR=/run/user/1000 nexus-shell-ipc call systempanel wifi'")
-        return json.loads(out)
+        """Settings' Wi-Fi state, with each row's centre in screen coordinates."""
+        state = json.loads(ipc("settings wifi"))
+        if state["rows"]:
+            ox, oy = window_origin()
+            for r in state["rows"]:
+                r["x"] += ox; r["y"] += oy
+                if r["forget"]:
+                    r["forget"] = [r["forget"][0] + ox, r["forget"][1] + oy]
+        state["expanded"] = state["visible"] and state["page"] == "network"
+        return state
 
     def diagnostics():
         print(machine.execute("journalctl -b --no-pager -t nexus-shell | tail -60")[1])
         print(machine.execute("nmcli -f all device wifi list ifname wlan1; nmcli device; nmcli connection")[1])
         print(machine.execute("journalctl -b --no-pager -u NetworkManager | tail -40")[1])
+        print(hypr("clients") + hypr("layers") + hypr("cursorpos"))
+        print(ipc("controls state"))
+        machine.screenshot("diagnostics")
 
     def laid_out(s):
         """Every row has its own place on screen (none mid-layout)."""
@@ -173,8 +198,23 @@ pkgs.testers.runNixOSTest {
         assert still(state), f"{name}: the state changed before the screenshot: {state}"
 
     def open_panel():
+        """Hover the orbital controls, then click their Network planet: Settings opens on Network."""
         move(*MARK)
-        until(lambda s: s["expanded"], "the panel did not open on hover", timeout=120, poke=lambda: move(*MARK))
+        for _ in range(10):
+            if json.loads(ipc("controls state"))["expanded"]:
+                break
+            move(*MARK)
+            time.sleep(2)
+        # The Network planet (design tokens: orbitalControl.planetTopLeft.network, 51 px across),
+        # in the expanded panel anchored bottom right: 365 wide, 12 from the bottom, 16 from the right.
+        height = 28 + 242 + 10 + 96
+        tx, ty = W - 16 - 365 + 120 + 25, H - 12 - height + 23 + 25
+        # Glide there, as a mouse does, so the controls stay open on the way.
+        for i in range(1, 6):
+            hypr(f"dispatch movecursor {MARK[0] + (tx - MARK[0]) * i // 5} {MARK[1] + (ty - MARK[1]) * i // 5}")
+            time.sleep(0.15)
+        click(tx, ty)
+        until(lambda s: s["expanded"], "the Network planet did not open Settings, Network", timeout=120)
 
     def active_ssid():
         return machine.succeed("nmcli -t -f ACTIVE,SSID device wifi list ifname wlan1 --rescan no | grep '^yes:' | cut -d: -f2 || true").strip()
@@ -184,13 +224,13 @@ pkgs.testers.runNixOSTest {
     machine.wait_for_unit("hostapd.service")
     machine.wait_until_succeeds("ls /run/user/1000/hypr/*/.socket.sock", timeout=600)
     machine.wait_until_succeeds(
-        "su - alice -c 'HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl layers' | grep -q nexus-system-panel",
+        "su - alice -c 'HYPRLAND_INSTANCE_SIGNATURE=$(ls /run/user/1000/hypr | head -1) hyprctl layers' | grep -q nexus-orbital-controls",
         timeout=600)
 
-    with subtest("hovering the system panel lists the nearby networks"):
+    with subtest("the orbital controls' Network planet opens Settings, which lists the nearby networks"):
         open_panel()
         state = until(lambda s: s["wifiOn"] and row(s, "NexusHome") and row(s, "NexusCafe"),
-                      "the networks never appeared", poke=lambda: move(*MARK))
+                      "the networks never appeared")
         assert row(state, "NexusHome")["security"] == "password", state
         assert row(state, "NexusCafe")["security"] == "open", state
         screenshot("01-networks", lambda s: row(s, "NexusHome") and row(s, "NexusCafe"))

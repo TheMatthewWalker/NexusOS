@@ -36,7 +36,7 @@ public sealed class CoreApiFactory : WebApplicationFactory<Program>
     private readonly TempState _state = new();
     private readonly Dictionary<string, string?> _settings;
     // IHttpClientFactory caches primary handlers, so tests swap the inner stub.
-    private readonly SwitchHandler _ai = new(StubHandler.Json(HttpStatusCode.OK, """{"response":"stub answer"}"""));
+    private readonly SwitchHandler _ai = new(StubHandler.Json(HttpStatusCode.OK, """{"response":"stub answer","message":{"content":"stub answer"}}"""));
     private readonly SwitchHandler _cloud = new(StubHandler.Json(HttpStatusCode.OK, """{"choices":[{"message":{"content":"cloud answer"}}]}"""));
     public HttpMessageHandler AiHandler { get => _ai.Inner; set => _ai.Inner = value; }
     public HttpMessageHandler CloudHandler { get => _cloud.Inner; set => _cloud.Inner = value; }
@@ -106,7 +106,7 @@ public sealed class CoreApiTests
             Entered.TrySetResult();
             try { await Release.Task.WaitAsync(ct); }
             catch (OperationCanceledException) { Cancelled.TrySetResult(true); throw; }
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"response":"released"}""") };
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"response":"released","message":{"content":"released"}}""") };
         }
     }
 
@@ -170,7 +170,7 @@ public sealed class CoreApiTests
             Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);
         gate.Release.SetResult();
         using (var done = await first) Assert.Equal(HttpStatusCode.OK, done.StatusCode);
-        factory.AiHandler = StubHandler.Json(HttpStatusCode.OK, """{"response":"after"}""");
+        factory.AiHandler = StubHandler.Json(HttpStatusCode.OK, """{"response":"after","message":{"content":"after"}}""");
         using var third = await client.PostAsJsonAsync("/chat", new { prompt = "third" });
         Assert.Equal(HttpStatusCode.OK, third.StatusCode);
     }
@@ -188,7 +188,7 @@ public sealed class CoreApiTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
         Assert.True(await gate.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(10)));
 
-        factory.AiHandler = StubHandler.Json(HttpStatusCode.OK, """{"response":"next"}""");
+        factory.AiHandler = StubHandler.Json(HttpStatusCode.OK, """{"response":"next","message":{"content":"next"}}""");
         using var next = await client.PostAsJsonAsync("/chat", new { prompt = "next" });
         Assert.Equal(HttpStatusCode.OK, next.StatusCode);
         var history = await client.GetFromJsonAsync<JsonElement>("/history");
@@ -222,7 +222,7 @@ public sealed class CoreApiTests
     [Fact]
     public async Task OverlongPromptIsRejectedWithoutContactingProvider()
     {
-        var stub = StubHandler.Json(HttpStatusCode.OK, """{"response":"x"}""");
+        var stub = StubHandler.Json(HttpStatusCode.OK, """{"response":"x","message":{"content":"x"}}""");
         using var factory = new CoreApiFactory { AiHandler = stub };
         using var response = await factory.Authorized().PostAsJsonAsync("/chat", new { prompt = new string('a', 32769) });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);

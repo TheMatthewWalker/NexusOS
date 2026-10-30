@@ -25,11 +25,19 @@ public sealed class ProviderException(string message, int statusCode) : Exceptio
 public interface IModelProvider
 {
     string Name { get; }
+    string Model { get; }
     bool SupportsUnload { get; }
-    Task<string> AskAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct);
+    // context, when given, is the system prompt and earlier exchanges
+    // (AssistantContext.cs); without it the prompt is sent on its own.
+    Task<string> AskAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct, ChatContext? context = null);
     // Yields the answer in pieces as the engine produces it. Same bounds and
     // error rules as AskAsync; an empty stream is an error.
-    IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct);
+    IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct, ChatContext? context = null);
+    // One chat turn that may ask for actions (NexusActions.cs): text pieces as
+    // they come, then any tool calls. With no tools, or a backend that refuses
+    // them, the turn is text only.
+    IAsyncEnumerable<TurnPiece> StreamTurnAsync(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools,
+        InferenceTokenBudget budget, CancellationToken ct);
     // null means the provider is deliberately not probed (for example, cloud egress).
     Task<bool?> IsAvailableAsync(CancellationToken ct);
     Task UnloadAsync(CancellationToken ct);
@@ -93,16 +101,73 @@ public static class ProviderHttp
         Func<CancellationToken, Task<HttpResponseMessage>> send, Func<string, (string? Text, bool Done)> parse,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct, string? notFoundHint = null)
     {
+        var any = false;
+        await foreach (var line in StreamLinesAsync(label, send, ct, notFoundHint, withTools: false))
+        {
+            var (text, done) = ParseLine(label, parse, line);
+            if (!string.IsNullOrEmpty(text)) { any = true; yield return text; }
+            if (done) break;
+        }
+        if (!any) throw new ProviderException($"{label} returned an empty answer.", 502);
+    }
+
+    // A turn that may call tools: text as it streams, then the calls the
+    // parser collected. A turn with only tool calls is not empty.
+    public static async IAsyncEnumerable<TurnPiece> StreamTurnAsync(string label,
+        Func<CancellationToken, Task<HttpResponseMessage>> send, ITurnParser parser, bool withTools,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct, string? notFoundHint = null)
+    {
+        var any = false;
+        await foreach (var line in StreamLinesAsync(label, send, ct, notFoundHint, withTools))
+        {
+            var (text, done) = ParseLine(label, parser.Feed, line);
+            if (!string.IsNullOrEmpty(text)) { any = true; yield return new TurnPiece(text, null); }
+            if (done) break;
+        }
+        foreach (var call in parser.Calls) { any = true; yield return new TurnPiece(null, call); }
+        if (!any) throw new ProviderException($"{label} returned an empty answer.", 502);
+    }
+
+    // Starts a turn with tools; if the backend refuses them before answering
+    // (a model without tool support, llama-server without --jinja), the same
+    // turn is asked again without tools.
+    public static async IAsyncEnumerable<TurnPiece> WithToolFallback(Func<bool, IAsyncEnumerable<TurnPiece>> start, bool tools,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        var pieces = start(tools).GetAsyncEnumerator(ct);
+        bool more;
+        try { more = await pieces.MoveNextAsync(); }
+        catch (ToolsRefusedException)
+        {
+            await pieces.DisposeAsync();
+            pieces = start(false).GetAsyncEnumerator(ct);
+            more = await pieces.MoveNextAsync();
+        }
+        try
+        {
+            while (more) { yield return pieces.Current; more = await pieces.MoveNextAsync(); }
+        }
+        finally { await pieces.DisposeAsync(); }
+    }
+
+    // The bounded line reader under both: one timeout for the whole answer and
+    // the same size limit as a full response.
+    private static async IAsyncEnumerable<string> StreamLinesAsync(string label,
+        Func<CancellationToken, Task<HttpResponseMessage>> send,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct, string? notFoundHint, bool withTools)
+    {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(StreamTimeout);
         var response = await SendForStreamAsync(label, send, ct, timeout.Token);
         using (response)
         {
+            if (withTools && response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.InternalServerError
+                    or HttpStatusCode.UnprocessableEntity or HttpStatusCode.NotImplemented)
+                throw new ToolsRefusedException();
             if (!response.IsSuccessStatusCode)
                 throw StatusError(label, response.StatusCode, notFoundHint);
             using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token), Encoding.UTF8);
             long total = 0;
-            var any = false;
             while (true)
             {
                 var line = await ReadLineAsync(label, reader, ct, timeout.Token);
@@ -111,11 +176,8 @@ public static class ProviderHttp
                 if (total > ModelResponseGuard.MaxResponseBytes || line.Length > MaxStreamLineBytes)
                     throw new ProviderException($"{label} response exceeded the allowed size.", 502);
                 if (line.Length == 0) continue;
-                var (text, done) = ParseLine(label, parse, line);
-                if (!string.IsNullOrEmpty(text)) { any = true; yield return text; }
-                if (done) break;
+                yield return line;
             }
-            if (!any) throw new ProviderException($"{label} returned an empty answer.", 502);
         }
     }
 
@@ -164,6 +226,19 @@ public static class ProviderHttp
         var done = root.TryGetProperty("done", out var d) && d.ValueKind == JsonValueKind.True;
         return (root.TryGetProperty("response", out var r) ? r.GetString() : null, done);
     }
+
+    // Ollama's /api/chat streams {"message": {"content": "..."}, "done": false}.
+    public static (string? Text, bool Done) ParseOllamaChatLine(string line)
+    {
+        using var doc = JsonDocument.Parse(line);
+        var root = doc.RootElement;
+        var done = root.TryGetProperty("done", out var d) && d.ValueKind == JsonValueKind.True;
+        return (root.TryGetProperty("message", out var m) && m.TryGetProperty("content", out var c) ? c.GetString() : null, done);
+    }
+
+    public static object[] Messages(string prompt, ChatContext? context) =>
+        (context?.Messages(prompt) ?? [new ChatMessage("user", prompt)])
+            .Select(m => (object)new { role = m.Role, content = m.Content }).ToArray();
 
     // OpenAI-compatible servers stream Server-Sent Events: "data: {json}" lines, ending with "data: [DONE]".
     public static (string? Text, bool Done) ParseSseLine(string line)
@@ -219,22 +294,70 @@ public sealed class OllamaProvider : IModelProvider
         var endpoint = config["NEXUS_OLLAMA_URL"] ?? "http://127.0.0.1:11434";
         ProviderEndpointGuard.RequireLoopback(endpoint);
         Endpoint = endpoint.TrimEnd('/');
-        Model = config["NEXUS_OLLAMA_MODEL"] ?? "llama3.2:3b";
+        Model = config["NEXUS_OLLAMA_MODEL"] ?? "qwen3:8b";
+        Think = string.Equals(config["NEXUS_OLLAMA_THINK"], "true", StringComparison.OrdinalIgnoreCase);
     }
 
-    public Task<string> AskAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct) =>
-        ProviderHttp.SendAsync("Local Ollama", token => _factory.CreateClient("ai").PostAsJsonAsync(Endpoint + "/api/generate",
-                new { model = Model, prompt, stream = false,
-                      options = new { num_ctx = budget.ContextTokens, num_predict = budget.ReservedOutputTokens } }, token),
-            root => root.GetProperty("response").GetString(), ct,
-            $"Model '{Model}' is not installed in Ollama. Run: ollama pull {Model}");
+    public bool Think { get; }
 
-    public IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct) =>
-        ProviderHttp.StreamAsync("Local Ollama", token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"),
-                Endpoint + "/api/generate",
-                new { model = Model, prompt, stream = true,
-                      options = new { num_ctx = budget.ContextTokens, num_predict = budget.ReservedOutputTokens } }, token),
-            ProviderHttp.ParseOllamaLine, ct, $"Model '{Model}' is not installed in Ollama. Run: ollama pull {Model}");
+    // A chat (with context) goes to /api/chat, so the model's own template
+    // separates the system prompt and earlier turns; a bare prompt (the JSON
+    // tasks) to /api/generate. Thinking models (qwen3 and others) are asked
+    // not to think first unless NEXUS_OLLAMA_THINK=true: on a laptop GPU the
+    // hidden reasoning costs seconds before the first word appears.
+    public Task<string> AskAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct, ChatContext? context = null) =>
+        context is null
+            ? ProviderHttp.SendAsync("Local Ollama", token => _factory.CreateClient("ai").PostAsJsonAsync(Endpoint + "/api/generate",
+                    new { model = Model, prompt, stream = false, think = Think, options = Options(budget) }, token),
+                root => root.GetProperty("response").GetString(), ct, Missing)
+            : ProviderHttp.SendAsync("Local Ollama", token => _factory.CreateClient("ai").PostAsJsonAsync(Endpoint + "/api/chat",
+                    ChatBody(prompt, context, budget, stream: false), token),
+                root => root.GetProperty("message").GetProperty("content").GetString(), ct, Missing);
+
+    public IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct, ChatContext? context = null) =>
+        context is null
+            ? ProviderHttp.StreamAsync("Local Ollama", token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"),
+                    Endpoint + "/api/generate",
+                    new { model = Model, prompt, stream = true, think = Think, options = Options(budget) }, token),
+                ProviderHttp.ParseOllamaLine, ct, Missing)
+            : ProviderHttp.StreamAsync("Local Ollama", token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"),
+                    Endpoint + "/api/chat", ChatBody(prompt, context, budget, stream: true), token),
+                ProviderHttp.ParseOllamaChatLine, ct, Missing);
+
+    // qwen3 and other tool-capable models take "tools" on /api/chat and answer
+    // with message.tool_calls; a model without tool support gets text only.
+    public IAsyncEnumerable<TurnPiece> StreamTurnAsync(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools,
+        InferenceTokenBudget budget, CancellationToken ct) =>
+        ProviderHttp.WithToolFallback(withTools => ProviderHttp.StreamTurnAsync("Local Ollama",
+            token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"), Endpoint + "/api/chat",
+                TurnBody(messages, withTools ? tools : [], budget), token),
+            new OllamaTurnParser(), withTools, ct, Missing), tools.Count > 0, ct);
+
+    private Dictionary<string, object> TurnBody(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools, InferenceTokenBudget budget)
+    {
+        var body = new Dictionary<string, object>
+        {
+            ["model"] = Model, ["messages"] = ModelTools.OllamaMessages(messages), ["stream"] = true,
+            ["think"] = Think, ["options"] = Options(budget)
+        };
+        if (tools.Count > 0) body["tools"] = ModelTools.Wire(tools);
+        return body;
+    }
+
+    private Dictionary<string, object> ChatBody(string prompt, ChatContext context, InferenceTokenBudget budget, bool stream)
+    {
+        var body = new Dictionary<string, object>
+        {
+            ["model"] = Model, ["messages"] = ProviderHttp.Messages(prompt, context), ["stream"] = stream,
+            ["think"] = Think, ["options"] = Options(budget)
+        };
+        if (context.Json) body["format"] = "json";
+        return body;
+    }
+
+    private static object Options(InferenceTokenBudget budget) =>
+        new { num_ctx = budget.ContextTokens, num_predict = budget.ReservedOutputTokens };
+    private string Missing => $"Model '{Model}' is not installed in Ollama. Run: ollama pull {Model}";
 
     public async Task<bool?> IsAvailableAsync(CancellationToken ct) =>
         await ProviderHttp.ProbeAsync(_factory.CreateClient("ai"), Endpoint + "/api/tags", ct);
@@ -268,26 +391,51 @@ public sealed class LlamaCppProvider : IModelProvider
         Model = config["NEXUS_LLAMA_MODEL"] ?? "default";
     }
 
-    public async Task<string> AskAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct)
+    public async Task<string> AskAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct, ChatContext? context = null)
     {
         if (_process is not null) await _process.EnsureRunningAsync(ct);
         return await ProviderHttp.SendAsync("Local llama.cpp server", token => _factory.CreateClient("ai").PostAsJsonAsync(
                 Endpoint + "/v1/chat/completions",
-                new { model = Model, messages = new[] { new { role = "user", content = prompt } }, stream = false,
+                new { model = Model, messages = ProviderHttp.Messages(prompt, context), stream = false,
                       max_tokens = budget.ReservedOutputTokens }, token),
             root => root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString(), ct);
     }
 
     public async IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct, ChatContext? context = null)
     {
         if (_process is not null) await _process.EnsureRunningAsync(ct);
         await foreach (var piece in ProviderHttp.StreamAsync("Local llama.cpp server",
                            token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"), Endpoint + "/v1/chat/completions",
-                               new { model = Model, messages = new[] { new { role = "user", content = prompt } }, stream = true,
+                               new { model = Model, messages = ProviderHttp.Messages(prompt, context), stream = true,
                                      max_tokens = budget.ReservedOutputTokens }, token),
                            ProviderHttp.ParseSseLine, ct))
             yield return piece;
+    }
+
+    // llama-server takes OpenAI-style tools when started with --jinja; without it
+    // the request is refused and the turn falls back to text only.
+    public async IAsyncEnumerable<TurnPiece> StreamTurnAsync(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools,
+        InferenceTokenBudget budget, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        if (_process is not null) await _process.EnsureRunningAsync(ct);
+        await foreach (var piece in ProviderHttp.WithToolFallback(withTools => ProviderHttp.StreamTurnAsync("Local llama.cpp server",
+                           token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"), Endpoint + "/v1/chat/completions",
+                               OpenAiTurnBody(Model, messages, withTools ? tools : [], budget), token),
+                           new OpenAiTurnParser(), withTools, ct), tools.Count > 0, ct))
+            yield return piece;
+    }
+
+    internal static Dictionary<string, object> OpenAiTurnBody(string model, IReadOnlyList<TurnMessage> messages,
+        IReadOnlyList<ToolSpec> tools, InferenceTokenBudget budget)
+    {
+        var body = new Dictionary<string, object>
+        {
+            ["model"] = model, ["messages"] = ModelTools.OpenAiMessages(messages), ["stream"] = true,
+            ["max_tokens"] = budget.ReservedOutputTokens
+        };
+        if (tools.Count > 0) body["tools"] = ModelTools.Wire(tools);
+        return body;
     }
 
     public async Task<bool?> IsAvailableAsync(CancellationToken ct) =>
@@ -327,7 +475,7 @@ public sealed class OpenAiCompatibleProvider : IModelProvider
         Model = config["NEXUS_OPENAI_MODEL"] ?? "gpt-4.1-mini";
     }
 
-    public async Task<string> AskAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct)
+    public async Task<string> AskAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct, ChatContext? context = null)
     {
         var token = await RequireCredentialAsync(ct);
         return await ProviderHttp.SendAsync("Cloud provider", async innerCt =>
@@ -336,7 +484,7 @@ public sealed class OpenAiCompatibleProvider : IModelProvider
                 message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                 message.Content = new StringContent(JsonSerializer.Serialize(new
                 {
-                    model = Model, messages = new[] { new { role = "user", content = prompt } },
+                    model = Model, messages = ProviderHttp.Messages(prompt, context),
                     max_tokens = budget.ReservedOutputTokens
                 }), Encoding.UTF8, "application/json");
                 // Journal before sending, so a request is never sent unrecorded.
@@ -348,15 +496,35 @@ public sealed class OpenAiCompatibleProvider : IModelProvider
     }
 
     public async IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct, ChatContext? context = null)
     {
         var token = await RequireCredentialAsync(ct);
         await foreach (var piece in ProviderHttp.StreamAsync("Cloud provider",
                            innerCt => ProviderHttp.PostStreamAsync(_factory.CreateClient("cloud"), Endpoint + "/chat/completions",
-                               new { model = Model, messages = new[] { new { role = "user", content = prompt } }, stream = true,
+                               new { model = Model, messages = ProviderHttp.Messages(prompt, context), stream = true,
                                      max_tokens = budget.ReservedOutputTokens }, innerCt,
                                new AuthenticationHeaderValue("Bearer", token)),
                            ProviderHttp.ParseSseLine, ct))
+            yield return piece;
+    }
+
+    // Each request of a turn is journalled before it is sent, like AskAsync.
+    // The chat never offers private look-ups (files, the journal) to a cloud
+    // provider (NexusActions.ToolsFor).
+    public async IAsyncEnumerable<TurnPiece> StreamTurnAsync(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools,
+        InferenceTokenBudget budget, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        var token = await RequireCredentialAsync(ct);
+        await foreach (var piece in ProviderHttp.WithToolFallback(withTools => ProviderHttp.StreamTurnAsync("Cloud provider",
+                           async innerCt =>
+                           {
+                               if (_journal is not null)
+                                   await _journal.RecordEgressAsync(Name, new Uri(Endpoint).Host, _store?.SelectedAt, innerCt);
+                               return await ProviderHttp.PostStreamAsync(_factory.CreateClient("cloud"), Endpoint + "/chat/completions",
+                                   LlamaCppProvider.OpenAiTurnBody(Model, messages, withTools ? tools : [], budget), innerCt,
+                                   new AuthenticationHeaderValue("Bearer", token));
+                           },
+                           new OpenAiTurnParser(), withTools, ct), tools.Count > 0, ct))
             yield return piece;
     }
 
@@ -396,15 +564,22 @@ public sealed class ModelRouter
 
     public IModelProvider Current => _providers[_store.Selected];
 
-    public async Task<(string Answer, string Provider)> AskAsync(string prompt, CancellationToken ct)
+    public async Task<(string Answer, string Provider)> AskAsync(string prompt, CancellationToken ct, ChatContext? context = null)
     {
         var provider = Current;
-        return (await provider.AskAsync(prompt, _tokens.Budget, ct), provider.Name);
+        return (await provider.AskAsync(prompt, _tokens.Budget, ct, context), provider.Name);
     }
 
-    public (IAsyncEnumerable<string> Pieces, string Provider) Stream(string prompt, CancellationToken ct)
+    public (IAsyncEnumerable<string> Pieces, string Provider) Stream(string prompt, CancellationToken ct, ChatContext? context = null)
     {
         var provider = Current;
-        return (provider.StreamAsync(prompt, _tokens.Budget, ct), provider.Name);
+        return (provider.StreamAsync(prompt, _tokens.Budget, ct, context), provider.Name);
+    }
+
+    public (IAsyncEnumerable<TurnPiece> Pieces, string Provider) StreamTurn(IReadOnlyList<TurnMessage> messages,
+        IReadOnlyList<ToolSpec> tools, CancellationToken ct)
+    {
+        var provider = Current;
+        return (provider.StreamTurnAsync(messages, tools, _tokens.Budget, ct), provider.Name);
     }
 }

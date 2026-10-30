@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
-"""Prepare a deterministic, non-executing Guardian NixOS candidate (ADR-002)."""
+"""Prepare a deterministic, non-executing Guardian NixOS candidate (ADR-002).
+
+Two kinds: a change (the host configuration plus an allowlisted overlay
+module, prepare) and a security update (the host configuration with no
+overlay, evaluated with a newer flake.lock that only moves nixpkgs,
+prepare_update; system_update.py). An update names its lock by SHA-256 only.
+"""
 import argparse
 import json
 from pathlib import Path
 
-from guardian_schema import candidate_id, plan_id, render, require_baseline, require_host_config, risk
+from guardian_schema import (candidate_id, plan_id, render, require_baseline, require_host_config, risk,
+                             update_candidate_id)
 
 OPERATIONS = ["evaluate", "build", "vm-test"]
 FIELDS = {"schemaVersion", "candidateId", "planId", "baseline", "hostConfig", "nixModule",
           "risk", "operations", "activation", "rollbackTarget"}
+UPDATE_FIELDS = {"schemaVersion", "kind", "candidateId", "planId", "baseline", "hostConfig", "lockHash",
+                 "risk", "operations", "activation", "rollbackTarget"}
 
 
 def prepare(changes, baseline, host_config):
@@ -26,6 +35,24 @@ def prepare(changes, baseline, host_config):
         "operations": list(OPERATIONS),
         # Activation of the running system is never permitted; staging for next
         # boot is a separate, broker-authorised executor step.
+        "activation": "prohibited",
+        "rollbackTarget": baseline,
+    }
+
+
+def prepare_update(lock_hash, baseline, host_config):
+    """A security update: no module; what is built is the host configuration with lock_hash's lock."""
+    candidate_id = update_candidate_id(baseline, host_config, lock_hash)
+    return {
+        "schemaVersion": 1,
+        "kind": "update",
+        "candidateId": candidate_id,
+        "planId": plan_id("update\n" + lock_hash),
+        "baseline": baseline,
+        "hostConfig": host_config,
+        "lockHash": lock_hash,
+        "risk": {"level": "review", "notes": []},
+        "operations": list(OPERATIONS),
         "activation": "prohibited",
         "rollbackTarget": baseline,
     }

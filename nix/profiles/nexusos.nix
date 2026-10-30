@@ -6,7 +6,7 @@ let
   cfg = config.nexusos;
 in
 {
-  imports = [ ../modules/desktop.nix ../modules/nvidia.nix ];
+  imports = [ ../modules/hardware.nix ../modules/desktop.nix ../modules/nvidia.nix ../modules/apps.nix ../modules/images.nix ../modules/guardian.nix ../modules/updates.nix ];
 
   options.nexusos = {
     user = lib.mkOption {
@@ -61,6 +61,21 @@ in
     services.nexus-desktop = {
       enable = true;
       autologinUser = if cfg.autologin then cfg.user else null;
+      greeter = { user = cfg.user; fullName = cfg.fullName; };
+    };
+
+    # Guardian: system changes (from Nexus, Fix it or the person) are built and
+    # tested on this computer, approved with the person's password, and used
+    # from the next boot as a one-time trial that falls back by itself if the
+    # computer does not start properly (docs/GUARDIAN-DEPLOYMENT.md). The
+    # builder key is made at first boot; nothing needs setting up.
+    services.nexus-guardian = {
+      enable = true;
+      allowedUsers = [ cfg.user ];
+      hostConfig = "path:/etc/nixos#nixosConfigurations.nexus";
+      localBuilder.enable = true;
+      desktopApproval.enable = true;
+      staging = { enable = true; requiredUnits = [ "nexus-guardian.service" ]; };
     };
 
     # Local inference. The model itself is downloaded once the machine is online.

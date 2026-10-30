@@ -51,12 +51,9 @@ pkgs.testers.runNixOSTest {
     environment.etc."nexusos".source = nexusSource;
     environment.etc."nexusos-model".source = testModel;
     environment.systemPackages = [ nexusInstall ];
-    nix.settings = {
-      experimental-features = [ "nix-command" "flakes" ];
-      substituters = lib.mkForce [ ];
-      hashed-mirrors = null;
-      connect-timeout = 1;
-    };
+    # The installer image's Nix settings, unchanged: it lists cache.nixos.org,
+    # which this VM cannot reach, as a laptop with no Wi-Fi cannot.
+    nix.settings.experimental-features = [ "nix-command" "flakes" ];
     # The same store contents as the installer image (nix/installer/iso.nix):
     # the installed system, nixpkgs' source and the offline build tools.
     system.extraDependencies = [ referenceSystem nixpkgsSource ] ++ import ../installer/offline-deps.nix pkgs;
@@ -81,6 +78,16 @@ pkgs.testers.runNixOSTest {
         installer.fail("nexus-install --disk /dev/vda1 --user alice --yes")
         installer.fail("nexus-install --bogus")
 
+    with subtest("after a failed attempt, trying again works"):
+        installer.succeed("echo 'nexus-test-pw' > /tmp/pw")
+        installer.succeed("echo '{ ... }: throw \"a failed first attempt\"' > /tmp/broken.nix")
+        installer.fail(
+            "nexus-install --disk /dev/vda --user alice --password-file /tmp/pw"
+            " --extra-module /tmp/broken.nix --yes >&2",
+            timeout=1800)
+        # That attempt left the disk mounted at /mnt; the next one must not refuse it.
+        installer.succeed("findmnt /mnt")
+
     with subtest("nexus-install puts NexusOS on the blank disk"):
         installer.succeed("echo 'nexus-test-pw' > /tmp/pw")
         # The test talks to the installed system through the test backdoor,
@@ -91,15 +98,23 @@ pkgs.testers.runNixOSTest {
       # Boot the default entry at once: in the test harness the boot menu's
       # countdown can stop and wait for a key that never comes.
       boot.loader.timeout = 0;
+      # The serial line last, so it is the console the initrd asks for the
+      # disk's password on, and the test can answer there.
+      boot.kernelParams = [ "console=ttyS0,115200" ];
     }
     EOF""")
         installer.succeed(
             "nexus-install --disk /dev/vda --user alice --full-name 'Alice Test'"
             " --password-file /tmp/pw --hostname nexus-test --timezone Europe/London"
-            " --extra-module /tmp/test.nix --yes >&2",
+            " --extra-module /tmp/test.nix --model nexus-test:tiny --yes >&2",
             timeout=7200)
         installer.succeed("test -f /mnt/etc/nixos/flake.lock && test -f /mnt/etc/nixos/nexusos/flake.nix")
         installer.succeed("grep -q 'nexusos.user = \"alice\"' /mnt/etc/nixos/local.nix")
+        # The hardware scan: no graphics card in this VM, so the model runs on the
+        # processor; the model asked for is the one written down and copied.
+        installer.succeed("grep -q 'nexusos.hardware.gpu = \"none\"' /mnt/etc/nixos/local.nix")
+        installer.succeed("grep -qE 'nexusos.hardware.memoryGiB = [0-9]+;' /mnt/etc/nixos/local.nix")
+        installer.succeed("grep -q 'services.nexus-core.ollamaModel = \"nexus-test:tiny\"' /mnt/etc/nixos/local.nix")
         installer.succeed("test -f /mnt/var/lib/nexus-model-seed/manifests/registry.ollama.ai/library/nexus-test/tiny")
         installer.succeed("umount -R /mnt")
         installer.succeed("sync")
@@ -109,11 +124,19 @@ pkgs.testers.runNixOSTest {
     target.state_dir = installer.state_dir
     target.start()
 
+    with subtest("the encrypted disk opens with alice's password"):
+        target.wait_for_console_text("Passphrase for", timeout=600)
+        target.send_console("nexus-test-pw\n")
+
     with subtest("the installed system boots as NexusOS"):
         target.wait_for_unit("multi-user.target")
         target.succeed("grep -q '^NAME=NexusOS' /etc/os-release")
         assert "nexus-test" in target.succeed("hostname")
         target.succeed("test -e /boot/loader/loader.conf")
+        # The root filesystem is inside LUKS2, which the hardware scan wrote down.
+        target.succeed("cryptsetup status nexusos-root | grep -q 'type:    LUKS2'")
+        target.succeed("findmnt -no SOURCE / | grep -qx /dev/mapper/nexusos-root")
+        target.succeed("grep -q 'boot.initrd.luks.devices' /etc/nixos/hardware-configuration.nix")
 
     with subtest("alice exists, with her password set and sudo through wheel"):
         target.succeed("id alice | grep -q wheel")
@@ -136,6 +159,34 @@ pkgs.testers.runNixOSTest {
         assert target.succeed(f"stat -L -c %u {manifest}") == target.succeed("stat -L -c %u /var/lib/ollama"), "wrong owner"
         assert target.succeed("stat -L -c %u /var/lib/ollama").strip() != "0", "Ollama's directory is owned by root"
         target.wait_until_succeeds("OLLAMA_HOST=127.0.0.1:11434 ollama list | grep -q 'nexus-test:tiny'", timeout=300)
+
+    with subtest("Guardian is on, with this computer's own builder key made at first boot"):
+        for unit in ("nexus-guardian-keys", "nexus-guardian", "nexus-guardian-builder", "nexus-guardian-stage",
+                     "nexus-guardian-boot-check"):
+            target.wait_for_unit(unit + ".service")
+        assert target.succeed("stat -c '%a %U' /var/lib/nexus-guardian-builder").strip() == "700 root"
+        assert target.succeed("stat -c '%a %U' /var/lib/nexus-guardian-builder/builder.key").strip() == "600 root"
+        # The broker trusts exactly this computer's key (no key is configured in the image).
+        target.succeed("diff <(grep -v '^#' /var/lib/nexus-guardian-builder/trusted-keys) /var/lib/nexus-guardian-builder/builder.pub")
+        for sock in ("nexus-guardian/review", "nexus-guardian-builder/build", "nexus-guardian-stage/stage"):
+            assert target.succeed(f"stat -c '%a %U %G' /run/{sock}.sock").strip() == "660 root nexus-guardian", sock
+        target.succeed("id -nG alice | grep -qw nexus-guardian")
+        # Alice's own requests are answered (here: no such candidate); the approval
+        # helper is polkit's, and trial boots fall back by themselves.
+        out = target.succeed("su - alice -c \"nexus-guardian-client status '{\\\"candidateId\\\": \\\"" + "0" * 24 + "\\\"}'\" || true")
+        assert "No such candidate" in out, out
+        target.succeed("grep -q org.nexusos.guardian.approve /run/current-system/sw/share/polkit-1/actions/org.nexusos.guardian.policy")
+        target.succeed("test -x /run/current-system/sw/bin/nexus-guardian-desktop-approve")
+        # Only the trial-boot entry resets on a failed boot (Guardian's panic=10).
+        # Not boot.panic_on_fail or /proc/cmdline: the test instrumentation in
+        # this system adds boot.panic_on_fail and panic=1 to every entry.
+        trial_entry = "/boot/loader/entries/nixos-generation-1-specialisation-guardian-trial.conf"
+        target.succeed("grep -qw panic=10 /run/current-system/specialisation/guardian-trial/kernel-params")
+        target.succeed(f"grep '^options' {trial_entry} | grep -qw panic=10")
+        target.succeed("grep -qx 'default nixos-generation-1.conf' /boot/loader/loader.conf")
+        target.fail("grep -qw panic=10 /run/current-system/kernel-params")
+        target.fail("grep -qw panic=10 /boot/loader/entries/nixos-generation-1.conf")
+        target.succeed("journalctl -b -u nexus-guardian-boot-check | grep -q nothing-pending")
 
     with subtest("the machine can rebuild itself from /etc/nixos"):
         target.succeed("nix --extra-experimental-features 'nix-command flakes' eval --raw /etc/nixos#nixosConfigurations.nexus.config.networking.hostName | grep -qx nexus-test")

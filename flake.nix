@@ -7,11 +7,16 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
       ollamaModel = pkgs.callPackage ./nix/packages/ollama-model.nix { };
-      # The local model the installer image carries, once pinned with
-      # `nix run .#lock-model` (nix/models/). Without the lock file the image
-      # leaves the model to download after installation.
-      modelLock = ./nix/models/llama3.2-3b.json;
-      bundledModel = if builtins.pathExists modelLock then ollamaModel.fromLock modelLock else null;
+      # The local models the installer image carries, once pinned with
+      # `nix run .#lock-model [-- name:tag]` (nix/models/*.json): one per
+      # kind of computer (qwen3:8b with a graphics card, qwen3:4b without).
+      # The installer copies the one chosen for the computer; a model not on
+      # the image downloads after installation.
+      modelDir = ./nix/models;
+      modelLocks = pkgs.lib.optionals (builtins.pathExists modelDir)
+        (map (f: modelDir + "/${f}") (builtins.filter (pkgs.lib.hasSuffix ".json") (builtins.attrNames (builtins.readDir modelDir))));
+      bundledModel = if modelLocks == [ ] then null
+        else pkgs.symlinkJoin { name = "nexus-models"; paths = map ollamaModel.fromLock modelLocks; };
     in {
       packages.${system} = {
         nexus-guardian = pkgs.callPackage ./nix/packages/nexus-guardian.nix { };
@@ -78,7 +83,7 @@
             (python3.withPackages (ps: [ ps.pygobject3 ps.pycairo ps.pillow ps.pywayland ]))
             wlr-protocols libxkbcommon
             gtk4 gtk4-layer-shell webkitgtk_6_0 gobject-introspection glib-networking
-            nodejs_22 esbuild
+            nodejs_22 esbuild rsync dash
           ];
           SPIKE_MESA = "${pkgs.mesa}";
           SPIKE_WAYLAND_XML = "${pkgs.wayland-scanner.out}/share/wayland/wayland.xml";
@@ -108,7 +113,24 @@
         };
         nexus-core = self.packages.${system}.nexus-core;
         nexus-shell = self.packages.${system}.nexus-shell;
+        # Hyprland's own parser checks the generated configuration (window
+        # rules, binds and options change between Hyprland releases).
+        hyprland-config = let
+          cfg = self.nixosConfigurations.nexus-reference.config;
+          conf = cfg.environment.etc."nexus/hyprland.conf".source;
+        in pkgs.runCommand "hyprland-config-check" { } ''
+          export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/run
+          mkdir -m 700 $XDG_RUNTIME_DIR
+          ${cfg.programs.hyprland.package}/bin/Hyprland --verify-config --config ${conf} > log 2>&1 || true
+          sed -n '/Config parsing result/,$p' log
+          grep -qx 'config ok' log
+          touch $out
+        '';
         hyprland-desktop = import ./nix/tests/hyprland-desktop.nix {
+          inherit pkgs;
+          desktopModule = self.nixosModules.desktop;
+        };
+        login-screen = import ./nix/tests/login-screen.nix {
           inherit pkgs;
           desktopModule = self.nixosModules.desktop;
         };

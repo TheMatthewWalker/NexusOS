@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pin an Ollama model so the installer image can carry it.
 
-    nix run .#lock-model                 # the default model, llama3.2:3b
+    nix run .#lock-model                 # the default model, qwen3:8b
     nix run .#lock-model -- qwen2.5:7b   # another one
 
 Fetches the model's manifest from the Ollama registry and writes it to
@@ -20,7 +20,7 @@ ACCEPT = "application/vnd.docker.distribution.manifest.v2+json"
 
 
 def main():
-    model = sys.argv[1] if len(sys.argv) > 1 else "llama3.2:3b"
+    model = sys.argv[1] if len(sys.argv) > 1 else "qwen3:8b"
     name, _, tag = model.partition(":")
     tag = tag or "latest"
     if "/" in name:
@@ -37,6 +37,7 @@ def main():
     root = Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
                                check=True).stdout.strip())
     out = root / "nix/models" / f"{name}-{tag}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)   # git does not keep the empty folder
     out.write_text(json.dumps({"name": name, "tag": tag, "manifest": manifest}, indent=2) + "\n")
     subprocess.run(["git", "-C", str(root), "add", str(out)], check=True)
     size = sum(layer.get("size", 0) for layer in layers)

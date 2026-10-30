@@ -21,6 +21,10 @@ Item {
     signal failed(int id, string message)
     signal suggestions(int id, var apps, string source)
     signal unloaded(int id, var vramFreedBytes)     // bytes measured by Core, or null when unknown
+    signal result(int id, string type, var data)     // providers, status, cleared, code-session, code-result
+    signal codeEvent(int id, var ev)                 // the coding agent's step, changes, message and done events
+    signal tool(int id, var ev)                      // a chat look-up running or finished: { name, status, summary }
+    signal action(int id, var ev)                    // a chat action offered to the person: { actionId, action, safety, summary, plan }
 
     function send(op, extra) {
         if (!proc.running) return -1;
@@ -32,6 +36,8 @@ Item {
     function chat(prompt) { return send("chat", { prompt: prompt }) }
     function suggest(prompt, useModel) { return send("suggest", { prompt: prompt, model: !!useModel }) }
     function unload() { return send("unload") }
+    // Any page's Core request (allowed areas only, see BridgeApi in the CLI); the answer comes as result(id, "api", data).
+    function api(method, path, body) { return send("api", { method: method, path: path, body: body || null }) }
 
     function handle(line) {
         let ev;
@@ -40,11 +46,20 @@ Item {
         if (ev.type === "ready") { restartDelay = 1000; health.restart(); send("health"); return }
         const id = typeof ev.id === "number" ? ev.id : -1;
         if (ev.type === "delta") { delta(id, ev.text); return }
+        // Mid-answer events of a chat: the request is still open until done.
+        if (pending[id] === "chat" && ev.type === "tool") { tool(id, ev); return }
+        if (pending[id] === "chat" && ev.type === "action") { action(id, ev); return }
+        if (pending[id] === "code-send" && ev.type !== "error") {
+            if (ev.type === "done") delete pending[id];
+            codeEvent(id, ev);
+            return;
+        }
         delete pending[id];
         if (ev.type === "done") done(id, ev.provider);
         else if (ev.type === "suggestions") suggestions(id, ev.data.apps, ev.data.source);
         else if (ev.type === "unloaded") unloaded(id, ev.data.vramFreedBytes);
         else if (ev.type === "health") { online = true; offlineReason = "" }
+        else if (["providers", "status", "cleared", "code-session", "code-result", "images-status", "images", "images-deleted", "api"].includes(ev.type)) result(id, ev.type, ev.data || {});
         else if (ev.type === "error") {
             if (/not reachable|did not answer/.test(ev.message)) { online = false; offlineReason = ev.message }
             failed(id, ev.message);
@@ -69,6 +84,7 @@ Item {
         }
     }
     Timer { id: restart; onTriggered: proc.running = true }
-    // While online, a cheap health probe notices Core going away between requests.
-    Timer { id: health; interval: 15000; repeat: true; running: proc.running; onTriggered: bridge.send("health") }
+    // A cheap health probe notices Core going away between requests, and while
+    // Core is away it asks more often, so Nexus is back as soon as Core is.
+    Timer { id: health; interval: bridge.online ? 15000 : 3000; repeat: true; running: proc.running; onTriggered: bridge.send("health") }
 }

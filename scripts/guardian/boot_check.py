@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Post-boot Guardian assessment: confirm a healthy trial boot or restore the baseline.
 
-Runs once per boot (nexus-guardian-boot-check.service). With a pending trial:
-  - running the candidate and healthy  -> make it the GRUB default; confirmed
+Runs once per boot (nexus-guardian-boot-check.service). With a pending trial
+(running the candidate means its trial-boot entry, or its plain entry):
+  - running the candidate and healthy -> make it the bootloader default; confirmed
   - running the candidate but unhealthy -> restore the baseline for next boot
-  - running the baseline                -> the trial failed and GRUB fell back;
-                                           restore the baseline profile
+  - running the baseline                -> the trial failed and the bootloader fell
+                                           back; restore the baseline profile
+The bootloader is the one recorded when the trial was staged (GRUB unless the
+record says systemd-boot). A confirmed security update's flake.lock then
+becomes /etc/nixos/flake.lock (atomically, and only if that file is still the
+lock the update was made from), so later rebuilds and changes build on it;
+after a rollback or fallback /etc/nixos stays exactly as it was.
 """
 import argparse
 import json
@@ -14,6 +20,7 @@ from pathlib import Path
 import subprocess
 
 from stage_executor import GRUBENV, PROFILE, record, run
+import system_update
 
 
 def system_health(required_units):
@@ -30,35 +37,65 @@ def system_health(required_units):
     return True, "healthy"
 
 
-def restore_baseline(baseline, runner, grub_editenv, grubenv):
+def follow_profile(bootloader, runner, grub_editenv, grubenv, bootctl):
+    """Let the bootloader's default follow the system profile again."""
+    if bootloader == "systemd-boot":
+        # Without the EFI override, loader.conf's default (the profile's newest generation) applies.
+        runner([bootctl, "set-default", ""])
+    else:
+        runner([grub_editenv, grubenv, "set", "saved_entry=0"])
+
+
+def restore_baseline(baseline, runner, follow):
     runner(["nix-env", "--profile", PROFILE, "--set", baseline])
     runner([os.path.join(baseline, "bin", "switch-to-configuration"), "boot"])
-    runner([grub_editenv, grubenv, "set", "saved_entry=0"])
+    follow()
+
+
+def settle_lock(state_dir, pending, confirmed, host_flake_dir):
+    """A security update's lock: into /etc/nixos after a confirmed trial; otherwise dropped."""
+    lock = pending["flakeLock"]
+    staged = Path(state_dir) / "staged-flake.lock"
+    try:
+        if confirmed:
+            result = system_update.install_lock(staged, lock["sha256"], lock["previous"], host_flake_dir)
+            record(state_dir, {"event": "flake-lock-" + result, "decision": pending["decision"], "lockHash": lock["sha256"]})
+    except (OSError, ValueError, KeyError) as error:
+        record(state_dir, {"event": "flake-lock-failed", "decision": pending["decision"], "reason": str(error)[:200]})
+    finally:
+        staged.unlink(missing_ok=True)
 
 
 def check(state_dir, *, current=None, health=None, runner=run, grub_editenv="grub-editenv", grubenv=GRUBENV,
-          required_units=()):
+          bootctl="bootctl", required_units=(), host_flake_dir=system_update.HOST_FLAKE_DIR):
     pending_path = Path(state_dir) / "pending-boot.json"
     if not pending_path.exists():
         return "nothing-pending"
     pending = json.loads(pending_path.read_text(encoding="utf-8"))
+    bootloader = pending.get("bootloader", "grub")
+
+    def follow():
+        follow_profile(bootloader, runner, grub_editenv, grubenv, bootctl)
     current = current if current is not None else os.path.realpath("/run/current-system")
-    if current == pending["toplevel"]:
+    # Trials staged before trial-boot entries existed record only the toplevel.
+    if current in (pending["toplevel"], pending.get("trialSystem")):
         ok, reason = (health or system_health)(required_units)
         if ok:
-            runner([grub_editenv, grubenv, "set", "saved_entry=0"])  # Default entry now follows the new profile.
+            follow()  # Default entry now follows the new profile.
             outcome = "confirmed"
         else:
-            restore_baseline(pending["baseline"], runner, grub_editenv, grubenv)
+            restore_baseline(pending["baseline"], runner, follow)
             outcome = "rolled-back"
         record(state_dir, {"event": outcome, "decision": pending["decision"], "reason": reason})
     elif current == pending["baseline"]:
-        restore_baseline(pending["baseline"], runner, grub_editenv, grubenv)
+        restore_baseline(pending["baseline"], runner, follow)
         outcome = "fell-back"
         record(state_dir, {"event": outcome, "decision": pending["decision"], "reason": "trial boot did not complete"})
     else:
         record(state_dir, {"event": "unexpected-generation", "decision": pending["decision"], "current": current})
         return "unexpected-generation"  # Leave the pending record for an administrator.
+    if pending.get("flakeLock"):
+        settle_lock(state_dir, pending, outcome == "confirmed", host_flake_dir)
     pending_path.unlink()
     return outcome
 

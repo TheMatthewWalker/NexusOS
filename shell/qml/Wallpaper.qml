@@ -4,7 +4,17 @@ import Quickshell.Wayland
 
 // The deep-space desktop background (approved dark theme, 22 Oct). It is drawn
 // once per output and then never repaints, so it costs nothing while idle.
+// A picture chosen with "Use as wallpaper" (Images) is kept as
+// ~/.config/nexusos/wallpaper and shown instead.
 Variants {
+    id: wallpapers
+    property string picture: "file://" + (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nexusos/wallpaper"
+    property int version: 0
+    function set(path) {
+        Quickshell.execDetached(["sh", "-c", "mkdir -p \"$(dirname \"$2\")\" && ln -sf \"$1\" \"$2\"", "sh", path, picture.slice(7)]);
+        reload.restart();
+    }
+    property Timer reload: Timer { interval: 400; onTriggered: wallpapers.version++ }
     model: Quickshell.screens
     PanelWindow {
         required property var modelData
@@ -15,6 +25,14 @@ Variants {
         WlrLayershell.namespace: "nexus-wallpaper"
         color: "#04050C"
 
+        Image {
+            id: picture
+            anchors.fill: parent; z: 1
+            source: wallpapers.picture + "?v=" + wallpapers.version
+            cache: false; asynchronous: true
+            fillMode: Image.PreserveAspectCrop
+            visible: status === Image.Ready
+        }
         Canvas {
             anchors.fill: parent
             renderStrategy: Canvas.Immediate

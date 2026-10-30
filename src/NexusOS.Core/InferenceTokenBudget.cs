@@ -20,8 +20,8 @@ public sealed class InferenceTokenSettings
 
     public InferenceTokenSettings(IConfiguration config)
     {
-        var ctx = Parse(config["NEXUS_CONTEXT_TOKENS"], 4096, "NEXUS_CONTEXT_TOKENS");
-        var output = Parse(config["NEXUS_MAX_OUTPUT_TOKENS"], 512, "NEXUS_MAX_OUTPUT_TOKENS");
+        var ctx = Parse(config["NEXUS_CONTEXT_TOKENS"], 8192, "NEXUS_CONTEXT_TOKENS");
+        var output = Parse(config["NEXUS_MAX_OUTPUT_TOKENS"], 1024, "NEXUS_MAX_OUTPUT_TOKENS");
         try { Budget = InferenceTokenBudgetPlanner.Calculate(ctx, output); }
         catch (ArgumentOutOfRangeException)
         {

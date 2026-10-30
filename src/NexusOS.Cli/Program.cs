@@ -53,7 +53,7 @@ if (mode == "unix")
     };
 }
 else handler = new SocketsHttpHandler();
-using var http = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5077"), Timeout = TimeSpan.FromMinutes(4) };
+using var http = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:5077"), Timeout = TimeSpan.FromMinutes(15) };   // images and the coding agent can take minutes
 http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 if (args.Length == 0) { Usage(); return 2; }
 try
@@ -304,14 +304,19 @@ async Task<int> StreamAnswer(string prompt)
         if (type == "delta") { Console.Write(ev.GetProperty("text").GetString()); Console.Out.Flush(); }
         else if (type == "error") { Console.Error.WriteLine($"\nnexus: {ev.GetProperty("message").GetString()}"); ok = false; }
         else if (type == "done") Console.WriteLine();
+        // Actions wait for the person's click in the Nexus window; the command line only says what was offered.
+        else if (type == "action")
+            Console.Error.WriteLine($"\nNexus offers to: {ev.GetProperty("summary").GetString()}. Ask in Nexus (Super+Space) to do it.");
     }
     return ok ? 0 : 1;
 }
 
 // Streams /chat/stream events; an HTTP error becomes a single error event.
-async IAsyncEnumerable<JsonElement> ChatEvents(string prompt)
+IAsyncEnumerable<JsonElement> ChatEvents(string prompt) => StreamEvents("/chat/stream", new { prompt });
+
+async IAsyncEnumerable<JsonElement> StreamEvents(string path, object body)
 {
-    using var request = new HttpRequestMessage(HttpMethod.Post, "/chat/stream") { Content = JsonContent.Create(new { prompt }) };
+    using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
     using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
     if (!response.IsSuccessStatusCode)
     {
@@ -331,10 +336,30 @@ async IAsyncEnumerable<JsonElement> ChatEvents(string prompt)
 // A long-lived channel for the desktop shell: one JSON request per stdin line,
 // one JSON event per stdout line, each tagged with the request's id. The shell
 // never holds the API token itself; this process reads it like any CLI call.
-//   {"id":1,"op":"chat","prompt":"..."}     -> delta events, then done or error
+//   {"id":1,"op":"chat","prompt":"..."}     -> delta, tool and action events, then done or error
+//   (an action card's "Do it": {"op":"api","method":"POST","path":"/actions/<id>/confirm"})
 //   {"id":2,"op":"suggest","prompt":"...","model":false}
 //   {"id":3,"op":"apps"} | {"id":4,"op":"health"}
 //   {"id":5,"op":"unload"}                  -> {"type":"unloaded","data":{"vramFreedBytes":N|null}}
+// For Settings, Privacy and AI:
+//   {"id":6,"op":"providers"}               -> {"type":"providers","data":{"selected":"local","providers":[...]}}
+//   {"id":7,"op":"select","name":"local"}   -> {"type":"providers","data":{"selected":"local"}}
+//   {"id":8,"op":"status"}                  -> {"type":"status","data":{"backend":..,"model":..,"available":..}}
+//   {"id":9,"op":"clear-history"}           -> {"type":"cleared"}
+// The coding agent (CodingAgent.cs):
+//   {"id":10,"op":"code-start","folder":"~/projects/app"} -> {"type":"code-session","data":{"id":..,"folder":..,"tests":..}}
+//   {"id":11,"op":"code-send","session":"..","text":"fix the bug"} -> step events, changes, message, done
+//   {"id":12,"op":"code-accept","session":"..","files":["a.py"]|null} | code-reject | code-undo
+//   {"id":13,"op":"code-run","session":"..","run":".."}  the person's Run on the agent's test card -> {"type":"code-result","data":{"type":"test-result",..}}
+//   {"id":14,"op":"code-dismiss","session":"..","run":".."} | {"id":15,"op":"code-stop","session":".."}
+// Images (ImageStudio.cs):
+//   {"op":"images-status"} | {"op":"images-list"} | {"op":"images-delete","name":".."}
+//   {"op":"images-generate","prompt":"..","shape":"landscape","count":4,"style":"painterly","seed":-1}
+// Any other Core request the desktop's pages need, limited to these areas:
+//   {"op":"api","method":"GET","path":"/journal?limit=50"}  -> {"type":"api","data":...}
+//   {"op":"api","method":"POST","path":"/fixit","body":{"problem":"no sound"}}
+// Streaming requests (chat, code-send), test runs and image generation run alongside the others, so a long
+// answer never holds up a health check or a click.
 async Task<int> Bridge()
 {
     var output = Console.Out;
@@ -354,12 +379,89 @@ async Task<int> Bridge()
         JsonElement? id = req.TryGetProperty("id", out var i) ? i : null;
         var op = req.TryGetProperty("op", out var o) ? o.GetString() : null;
         var prompt = req.TryGetProperty("prompt", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : "";
+        string Arg(string key) => req.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
+        if (op == "api")
+        {
+            var method = Arg("method").ToUpperInvariant();
+            var apiPath = Arg("path");
+            object? apiBody = req.TryGetProperty("body", out var b) && b.ValueKind == JsonValueKind.Object ? b : null;
+            if (!BridgeApi.Allowed(method, apiPath))
+            {
+                Emit(id, new { type = "error", message = $"The desktop may not call {method} {apiPath}." });
+                continue;
+            }
+            _ = Task.Run(async () =>
+            {
+                try { Emit(id, await Call(new HttpMethod(method), apiPath, apiBody, "api")); }
+                catch (HttpRequestException) { Emit(id, new { type = "error", message = "Nexus Core is not reachable." }); }
+                catch (TaskCanceledException) { Emit(id, new { type = "error", message = "Nexus Core did not answer in time." }); }
+            });
+            continue;
+        }
+        if (op == "images-generate")
+        {
+            var body = JsonSerializer.Deserialize<JsonElement>(line);
+            _ = Task.Run(async () =>
+            {
+                try { Emit(id, await Call(HttpMethod.Post, "/images/generate", body, "images")); }
+                catch (HttpRequestException) { Emit(id, new { type = "error", message = "Nexus Core is not reachable." }); }
+                catch (TaskCanceledException) { Emit(id, new { type = "error", message = "The image took too long." }); }
+            });
+            continue;
+        }
+        if (op == "code-run")
+        {
+            var runPath = $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/runs/{Uri.EscapeDataString(Arg("run"))}/confirm";
+            _ = Task.Run(async () =>
+            {
+                try { Emit(id, await Call(HttpMethod.Post, runPath, new { }, "code-result")); }
+                catch (HttpRequestException) { Emit(id, new { type = "error", message = "Nexus Core is not reachable." }); }
+                catch (TaskCanceledException) { Emit(id, new { type = "error", message = "The tests took too long." }); }
+            });
+            continue;
+        }
+        if (op is "chat" or "code-send")
+        {
+            var path = op == "chat" ? "/chat/stream" : $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/messages";
+            object body = op == "chat" ? new { prompt } : new { text = Arg("text") };
+            _ = Task.Run(async () =>
+            {
+                try { await foreach (var ev in StreamEvents(path, body)) Emit(id, ev); }
+                catch (HttpRequestException) { Emit(id, new { type = "error", message = "Nexus Core is not reachable." }); }
+                catch (Exception ex) when (ex is TaskCanceledException or IOException) { Emit(id, new { type = "error", message = "Nexus Core did not answer in time." }); }
+            });
+            continue;
+        }
         try
         {
             switch (op)
             {
-                case "chat":
-                    await foreach (var ev in ChatEvents(prompt)) Emit(id, ev);
+                case "images-status":
+                    Emit(id, await Call(HttpMethod.Get, "/images/status", null, "images-status"));
+                    break;
+                case "images-list":
+                    Emit(id, await Call(HttpMethod.Get, "/images", null, "images"));
+                    break;
+                case "images-delete":
+                    Emit(id, await Call(HttpMethod.Delete, $"/images/{Uri.EscapeDataString(Arg("name"))}", null, "images-deleted"));
+                    break;
+                case "code-start":
+                    Emit(id, await Call(HttpMethod.Post, "/code/sessions", new { folder = Arg("folder") }, "code-session"));
+                    break;
+                case "code-accept":
+                    string[]? files = req.TryGetProperty("files", out var f) && f.ValueKind == JsonValueKind.Array
+                        ? f.EnumerateArray().Select(x => x.GetString() ?? "").ToArray() : null;
+                    Emit(id, await Call(HttpMethod.Post, $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/accept", new { files }, "code-result"));
+                    break;
+                case "code-reject":
+                case "code-undo":
+                    Emit(id, await Call(HttpMethod.Post, $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/{op[5..]}", new { }, "code-result"));
+                    break;
+                case "code-dismiss":
+                    Emit(id, await Call(HttpMethod.Post, $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/runs/{Uri.EscapeDataString(Arg("run"))}/dismiss", new { }, "code-result"));
+                    break;
+                case "code-stop":
+                    Emit(id, await Call(HttpMethod.Post, $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/runs/stop", new { }, "code-result"));
                     break;
                 case "suggest":
                     var model = req.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.True;
@@ -373,6 +475,19 @@ async Task<int> Bridge()
                     break;
                 case "unload":
                     Emit(id, await Unload());
+                    break;
+                case "providers":
+                    Emit(id, await Call(HttpMethod.Get, "/providers", null, "providers"));
+                    break;
+                case "select":
+                    var name = req.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString()! : "";
+                    Emit(id, await Call(HttpMethod.Post, "/providers/select", new { name }, "providers"));
+                    break;
+                case "status":
+                    Emit(id, await Call(HttpMethod.Get, "/inference/status", null, "status"));
+                    break;
+                case "clear-history":
+                    Emit(id, await Call(HttpMethod.Delete, "/history", null, "cleared"));
                     break;
                 default:
                     Emit(id, new { type = "error", message = $"Unknown bridge op '{op}'." });
@@ -424,6 +539,7 @@ async Task<object> Call(HttpMethod method, string path, object? body, string typ
     using var response = await http.SendAsync(request);
     var raw = await response.Content.ReadAsStringAsync();
     if (!response.IsSuccessStatusCode) return new { type = "error", message = ErrorMessage(raw, response) };
+    if (string.IsNullOrWhiteSpace(raw)) return new { type, data = (JsonElement?)null };
     using var doc = JsonDocument.Parse(raw);
     return new { type, data = doc.RootElement.Clone() };
 }
@@ -450,4 +566,17 @@ static void Usage()
     Console.WriteLine(RulesCommand.Usage);
     Console.WriteLine("nexus search <query> | search status | search formats | search reindex | search erase");
     Console.WriteLine("nexus search sources [list | add <folder>... | rm <folder>]   (search -- <query> to search for a subcommand word)");
+}
+
+// The Core areas the desktop's pages may call through the bridge's "api" op.
+static class BridgeApi
+{
+    private static readonly string[] Prefixes =
+        ["/journal", "/fixit", "/health/report", "/search", "/rules", "/events", "/guardian/propose", "/guardian/preview",
+         "/guardian/proposals", "/guardian/review", "/guardian/stage",
+         "/try/keep", "/settings/plan", "/workspaces", "/history", "/system", "/actions"];
+
+    public static bool Allowed(string method, string path) =>
+        method is "GET" or "POST" or "DELETE" && path.StartsWith('/') && !path.Contains("..") &&
+        Prefixes.Any(p => path == p || path.StartsWith(p + "/", StringComparison.Ordinal) || path.StartsWith(p + "?", StringComparison.Ordinal));
 }

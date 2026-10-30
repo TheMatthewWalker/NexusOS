@@ -29,7 +29,7 @@ Nexus shell are built, with an end-to-end VM test. There is no installer image y
 ## Quick start (development)
 
 Requires the .NET 8 SDK. Optionally install [Ollama](https://ollama.com) and
-run `ollama pull llama3.2:3b`.
+run `ollama pull qwen3:8b`.
 
 ```bash
 dotnet run --project src/NexusOS.Core            # terminal 1: Core

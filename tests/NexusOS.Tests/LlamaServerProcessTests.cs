@@ -81,7 +81,7 @@ public sealed class LlamaServerProcessTests
             Assert.True(provider.SupportsUnload);
             Assert.False(process.IsRunning);
             var answer = await provider.AskAsync("hello", InferenceTokenBudgetPlanner.Calculate(4096, 64), CancellationToken.None);
-            Assert.Equal("managed ctx=4096 ngl=3: hello", answer);
+            Assert.Equal("managed ctx=8192 ngl=3: hello", answer);   // the default budget
             Assert.True(process.IsRunning);
             Assert.True(PortOpen(port));
 

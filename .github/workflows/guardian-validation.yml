@@ -42,7 +42,7 @@ jobs:
           # Only the staging executor and boot check may touch the system
           # profile or bootloader, and nothing may escalate or spawn a shell.
           staging='^scripts/guardian/(stage_executor|boot_check)\.py:'
-          pattern='nixos-rebuild|switch-to-configuration|nix-env|grub-editenv|sudo|pkexec|shell=True|os\.system'
+          pattern='nixos-rebuild|switch-to-configuration|nix-env|grub-editenv|bootctl|sudo|pkexec|shell=True|os\.system'
           if grep -rnE "$pattern" scripts/guardian --include='*.py' | grep -vE "$staging" | grep -v 'guardian-scan: read-only'; then
             echo "ERROR: deployment or escalation primitive outside the staging executor" >&2
             exit 1

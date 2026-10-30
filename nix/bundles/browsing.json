@@ -1,0 +1,40 @@
+{
+  "id": "browsing",
+  "label": "Just browsing",
+  "order": 6,
+  "keywords": [
+    "browsing",
+    "browse",
+    "web",
+    "internet",
+    "netflix",
+    "youtube",
+    "shopping",
+    "social",
+    "basic",
+    "simple",
+    "news",
+    "streaming"
+  ],
+  "apps": [
+    {
+      "flathub": "com.bitwarden.desktop",
+      "name": "Bitwarden",
+      "detail": "Keep your passwords safe"
+    },
+    {
+      "flathub": "com.spotify.Client",
+      "name": "Spotify",
+      "detail": "Music and podcasts"
+    }
+  ],
+  "system": [],
+  "settings": [
+    {
+      "key": "nightLight",
+      "value": true,
+      "name": "Night light",
+      "detail": "Warmer colours in the evening"
+    }
+  ]
+}

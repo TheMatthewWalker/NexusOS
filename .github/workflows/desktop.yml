@@ -28,7 +28,7 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
       - name: Shell build and unit tests (orbit maths, Nova shader, noise atlas)
-        run: nix develop .#desktop --no-update-lock-file --command python3 -m unittest tests/shell/test_shell_build.py tests/shell/test_contrast.py -v
+        run: nix develop .#desktop --no-update-lock-file --command python3 -m unittest tests/shell/test_shell_build.py tests/shell/test_contrast.py tests/shell/test_movein.py -v
       - name: Build the nexus-shell package
         run: nix build .#nexus-shell --no-update-lock-file --print-build-logs
       - name: Hyprland desktop end to end (VM)

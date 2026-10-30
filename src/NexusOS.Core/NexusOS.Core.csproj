@@ -3,5 +3,6 @@
   <ItemGroup><PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" /><PackageReference Include="PdfPig" Version="0.1.16" /></ItemGroup>
   <ItemGroup><InternalsVisibleTo Include="NexusOS.Tests" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../../schema/guardian-options.json" LogicalName="guardian-options.json" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="assistant/nexus-guide.md" LogicalName="assistant/nexus-guide.md" /></ItemGroup>
   <ItemGroup><Content Remove="fixes/**" /><EmbeddedResource Include="fixes/*.json" LogicalName="fixes/%(Filename)%(Extension)" /></ItemGroup>
 </Project>

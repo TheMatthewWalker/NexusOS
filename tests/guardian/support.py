@@ -18,6 +18,8 @@ from root_review_broker import GuardianBroker  # noqa: E402
 BASELINE = "/nix/store/" + "1" * 32 + "-nixos-system-lab-26.05"
 OTHER_BASELINE = "/nix/store/" + "2" * 32 + "-nixos-system-lab-26.05"
 TOPLEVEL = "/nix/store/" + "3" * 32 + "-nixos-system-lab-26.05"
+# TOPLEVEL's trial-boot specialisation (guardian-trial).
+TRIAL = "/nix/store/" + "a" * 32 + "-nixos-system-lab-26.05"
 DRV = "/nix/store/" + "4" * 32 + "-nixos-system-lab-26.05.drv"
 HOST = "path:/etc/nixos#nixosConfigurations.lab"
 CHANGES = [{"option": "services.printing.enable", "enabled": True}]

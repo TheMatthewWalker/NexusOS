@@ -29,6 +29,10 @@ let
   stageArgs = " --bootloader ${cfg.staging.bootloader} --esp ${lib.escapeShellArg config.boot.loader.efi.efiSysMountPoint}";
   approveHelper = "/run/current-system/sw/bin/nexus-guardian-desktop-approve";
   # auth_admin, not auth_admin_keep: every approval asks for the password again.
+  # The message names the change: polkit fills in pkexec's $(command_line), the
+  # helper with the candidate ID and build hash it will approve, so the prompt
+  # (and the shell's agent, which matches them against its dialog) shows what
+  # the password is for. The helper checks both against the broker again.
   polkitPolicy = pkgs.writeTextDir "share/polkit-1/actions/org.nexusos.guardian.policy" ''
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
@@ -37,7 +41,7 @@ let
       <vendor>NexusOS</vendor>
       <action id="org.nexusos.guardian.approve">
         <description>Approve a system change</description>
-        <message>Enter your password to approve this system change. It is used from the next restart, and the computer goes back to today's version if it does not start properly.</message>
+        <message>Approve the system change Guardian checked, named by its change ID and build: $(command_line). It must match the System change window. It is used from the next restart, and the computer goes back to today's version if it does not start properly.</message>
         <icon_name>security-high</icon_name>
         <defaults>
           <allow_any>no</allow_any>

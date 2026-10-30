@@ -37,10 +37,11 @@ public sealed class GuardianProposalsTests
             };
         }
 
-        // What polkit does after the person's password: one approval for one candidate.
-        public async Task ApproveWithPassword(string candidateId)
+        // What polkit does after the person's password: one approval for one candidate and build
+        // (pkexec nexus-guardian-desktop-approve <candidateId> <buildHash>).
+        public async Task ApproveWithPassword(string candidateId, string buildHash)
         {
-            File.WriteAllText(Path.Combine(Dir, "approve", candidateId), "");
+            File.WriteAllText(Path.Combine(Dir, "approve", candidateId), buildHash);
             for (var i = 0; i < 100 && File.Exists(Path.Combine(Dir, "approve", candidateId)); i++) await Task.Delay(50);
             await Task.Delay(100);
         }
@@ -113,8 +114,23 @@ public sealed class GuardianProposalsTests
             Assert.Equal(HttpStatusCode.UnprocessableEntity, early.StatusCode);
         Assert.Equal("ready", (await client.GetFromJsonAsync<JsonElement>("/guardian/proposals/" + id)).GetProperty("state").GetString());
 
-        // Password (polkit), then the existing review flow, then staging.
-        await stack.ApproveWithPassword(candidateId);
+        // What the dialog shows is the broker's record of the checked candidate, not Core's copy.
+        var record = await Json(await client.GetAsync($"/guardian/proposals/{id}/describe"));
+        Assert.Equal(candidateId, record.GetProperty("candidateId").GetString());
+        var buildHash = record.GetProperty("buildHash").GetString()!;
+        Assert.Matches("^[0-9a-f]{64}$", buildHash);
+        var setting = Assert.Single(record.GetProperty("settings").EnumerateArray());
+        Assert.Equal(("services.printing.enable", false, true), (setting.GetProperty("option").GetString(),
+            setting.GetProperty("before").GetBoolean(), setting.GetProperty("after").GetBoolean()));
+        Assert.False(record.TryGetProperty("description", out _));
+
+        // A password approval for another build is refused, so the review still finds none.
+        await stack.ApproveWithPassword(candidateId, new string('0', 64));
+        using (var swapped = await client.PostAsJsonAsync("/guardian/review", new { candidateId, attestation }))
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, swapped.StatusCode);
+
+        // Password (polkit) for the build shown, then the existing review flow, then staging.
+        await stack.ApproveWithPassword(candidateId, buildHash);
         var decision = await Json(await client.PostAsJsonAsync("/guardian/review", new { candidateId, attestation }));
         Assert.True(decision.GetProperty("eligible").GetBoolean());
         var hash = decision.GetProperty("decision").GetString()!;
@@ -166,6 +182,18 @@ public sealed class GuardianProposalsTests
         var declined = await Json(await client.PostAsync($"/guardian/proposals/{first.GetProperty("id").GetString()}/decline", null));
         Assert.Equal("declined", declined.GetProperty("state").GetString());
         Assert.False((await client.GetFromJsonAsync<JsonElement>("/guardian/proposals")).GetProperty("attention").GetBoolean());
+    }
+
+    [Fact]
+    public async Task OnlyACheckedChangeHasABrokerRecordToShow()
+    {
+        using var factory = new CoreApiFactory(("NEXUS_GUARDIAN_SOCKET", "/nonexistent/broker.sock"));
+        var client = factory.Authorized();
+        var p = await Json(await client.PostAsJsonAsync("/guardian/proposals", new { description = "Install hello", packages = new[] { "hello" } }));
+        using (var waiting = await client.GetAsync($"/guardian/proposals/{p.GetProperty("id").GetString()}/describe"))
+            Assert.Equal(HttpStatusCode.Conflict, waiting.StatusCode);
+        using (var unknown = await client.GetAsync("/guardian/proposals/0123456789abcdef/describe"))
+            Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
     }
 
     [Fact]

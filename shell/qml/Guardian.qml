@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Polkit
 import "settings"
+import "lib/guardian.mjs" as GD
 
 // Guardian: the system change dialog (design: "System change proposal
 // (Guardian)"). It shows what a proposed system change is in plain words,
@@ -17,6 +18,20 @@ import "settings"
 //    (auth_admin, every time) for nexus-guardian-desktop-approve. This file
 //    never types, stores or remembers a password, and never approves on a
 //    timer or on Nexus's say-so.
+//  - what is approved is what Guardian holds, not what Core's proposals file
+//    says (anything running as this user can rewrite that file). Once the
+//    checks pass, the dialog shows the broker's own record of the candidate
+//    (GET /guardian/proposals/{id}/describe: each setting with today's and the
+//    new value, packages, risk, candidate ID, build hash); Core's title is only
+//    a "Nexus says" note, and if the two disagree on what changes the broker's
+//    is shown with a warning. The helper is run as `<candidateId> <buildHash>`
+//    from that record; polkit's prompt names that command line, and after the
+//    password the helper checks both against the broker again
+//    (desktop_approve.py).
+//  - the polkit agent types a password into this dialog only for Guardian's
+//    approve action naming this dialog's candidate and build (lib/guardian.mjs
+//    ownsFlow); every other request gets the plain window showing its action
+//    and message as they are.
 //  - the broker decides: after the password, the dialog asks Core for the
 //    existing review (POST /guardian/review with the builder's attestation)
 //    and stages only an eligible decision (POST /guardian/stage).
@@ -37,6 +52,9 @@ import "settings"
 //   "setting"|"package", name, label, before, after}], risk: {level, notes}, checks:
 //   {evaluate, build, vm-test}, candidateId, attestation, decision}. States: waiting,
 //   checking, ready, approved, staged, applied, rolled-back, declined, failed.
+//   GET  /guardian/proposals/{id}/describe (a "ready" proposal) -> the broker's record:
+//   {candidateId, buildHash, settings: [{option, summary, before, after}], packages:
+//   [{package, before}], risk, nixModule, staged}. This is what the dialog shows and approves.
 //   Proposing never submits, approves or changes anything; only the person can, here.
 //
 // Shell entry points: open() shows waiting changes; open(planId, plan) records a
@@ -62,6 +80,16 @@ Scope {
     property bool approving: false        // polkit is asking for the password for our approval
     property var seen: ({})               // proposals already shown by themselves
     property var calls: ({})              // bridge request id -> [kind, proposal id]
+    property var attested: null           // the broker's record of a checked proposal (describe)
+    property string attestedFor: ""       // ... and which proposal it was fetched for
+    // The broker's record of the proposal on screen, once it has passed the checks.
+    readonly property var held: !!current && current.state === "ready" && attestedFor === current.id && GD.isRecord(attested)
+                                  && attested.candidateId === current.candidateId ? attested : null
+    readonly property bool disagrees: !!held && !GD.agrees(current.items, held)
+    readonly property var shownItems: held ? GD.items(held) : current ? current.items : []
+    readonly property int shownPackages: shownItems.filter(i => i.kind === "package").length
+    readonly property int shownSettings: shownItems.length - shownPackages
+    readonly property var shownRisk: held ? held.risk : current ? current.risk : ({ level: "", notes: [] })
     readonly property string pkexec: Quickshell.env("NEXUS_PKEXEC") || "/run/wrappers/bin/pkexec"
     readonly property string approveHelper: Quickshell.env("NEXUS_GUARDIAN_APPROVE") || "/run/current-system/sw/bin/nexus-guardian-desktop-approve"
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
@@ -101,23 +129,36 @@ Scope {
         const p = current;
         if (!p) return;
         note = "";
-        if (p.state === "ready") { askPassword(p); return }
+        if (p.state === "ready") {
+            // The person has the broker's record in front of them (warned if Nexus said otherwise).
+            if (held) askPassword(p, held);
+            else { approveWhenReady = p.id; describe(p) }
+            return;
+        }
         if (p.state !== "waiting" && p.state !== "failed") return;
         approveWhenReady = p.id;
         call("verb", "POST", "/guardian/proposals/" + p.id + "/check", {}, p.id);
     }
+    // The broker's own record of a checked proposal: what the person sees and approves.
+    function describe(p) {
+        if (p && p.state === "ready" && !pending("describe", p.id)) call("describe", "GET", "/guardian/proposals/" + p.id + "/describe", undefined, p.id);
+    }
+    function pending(kind, id) { return Object.values(calls).some(e => e[0] === kind && e[1] === id) }
     function decline() { if (current) call("verb", "POST", "/guardian/proposals/" + current.id + "/decline", {}, current.id) }
     function dismiss() {
         if (current && finished) call("verb", "POST", "/guardian/proposals/" + current.id + "/dismiss", {}, current.id);
         else dialog.visible = false;
     }
     // Polkit runs the approval helper as root after the person's password; nothing else approves.
-    function askPassword(p) {
-        if (approver.running || !p.candidateId) return;
+    // It is named the candidate and build from the broker's record, which is what is on screen.
+    function askPassword(p, r) {
+        if (approver.running || !GD.isRecord(r) || r.candidateId !== p.candidateId) return;
         approveWhenReady = "";
+        if (r.staged) { note = "This change has already been set up for the next restart."; return }
         approving = true;
         approver.proposal = p;
-        approver.command = [pkexec, approveHelper, p.candidateId];
+        approver.record = r;
+        approver.command = [pkexec, approveHelper].concat(GD.helperArgs(r));
         approver.running = true;
     }
     function accept(list) {
@@ -131,8 +172,21 @@ Scope {
             if (!dialog.visible || current && current.state !== "ready") show(fresh.id);
             dialog.visible = true;
         }
-        if (current && current.id === approveWhenReady && current.state === "ready") askPassword(current);
+        // A checked change: fetch the broker's record before anything asks for a password.
+        if (current && current.state === "ready" && attestedFor !== current.id) describe(current);
+        if (current && current.id === approveWhenReady && current.state === "ready" && held && !disagrees) askPassword(current, held);
         if (current && current.id === approveWhenReady && current.state === "failed") approveWhenReady = "";
+    }
+    // The broker's record arrived. Continue to the password only if Nexus described the same
+    // changes; otherwise the person sees the warning and decides with Approve.
+    function described(id, data) {
+        attested = data; attestedFor = id;
+        if (!current || current.id !== id) return;
+        if (!held) { if (approveWhenReady === id) approveWhenReady = ""; note = "Guardian's record of this change could not be read, so it cannot be approved now."; return }
+        if (approveWhenReady === id) {
+            if (disagrees) approveWhenReady = "";
+            else askPassword(current, held);
+        }
     }
     function replace(p) {
         const i = proposals.findIndex(x => x.id === p.id);
@@ -160,6 +214,7 @@ Scope {
             const m = win.calls; delete m[id]; win.calls = m;
             const kind = entry[0];
             if (kind === "list") win.accept(data);
+            else if (kind === "describe") win.described(entry[1], data);
             else if (kind === "action") {
                 if (data.plan) win.record(data.plan); else win.note = "That offer has expired. Ask Nexus again.";
             } else if (kind === "created" || kind === "verb") { win.replace(data); win.refresh() }
@@ -175,7 +230,7 @@ Scope {
             if (!entry) return;
             const m = win.calls; delete m[id]; win.calls = m;
             win.note = message;
-            if (entry[0] === "verb" && entry[1] === win.approveWhenReady) win.approveWhenReady = "";
+            if ((entry[0] === "verb" || entry[0] === "describe") && entry[1] === win.approveWhenReady) win.approveWhenReady = "";
             if (entry[0] !== "list") win.refresh();
         }
     }
@@ -189,6 +244,7 @@ Scope {
     Process {
         id: approver
         property var proposal: null
+        property var record: null     // the broker's record the helper was named for
         stdout: StdioCollector { id: approverOut }
         onExited: (code) => {
             win.approving = false;
@@ -205,10 +261,13 @@ Scope {
     }
 
     // The desktop's polkit agent: our approval's password is typed in the dialog;
-    // any other request gets its own small window.
+    // any other request gets its own small window. Ours is Guardian's approve
+    // action whose message (polkit fills in the helper's command line) names
+    // exactly the candidate and build this open dialog asked about.
     PolkitAgent { id: polkit }
     readonly property var flow: polkit.flow
-    readonly property bool ownFlow: !!flow && flow.actionId === "org.nexusos.guardian.approve" && approving
+    readonly property bool ownFlow: !!flow && approving && !!approver.record
+                                    && GD.ownsFlow(flow.actionId, flow.message, approver.record)
     onFlowChanged: {
         if (!flow) return;
         // Ask for this person's own password when they are one of the allowed identities.
@@ -265,10 +324,24 @@ Scope {
                             Text { text: win.heading(win.current); color: win.theme.inkSecondary; font.pixelSize: 12; font.letterSpacing: 0.5 }
                             Text {
                                 width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
-                                text: win.current ? win.current.title : ""; color: win.theme.ink; font.pixelSize: 21; font.weight: 600
+                                // Once checked, the broker's record names the change; before that, Nexus's summary.
+                                text: win.held ? GD.title(win.held) : win.current ? win.current.title : ""
+                                color: win.theme.ink; font.pixelSize: 21; font.weight: 600
                                 Accessible.role: Accessible.Heading
                             }
+                            Text {
+                                visible: !!win.held; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                                text: win.current ? "Nexus says: “" + win.current.title + "”" : ""
+                                color: win.theme.inkSecondary; font.pixelSize: 13; font.italic: true
+                            }
                         }
+                    }
+                    // Guardian's record and Nexus's summary name different changes: Guardian's is shown and approved.
+                    Text {
+                        visible: win.disagrees; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                        text: "!  Guardian's record of this change is not what Nexus described. What is shown here is Guardian's record, and it is what you would approve. If you did not expect it, decline."
+                        color: "#FFD166"; font.pixelSize: 13; font.weight: 500
+                        Accessible.role: Accessible.AlertMessage
                     }
                     Text {
                         visible: !!win.current; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
@@ -284,10 +357,10 @@ Scope {
                         visible: !!win.current; width: parent.width; spacing: 10
                         Repeater {
                             model: !win.current ? [] : [
-                                { k: "Packages", v: (win.current.plan.packages || []).length ? "+" + win.current.plan.packages.length + " added" : "None" },
-                                { k: "Settings", v: win.current.plan.changes.length ? win.current.plan.changes.length + " changed" : "None" },
-                                { k: "Risk", v: win.current.risk.level === "elevated" ? "Higher · can be undone" : "Low · can be undone",
-                                  c: win.current.risk.level === "elevated" ? "#FFD166" : "#7FE0B0" }
+                                { k: "Packages", v: win.shownPackages ? "+" + win.shownPackages + " added" : "None" },
+                                { k: "Settings", v: win.shownSettings ? win.shownSettings + " changed" : "None" },
+                                { k: "Risk", v: win.shownRisk.level === "elevated" ? "Higher · can be undone" : "Low · can be undone",
+                                  c: win.shownRisk.level === "elevated" ? "#FFD166" : "#7FE0B0" }
                             ]
                             delegate: Rectangle {
                                 required property var modelData
@@ -301,7 +374,7 @@ Scope {
                         }
                     }
                     Repeater {
-                        model: win.current ? win.current.risk.notes : []
+                        model: win.shownRisk.notes || []
                         delegate: Text {
                             required property var modelData
                             width: body.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
@@ -316,9 +389,14 @@ Scope {
                         Column {
                             id: items
                             x: 16; y: 10; width: parent.width - 32; spacing: 8
-                            Text { text: "What changes"; color: win.theme.inkSecondary; font.pixelSize: 12 }
+                            Text {
+                                width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                                text: win.held ? "What changes (Guardian's record: change " + win.held.candidateId + ", build " + win.held.buildHash.slice(0, 16) + ")"
+                                                 : "What changes"
+                                color: win.theme.inkSecondary; font.pixelSize: 12
+                            }
                             Repeater {
-                                model: win.current ? win.current.items : []
+                                model: win.shownItems
                                 delegate: Row {
                                     required property var modelData
                                     width: items.width; spacing: 10
@@ -340,7 +418,7 @@ Scope {
                             }
                             Text {
                                 visible: win.showFull; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
-                                text: win.current ? win.current.plan.nixPreview : ""; color: "#C9D4FF"
+                                text: win.held ? win.held.nixModule || "" : win.current ? win.current.plan.nixPreview : ""; color: "#C9D4FF"
                                 font.family: "JetBrains Mono"; font.pixelSize: 12; topPadding: 6
                             }
                         }
@@ -389,8 +467,8 @@ Scope {
                         Column {
                             id: pw
                             x: 16; y: 14; width: parent.width - 32; spacing: 8
-                            Text { width: parent.width; wrapMode: Text.Wrap; color: win.theme.ink; font.pixelSize: 14; font.weight: 500
-                                   text: "To approve, enter your password." }
+                            Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; color: win.theme.ink; font.pixelSize: 14; font.weight: 500
+                                   text: (approver.record ? GD.title(approver.record) + ". " : "") + "To approve, enter your password." }
                             Text { visible: !!win.flow && win.flow.supplementaryMessage !== ""; width: parent.width; wrapMode: Text.Wrap
                                    text: win.flow ? win.flow.supplementaryMessage : ""; font.pixelSize: 12
                                    color: win.flow && win.flow.supplementaryIsError ? win.theme.error : win.theme.inkSecondary }
@@ -480,18 +558,26 @@ Scope {
         }
     }
 
-    // Any other polkit request (not this dialog's approval): a small password window.
+    // Any other polkit request (not this dialog's approval of what it shows): a small
+    // password window with the request's action and message exactly as polkit sent them.
     FloatingWindow {
         id: other
         title: "Password needed"
-        visible: !!win.flow && !win.ownFlow && !win.approving
-        implicitWidth: 480; implicitHeight: 230
+        visible: !!win.flow && !win.ownFlow
+        implicitWidth: 520; implicitHeight: 300
         color: "#05071A"
         Column {
             anchors { fill: parent; margins: 24 }
             spacing: 10
             Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; color: win.theme.ink; font.pixelSize: 15; font.weight: 600
                    text: win.flow ? win.flow.message : "" }
+            Text { width: parent.width; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText; color: win.theme.inkSecondary
+                   font.family: "JetBrains Mono"; font.pixelSize: 12
+                   text: win.flow ? "Requested action: " + win.flow.actionId : "" }
+            // A Guardian approval that is not the one in the System change dialog.
+            Text { visible: !!win.flow && win.flow.actionId === GD.APPROVE_ACTION; width: parent.width; wrapMode: Text.Wrap
+                   textFormat: Text.PlainText; color: "#FFD166"; font.pixelSize: 13; font.weight: 500
+                   text: "!  This asks to approve a system change that is not the one shown in the System change window. If you did not start it, cancel." }
             Text { visible: !!win.flow && win.flow.supplementaryMessage !== ""; width: parent.width; wrapMode: Text.Wrap; font.pixelSize: 12
                    text: win.flow ? win.flow.supplementaryMessage : ""
                    color: win.flow && win.flow.supplementaryIsError ? win.theme.error : win.theme.inkSecondary }
@@ -521,6 +607,10 @@ Scope {
     Connections {
         target: dialog
         function onVisibleChanged() { if (!dialog.visible && win.ownFlow) win.flow.cancelAuthenticationRequest() }
+    }
+    Connections {
+        target: approver
+        function onRunningChanged() { if (!approver.running) approver.record = null }
     }
 
     IpcHandler {

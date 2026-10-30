@@ -390,7 +390,7 @@ class ShellBuild(unittest.TestCase):
         bar = (self.out / "TopBar.qml").read_text()
         # The person's click starts the checks; approval is the polkit helper after their password.
         self.assertIn('"/guardian/proposals/" + p.id + "/check"', guardian)
-        self.assertIn("approver.command = [pkexec, approveHelper, p.candidateId]", guardian)
+        self.assertIn("approver.command = [pkexec, approveHelper].concat(GD.helperArgs(r))", guardian)
         self.assertEqual(guardian.count("approver.running = true"), 1)
         self.assertIn("/run/current-system/sw/bin/nexus-guardian-desktop-approve", guardian)
         # Only after polkit succeeds: the existing review with the builder's attestation, then staging.
@@ -403,7 +403,6 @@ class ShellBuild(unittest.TestCase):
         self.assertNotIn("sudo", guardian)
         self.assertNotIn("localStorage", guardian)
         self.assertIn("textFormat: Text.PlainText", guardian)     # proposal text is never rich text
-        self.assertIn('flow.actionId === "org.nexusos.guardian.approve" && approving', guardian)
         # Everything the person must see.
         for text in ("Approve and stage", "Decline", "Show the full change", "What changes", "Restart now",
                      "Only allowed settings and packages are touched", "Built on this computer",
@@ -424,6 +423,47 @@ class ShellBuild(unittest.TestCase):
         module = (ROOT / "nix/modules/guardian.nix").read_text()
         self.assertIn('approveHelper = "/run/current-system/sw/bin/nexus-guardian-desktop-approve"', module)
         self.assertIn("<allow_active>auth_admin</allow_active>", module)
+
+    def test_guardian_approval_is_bound_to_the_brokers_record(self):
+        """What the person approves is the broker's record, named in polkit's prompt, and only that
+        request gets the dialog's password box."""
+        guardian = (self.out / "Guardian.qml").read_text()
+        self.assertIn('import "lib/guardian.mjs" as GD', guardian)
+        # Shown: the broker's describe, not Core's proposal text; Core's title only as "Nexus says".
+        self.assertIn('"/guardian/proposals/" + p.id + "/describe"', guardian)
+        self.assertIn("readonly property var shownItems: held ? GD.items(held) : current ? current.items : []", guardian)
+        self.assertIn("model: win.shownItems", guardian)
+        self.assertNotIn("model: win.current ? win.current.items", guardian)
+        self.assertIn("text: win.held ? GD.title(win.held) : win.current ? win.current.title", guardian)
+        self.assertIn('"Nexus says: “" + win.current.title', guardian)
+        self.assertIn("readonly property bool disagrees: !!held && !GD.agrees(current.items, held)", guardian)
+        self.assertIn("visible: win.disagrees", guardian)
+        # The password is asked for only for the record on screen, and only when Nexus agrees unless the person clicks.
+        self.assertIn("function askPassword(p, r)", guardian)
+        self.assertIn("if (approver.running || !GD.isRecord(r) || r.candidateId !== p.candidateId) return;", guardian)
+        self.assertIn('current.state === "ready" && held && !disagrees) askPassword(current, held)', guardian)
+        self.assertEqual(guardian.count("askPassword("), 4)   # the definition, Approve, and the two automatic continuations
+        # The agent: the dialog's password box only for Guardian's action naming this candidate and build.
+        self.assertIn("readonly property bool ownFlow: !!flow && approving && !!approver.record\n"
+                      "                                    && GD.ownsFlow(flow.actionId, flow.message, approver.record)", guardian)
+        self.assertIn("visible: win.ownFlow; width: parent.width", guardian)
+        self.assertNotIn('flow.actionId === "org.nexusos.guardian.approve" && approving', guardian)
+        # Everything else: the plain window, with the action and message as polkit sent them.
+        other = guardian[guardian.index("id: other"):]
+        self.assertIn("visible: !!win.flow && !win.ownFlow\n", other)
+        self.assertIn("text: win.flow ? win.flow.message : \"\"", other)
+        self.assertIn('"Requested action: " + win.flow.actionId', other)
+        self.assertIn("win.flow.actionId === GD.APPROVE_ACTION", other)
+        lib = (self.out / "lib/guardian.mjs").read_text()
+        self.assertIn('export const APPROVE_ACTION = "org.nexusos.guardian.approve";', lib)
+        self.run_node_test("guardian.test.mjs")
+        # Polkit's prompt names the helper's command line (candidate ID and build), and the helper takes both.
+        module = (ROOT / "nix/modules/guardian.nix").read_text()
+        policy = module[module.index('<action id="org.nexusos.guardian.approve">'):module.index("</action>")]
+        self.assertIn("$(command_line)", policy)
+        helper = (ROOT / "scripts/guardian/desktop_approve.py").read_text()
+        self.assertIn("nexus-guardian-desktop-approve <candidateId> <buildHash>", helper)
+        self.assertIn("broker.register_approval(candidate_id, uid, build=build)", helper)
 
     def test_nexus_actions_name_what_the_shell_has(self):
         """The Settings pages and roles Core offers the model are the shell's own."""

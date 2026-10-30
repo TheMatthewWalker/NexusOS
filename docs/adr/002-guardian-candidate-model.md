@@ -92,6 +92,16 @@ console, with the least new privilege:
   candidate, one UID (polkit's `PKEXEC_UID`, never root), 120 seconds, used
   up by the next review, and only for a candidate that UID submitted. The
   broker's review, ledger and checks are unchanged.
+- **The approval names what is approved** (added 2026-10-30). The dialog
+  shows the broker's own record of the candidate (`describe`: settings with
+  today's value as the builder signed it and the new value, packages, risk,
+  candidate ID, build hash), not Core's user-writable text. The helper takes
+  `<candidateId> <buildHash>`, polkit's message shows that command line, and
+  the shell's agent answers in the dialog only for that action naming that
+  candidate and build. After the password the helper requires the build to
+  be the one the broker last verified for that candidate, unstaged, and binds
+  the approval to it: the review may use it only with that build's
+  attestation.
 - **The builder is local.** Each computer makes its own Ed25519 key at first
   boot (root only). A separate root service with no network builds the
   overlay through the Nix daemon, boots it in a VM and signs the result; the

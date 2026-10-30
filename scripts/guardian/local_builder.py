@@ -7,7 +7,8 @@ broker trusts its public half). The builder is its own root service. It never
 decides and never changes the running system: for a change on the running
 system it evaluates the host's own configuration with the candidate module
 added, builds it, boots it once in a throwaway virtual machine
-(candidate-build.nix), and signs a statement of exactly what it saw. The broker
+(candidate-build.nix), and signs a statement of exactly what it saw, with
+today's value of each changed setting and package. The broker
 still verifies the signature, baseline and store path, and a person must still
 approve before anything is staged.
 
@@ -300,7 +301,9 @@ class LocalBuilder:
 
         statement = {"attestationVersion": 1, "candidateId": candidate_id, "baseline": candidate["baseline"],
                      "toplevel": toplevel, "drvPath": drv_path, "builder": BUILDER_NAME,
-                     "checks": {name: True for name in CHECKS}, "issuedAt": int(self.clock())}
+                     "checks": {name: True for name in CHECKS}, "issuedAt": int(self.clock()),
+                     # Signed, so the approval dialog can show today's values from the broker's record.
+                     "before": job["before"]}
         self._update(job, state="passed", checks={"vm-test": "pass"}, attestation=sign(statement, self.key),
                      message="Built and tested on this computer.")
 

@@ -105,10 +105,12 @@ There are three ways to add software. Choose in this order:
    Also: apt search, apt remove, apt upgrade, apt shell (a terminal inside
    Ubuntu). No sudo needed. Desktop apps installed this way appear in Apps.
 3. The system itself, for drivers, services, fonts or software every
-   account needs. This changes NexusOS, so it goes through Guardian:
-   NexusOS shows exactly what will change, the person approves it, it is
-   built and checked before it is used, and the previous version stays in
-   the boot menu. The change is a line in /etc/nixos/local.nix such as
+   account needs. This changes NexusOS, so it goes through Guardian: it is
+   built and checked first, then the System change window shows Guardian's
+   own record of exactly what will change (each setting's value today and
+   after, with a short change ID) and the person approves that with their
+   password; what you said about it is only shown as "Nexus says". The
+   previous version stays in the boot menu. The change is a line in /etc/nixos/local.nix such as
    environment.systemPackages = [ pkgs.<package> ];
    applied with:
    sudo nixos-rebuild switch --flake /etc/nixos#nexus

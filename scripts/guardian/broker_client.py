@@ -13,7 +13,7 @@ from root_review_broker import request
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--socket", default="/run/nexus-guardian/review.sock")
-    parser.add_argument("operation", choices=("submit", "review", "status"))
+    parser.add_argument("operation", choices=("submit", "review", "status", "describe"))
     parser.add_argument("payload")
     args = parser.parse_args()
     try:

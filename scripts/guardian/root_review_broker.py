@@ -9,6 +9,15 @@ the configured UID allowlist. Operations:
   submit  {description, changes}         -> candidate for the observed system
   review  {candidateId, attestation}     -> decision (consumes a root approval)
   status  {candidateId}                  -> candidate, approval and decision state
+  describe {candidateId, attestation}    -> what the person approves: the broker's own record
+                                            of the change and the signed build (buildHash)
+
+describe is what the desktop's approval dialog shows, rather than Core's text:
+each setting with today's value (as the builder signed it) and the new value,
+each package, the risk, the candidate ID and the build hash. The verified
+build is remembered for the candidate, and a desktop approval is bound to
+that candidate and build hash (register_approval), so a review can use the
+approval only with the very build the person was shown.
 """
 from contextlib import closing
 import hashlib
@@ -24,10 +33,10 @@ import sys
 import threading
 import time
 
-from attestation import load_trusted_keys, verify
+from attestation import CHECKS, build_hash, load_trusted_keys, validate_statement, verify
 from baseline_inspect import inspect
 from candidate import prepare
-from guardian_schema import ID_LENGTH, canonical
+from guardian_schema import ID_LENGTH, SCHEMA, canonical, split
 from recovery_gate import eligible
 
 MAX_MESSAGE = 65536
@@ -67,6 +76,14 @@ def store_check(statement, deriver=nix_deriver):
     return produced_by in (None, "unknown-deriver", statement["drvPath"])
 
 
+def statement_hash(attestation):
+    """build_hash of an attestation's statement (not yet verified), or None if it is malformed."""
+    try:
+        return build_hash(validate_statement(attestation["statement"]))
+    except (ValueError, TypeError, KeyError):
+        return None
+
+
 class GuardianBroker:
     def __init__(self, state_dir, trusted_keys_path, allowed_uids, host_config, *, owner=0,
                  observer=inspect, store_checker=store_check, clock=time.time):
@@ -94,7 +111,12 @@ class GuardianBroker:
                 CREATE TABLE IF NOT EXISTS decisions (seq INTEGER PRIMARY KEY AUTOINCREMENT, candidate TEXT NOT NULL,
                     uid INTEGER NOT NULL, permitted INTEGER NOT NULL, toplevel TEXT, at INTEGER NOT NULL,
                     staged INTEGER NOT NULL DEFAULT 0, previous TEXT NOT NULL, hash TEXT NOT NULL UNIQUE);
+                CREATE TABLE IF NOT EXISTS builds (candidate TEXT PRIMARY KEY, hash TEXT NOT NULL,
+                    statement TEXT NOT NULL, at INTEGER NOT NULL);
             """)
+            # An approval bound to one build (desktop); NULL is the console's, for any attested build.
+            if "build" not in {row[1] for row in db.execute("PRAGMA table_info(approvals)")}:
+                db.execute("ALTER TABLE approvals ADD COLUMN build TEXT")
 
     def connect(self):
         protected_file(self.db_path, self.owner)
@@ -132,17 +154,40 @@ class GuardianBroker:
                        (candidate["candidateId"], uid, json.dumps(record, sort_keys=True), self.now()))
         return {"candidate": candidate, "approval": "required", "executed": False}
 
-    def register_approval(self, candidate_id, uid):
-        """Root-only (never reachable over the socket): approve one candidate for one UID, once."""
+    def register_approval(self, candidate_id, uid, build=None):
+        """Root-only (never reachable over the socket): approve one candidate for one UID, once.
+
+        With build (the desktop path), the approval is for that one signed build:
+        it must be the build this broker last verified for the candidate (describe),
+        the candidate must not already be staged, and review accepts the approval
+        only with an attestation of exactly that build. Without it (the root
+        console, which shows the overlay itself) any attested build of the
+        candidate may use it, as before.
+        """
         if uid not in self.allowed_uids:
             raise Denied("UID is not allowlisted")
-        with closing(self.connect()) as db:
+        db = self.connect()
+        try:
+            db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT uid FROM candidates WHERE candidate=?", (candidate_id,)).fetchone()
             if row is None or row[0] != uid:
                 raise Denied("No such candidate submitted by this UID")
+            if build is not None:
+                known = db.execute("SELECT hash FROM builds WHERE candidate=?", (candidate_id,)).fetchone()
+                if known is None:
+                    raise Denied("Guardian has not checked a build of this change yet")
+                if known[0] != build:
+                    raise Denied("The build shown is not the one Guardian checked")
+                if db.execute("SELECT 1 FROM decisions WHERE candidate=? AND staged=1", (candidate_id,)).fetchone():
+                    raise Denied("This change has already been staged")
             approval = hashlib.sha256(os.urandom(32)).hexdigest()[:32]
-            db.execute("INSERT INTO approvals(id,candidate,uid,expires) VALUES(?,?,?,?)",
-                       (approval, candidate_id, uid, self.now() + APPROVAL_SECONDS))
+            db.execute("INSERT INTO approvals(id,candidate,uid,expires,build) VALUES(?,?,?,?,?)",
+                       (approval, candidate_id, uid, self.now() + APPROVAL_SECONDS, build))
+            db.execute("COMMIT")
+        finally:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            db.close()
         return approval
 
     def review(self, uid, payload):
@@ -160,9 +205,11 @@ class GuardianBroker:
                 db.execute("ROLLBACK")
                 raise Denied("No such candidate for this caller")
             # The approval is single use whatever the outcome, so a denied
-            # review cannot be retried against the same approval.
-            consumed = db.execute("UPDATE approvals SET consumed=1 WHERE candidate=? AND uid=? AND consumed=0 AND expires>?",
-                                  (candidate_id, uid, self.now())).rowcount
+            # review cannot be retried against the same approval. One bound to
+            # a build is used only by an attestation of that build.
+            consumed = db.execute("UPDATE approvals SET consumed=1 WHERE candidate=? AND uid=? AND consumed=0 AND expires>?"
+                                  " AND (build IS NULL OR build=?)",
+                                  (candidate_id, uid, self.now(), statement_hash(payload["attestation"]))).rowcount
             if consumed < 1:
                 db.execute("ROLLBACK")
                 raise Denied("No unused, unexpired root approval for this candidate")
@@ -230,6 +277,37 @@ class GuardianBroker:
                 "decision": None if decision is None else
                 {"eligible": bool(decision[0]), "hash": decision[1], "staged": bool(decision[2])}}
 
+    def describe(self, uid, payload):
+        """The caller's candidate as this broker holds it, with a build it verifies now.
+
+        Everything returned comes from the broker's own record (the changes as
+        submitted, the risk it computed) and the signed statement (today's values,
+        the build); the submitter's description is left out on purpose. The
+        verified build is remembered, replacing any earlier one, for
+        register_approval to bind a desktop approval to.
+        """
+        self._authorise(uid)
+        if not isinstance(payload, dict) or set(payload) != {"candidateId", "attestation"}:
+            raise Denied("describe expects candidateId and attestation")
+        candidate_id = payload["candidateId"]
+        if not isinstance(candidate_id, str) or len(candidate_id) != ID_LENGTH:
+            raise Denied("Invalid candidate ID")
+        with closing(self.connect()) as db:
+            row = db.execute("SELECT record FROM candidates WHERE candidate=? AND uid=?", (candidate_id, uid)).fetchone()
+            if row is None:
+                raise Denied("No such candidate for this caller")
+            record = json.loads(row[0])
+            statement = verify(payload["attestation"], self.trusted_keys, now=self.now())
+            if (statement is None or statement["candidateId"] != candidate_id
+                    or statement["baseline"] != record["candidate"]["baseline"]
+                    or not all(statement["checks"].get(name) is True for name in CHECKS)):
+                raise Denied("No valid, passing build attestation for this candidate")
+            digest = build_hash(statement)
+            db.execute("INSERT OR REPLACE INTO builds(candidate,hash,statement,at) VALUES(?,?,?,?)",
+                       (candidate_id, digest, json.dumps(statement, sort_keys=True), self.now()))
+            staged = db.execute("SELECT 1 FROM decisions WHERE candidate=? AND staged=1", (candidate_id,)).fetchone()
+        return describe_record(record, statement, digest, staged is not None)
+
     # --- staging executor interface (root-only, not exposed on the socket) ---
 
     def claim_for_staging(self, decision_hash):
@@ -274,7 +352,7 @@ class GuardianBroker:
                 previous = digest
         return True
 
-    OPERATIONS = ("submit", "review", "status")
+    OPERATIONS = ("submit", "review", "status", "describe")
 
     def handle(self, uid, request):
         if not isinstance(request, dict) or set(request) != {"operation", "payload"}:
@@ -282,6 +360,22 @@ class GuardianBroker:
         if request["operation"] not in self.OPERATIONS:
             raise Denied("Unsupported operation")
         return getattr(self, request["operation"])(uid, request["payload"])
+
+
+def describe_record(record, statement, digest, staged):
+    """What the desktop's approval dialog shows: setting path, today's value and the new value."""
+    options, packages = split(record["changes"])
+    before = statement.get("before") or {"options": {}, "packages": {}}
+    was = lambda section, name: before[section].get(name) if type(before[section].get(name)) is bool else None
+    candidate = record["candidate"]
+    return {
+        "candidateId": candidate["candidateId"], "buildHash": digest, "toplevel": statement["toplevel"],
+        "baseline": candidate["baseline"], "builder": statement["builder"], "issuedAt": statement["issuedAt"],
+        "settings": [{"option": name, "summary": SCHEMA["options"][name]["summary"],
+                      "before": was("options", name), "after": value} for name, value in sorted(options.items())],
+        "packages": [{"package": name, "before": was("packages", name)} for name in packages],
+        "risk": candidate["risk"], "nixModule": candidate["nixModule"], "staged": staged,
+    }
 
 
 # --- wire protocol --------------------------------------------------------

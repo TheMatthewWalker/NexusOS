@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -9,19 +10,26 @@ using System.Text.RegularExpressions;
 // for a change; the selected model works through it one action at a time:
 //   list, read, search      look around the project (never outside it)
 //   write, replace          stage an edit: nothing on disk changes yet
-//   run_tests               run the project's own test command (detected
-//                           here, never chosen by the model) on a copy that
-//                           has the staged edits
+//   run_tests               ask the person to run the project's own test
+//                           command (detected here, never chosen by the
+//                           model): a card with the exact command and Run
 //   done                    explain what it did
 // The person sees every step, then the diff, and accepts or rejects it.
 // Accepting writes the files and can be undone while the session is open.
-// The agent never runs commands of its own choosing, never reads secrets
-// (.env files, keys) and cannot reach past the project folder.
+// The agent never runs anything itself: a test run happens only when the
+// person clicks Run on that card (a single-use id, for exactly the staged
+// edits it was offered with), on a copy of the project with the edits, inside
+// a bubblewrap sandbox with no network and no home folder beyond the project.
+// The agent never reads secrets (.env files, keys, files holding tokens or
+// passwords), never opens folders that hold them (~/.ssh, ~/.gnupg, …) and
+// cannot reach past the project folder.
 public sealed class CodingSession
 {
     public required string Id { get; init; }
     public required string Root { get; init; }
     public string? TestCommand { get; init; }
+    public TestProposal? Proposal { get; set; }                                             // the run offered to the person, if any
+    public CancellationTokenSource? TestRun { get; set; }                                   // the run in progress, for Stop
     public List<ChatMessage> Turns { get; } = [];
     public Dictionary<string, string> Staged { get; } = new(StringComparer.Ordinal);       // relative path -> new content
     public Dictionary<string, string?> Original { get; } = new(StringComparer.Ordinal);    // before staging (null = new file)
@@ -30,23 +38,54 @@ public sealed class CodingSession
     public DateTimeOffset LastUsed { get; set; } = DateTimeOffset.UtcNow;
 }
 
-public sealed partial class CodingAgent(ModelRouter router, ActivityJournal journal, ILogger<CodingAgent> log)
+// A test run offered to the person: what runs, on which staged edits.
+public sealed record TestProposal(string Id, string Command, string[] Files, string[] Affects, string Fingerprint, DateTimeOffset Created);
+
+public sealed record SandboxResult(int? ExitCode, string Output, bool Truncated, bool TimedOut, bool Stopped);
+
+public sealed partial class CodingAgent(ModelRouter router, ActivityJournal journal, IConfiguration config, ILogger<CodingAgent> log)
 {
     public const int MaxSteps = 24, MaxFileBytes = 64 * 1024, MaxReadChars = 24000, MaxResultChars = 6000, MaxSessions = 8;
-    public static readonly TimeSpan TestTimeout = TimeSpan.FromMinutes(5);
+    public const int MaxOutputChars = 256 * 1024, MaxCopyFiles = 20000;
+    public const long MaxCopyBytes = 256L << 20;
+    public static readonly TimeSpan TestTimeout = TimeSpan.FromMinutes(5), ProposalLifetime = TimeSpan.FromHours(1);
     private static readonly string[] Skipped = [".git", "node_modules", ".venv", "venv", "__pycache__", "target", "bin", "obj", "dist", "build", ".next", ".cache", "result"];
+    // Not copied for a test run: version control, and caches or build output the tests make again.
+    private static readonly string[] NotCopied = [".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".cache", ".next", "obj", "target", "result"];
+    // Installed dependencies: shown to the tests read-only from the project instead of copied, and never edited.
+    private static readonly string[] Dependencies = ["node_modules", ".venv", "venv"];
+    // In the home folder: keys, passwords, browser profiles and Nexus's own state. No project is, is inside or holds one of these.
+    private static readonly string[] Sensitive =
+        [".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".password-store", ".pki", ".mozilla", ".thunderbird",
+         ".config/nexusos", ".config/gh", ".config/gcloud", ".config/chromium", ".config/google-chrome", ".config/BraveSoftware",
+         ".config/Signal", ".local/share/keyrings", ".local/share/nexusos", ".local/state/nexusos"];
+    // Inside a project, folders by these names are never entered.
+    private static readonly string[] SecretDirs = [".ssh", ".gnupg", ".aws", ".password-store", "keyrings"];
     private readonly ConcurrentDictionary<string, CodingSession> _sessions = new();
+    public string? Bwrap { get; } = FindBwrap(config["NEXUS_BWRAP"]);
 
     // ---- sessions ----
-    public CodingSession Start(string folder)
+    // A folder inside the home folder: not the home folder itself, not through a link, and not a place for keys or settings.
+    public static string ProjectRoot(string folder)
     {
+        if (string.IsNullOrWhiteSpace(folder) || folder.Contains('\0')) throw new CodingException("Choose a project folder inside your home folder.");
         var home = Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        var expanded = folder.StartsWith("~/") ? Path.Combine(home, folder[2..]) : folder == "~" ? home : folder;
-        var root = Path.GetFullPath(expanded);
+        var expanded = folder.StartsWith("~/", StringComparison.Ordinal) ? Path.Combine(home, folder[2..]) : folder == "~" ? home : folder;
+        var root = Path.GetFullPath(expanded).TrimEnd('/');
         if (!(root + "/").StartsWith(home + "/", StringComparison.Ordinal) || root == home)
             throw new CodingException("Choose a project folder inside your home folder.");
+        var rel = Path.GetRelativePath(home, root);
+        if (Sensitive.Any(d => rel == d || rel.StartsWith(d + "/", StringComparison.Ordinal) || d.StartsWith(rel + "/", StringComparison.Ordinal)))
+            throw new CodingException("That folder holds keys, passwords or settings, so Code does not open it. Choose a project folder.");
         if (!Directory.Exists(root)) throw new CodingException("That folder does not exist.");
-        if (new DirectoryInfo(root).LinkTarget is not null) throw new CodingException("The project folder cannot be a symbolic link.");
+        for (var p = root; p.Length > home.Length; p = Path.GetDirectoryName(p)!)
+            if (new DirectoryInfo(p).LinkTarget is not null) throw new CodingException("The project folder cannot be, or be inside, a symbolic link.");
+        return root;
+    }
+
+    public CodingSession Start(string folder)
+    {
+        var root = ProjectRoot(folder);
         foreach (var old in _sessions.Values.OrderBy(s => s.LastUsed).Take(Math.Max(0, _sessions.Count - MaxSessions + 1)))
             _sessions.TryRemove(old.Id, out _);
         var session = new CodingSession { Id = Guid.NewGuid().ToString("N")[..12], Root = root, TestCommand = DetectTests(root) };
@@ -83,7 +122,7 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
                     session.Turns.Add(new ChatMessage("user", "That was not one JSON action. Reply with exactly one JSON object, for example {\"tool\":\"list\",\"path\":\".\"}."));
                     continue;
                 }
-                var (tool, result, ev) = await ActAsync(session, action.Value, read, ct);
+                var (tool, result, ev) = Act(session, action.Value, read);
                 if (ev is not null) yield return ev;
                 if (tool == "done")
                 {
@@ -104,8 +143,7 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
         finally { session.Busy.Release(); }
     }
 
-    private async Task<(string Tool, string Result, object? Event)> ActAsync(CodingSession session, JsonElement action,
-        HashSet<string> read, CancellationToken ct)
+    private (string Tool, string Result, object? Event) Act(CodingSession session, JsonElement action, HashSet<string> read)
     {
         var tool = Str(action, "tool");
         try
@@ -158,10 +196,11 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
                     if (session.TestCommand is null)
                         return (tool, "This project has no test command NexusOS recognises (package.json test script, pytest, dotnet, cargo, go, make test). Do not try to run tests.",
                             new { type = "step", kind = "tests", title = "No tests", detail = "none found in this project" });
-                    var (passed, output) = await RunTestsAsync(session, ct);
-                    var summary = TestSummary(output, passed);
-                    return (tool, (passed ? "Tests passed." : "Tests failed.") + "\n" + Tail(output, MaxResultChars),
-                        new { type = "step", kind = passed ? "pass" : "fail", title = passed ? "Tests pass" : "Tests fail", detail = summary, tests = new { passed, summary } });
+                    // Only offered: the person sees the exact command and decides. Nothing runs here.
+                    var run = Propose(session);
+                    return (tool, $"The person has been asked to run `{run.Command}` on your staged changes. You cannot run it yourself and do not know the result, " +
+                                  "so do not say the tests pass. Finish with done; if they run it, the result comes in their next message.",
+                        new { type = "step", kind = "tests", title = "Asks to run", detail = run.Command, run = Card(run) });
                 }
                 case "done":
                     return (tool, Str(action, "summary") is { Length: > 0 } s ? s : "Done.", null);
@@ -238,6 +277,108 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
         return new { type = "undone", files };
     }
 
+    // ---- test runs: offered by the agent, run only on the person's click ----
+    public TestProposal Propose(CodingSession session)
+    {
+        var files = session.Staged.Keys.Order(StringComparer.Ordinal).ToArray();
+        var run = new TestProposal(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(), session.TestCommand!, files,
+            files.Where(f => RunnerFile().IsMatch(Path.GetFileName(f))).ToArray(), Fingerprint(session, files), DateTimeOffset.UtcNow);
+        lock (session) session.Proposal = run;     // a new offer replaces the last one
+        return run;
+    }
+
+    public static object Card(TestProposal run) => new { id = run.Id, command = run.Command, files = run.Files, affects = run.Affects };
+
+    public async Task<object> ConfirmRunAsync(CodingSession session, string runId, CancellationToken ct)
+    {
+        if (!await session.Busy.WaitAsync(0, ct)) throw new CodingException("The agent is still working; run the tests when it has finished.", 409);
+        try
+        {
+            TestProposal? run;
+            lock (session)
+            {
+                // Single use: the id is gone from here on, whatever happens next.
+                run = session.Proposal is { } offered && CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(offered.Id), Encoding.ASCII.GetBytes(runId)) ? offered : null;
+                if (run is not null) session.Proposal = null;
+            }
+            if (run is null || DateTimeOffset.UtcNow - run.Created > ProposalLifetime)
+                throw new CodingException("That test run is no longer offered (it was used, replaced or is too old). Ask the agent to run the tests again.", 409);
+            if (Fingerprint(session, run.Files) != run.Fingerprint)
+                throw new CodingException("The changes are not the ones this run was offered for. Ask the agent to run the tests again.", 409);
+            if (Bwrap is null)
+                throw new CodingException("Tests run only in a sandbox, and bubblewrap (bwrap) is not installed, so they were not run.", 503);
+            session.LastUsed = DateTimeOffset.UtcNow;
+            using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            session.TestRun = stop;
+            SandboxResult result;
+            var copy = Directory.CreateTempSubdirectory("nexus-code-").FullName;
+            try
+            {
+                var dependencies = CopyTree(session.Root, copy);
+                foreach (var (rel, content) in session.Staged)
+                {
+                    var path = Path.Combine(copy, rel);
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    await File.WriteAllTextAsync(path, content, ct);
+                }
+                var home = Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+                result = await RunSandboxedAsync(Bwrap, SandboxArgv(session.Root, copy, dependencies, run.Command, home),
+                    SandboxEnvironment(home), TestTimeout, stop.Token);
+            }
+            finally
+            {
+                session.TestRun = null;
+                try { Directory.Delete(copy, true); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { log.LogWarning("Could not remove {Copy}: {Message}", copy, ex.Message); }
+            }
+            var passed = result.ExitCode == 0;
+            var summary = result.TimedOut ? $"did not finish within {TestTimeout.TotalMinutes} minutes" : result.Stopped ? "stopped" : TestSummary(result.Output, passed);
+            var outcome = result.TimedOut ? $"The tests did not finish within {TestTimeout.TotalMinutes} minutes and were stopped."
+                : result.Stopped ? "The person stopped the tests." : passed ? "Tests passed." : "Tests failed.";
+            session.Turns.Add(new ChatMessage("user", $"The person ran `{run.Command}` in the sandbox. {outcome}\n" + Tail(Redact(result.Output), MaxResultChars)));
+            await journal.AppendAsync(new JournalRecord(JournalKinds.App, "user",
+                Summary($"Ran the tests ({run.Command}) for {Display(session.Root)} in a sandbox: {summary}"), Ref: "code:" + session.Id), CancellationToken.None);
+            return new { type = "test-result", passed, summary, output = result.Output, truncated = result.Truncated, timedOut = result.TimedOut, stopped = result.Stopped };
+        }
+        finally { session.Busy.Release(); }
+    }
+
+    public object DismissRun(CodingSession session, string runId)
+    {
+        lock (session)
+            if (session.Proposal?.Id == runId)
+            {
+                session.Proposal = null;
+                session.Turns.Add(new ChatMessage("user", "The person chose not to run the tests."));
+            }
+        return new { type = "run-dismissed" };
+    }
+
+    public object StopRun(CodingSession session)
+    {
+        session.TestRun?.Cancel();
+        return new { type = "run-stopping" };
+    }
+
+    // What the tests would run on: each staged file (or, once accepted, the file on disk). Changes after the offer void it.
+    private static string Fingerprint(CodingSession s, string[] offered)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var rel in offered.Union(s.Staged.Keys).Distinct().Order(StringComparer.Ordinal))
+        {
+            hash.AppendData(Encoding.UTF8.GetBytes(rel + "\0"));
+            if (s.Staged.TryGetValue(rel, out var staged)) hash.AppendData(Encoding.UTF8.GetBytes(staged));
+            else
+            {
+                var path = Path.Combine(s.Root, rel);
+                try { hash.AppendData(File.Exists(path) && new FileInfo(path).Length <= MaxFileBytes ? File.ReadAllBytes(path) : Encoding.UTF8.GetBytes("\u0001absent")); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { hash.AppendData(Encoding.UTF8.GetBytes("\u0001unreadable")); }
+            }
+            hash.AppendData("\0"u8);
+        }
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
     // ---- the prompt ----
     private static string SystemPrompt(CodingSession s) => $$"""
         You are the Nexus coding agent in NexusOS. You change code in one project folder at the request of the person.
@@ -250,16 +391,18 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
         {"tool":"search","pattern":"send_alert"}                 find text in the project
         {"tool":"replace","path":"src/app.py","old":"exact existing lines","new":"replacement lines"}
         {"tool":"write","path":"tests/test_app.py","content":"whole file"}   create or rewrite a file
-        {"tool":"run_tests"}                                     run the project's tests on your staged changes
+        {"tool":"run_tests"}                                     ask the person to run the project's tests on your staged changes
         {"tool":"done","summary":"two or three plain sentences on what you changed and why"}
 
         Rules:
         - Look before you change: read every file you edit. Keep changes small and in the project's style.
         - Prefer replace for edits; "old" must match the file exactly, once.
         - Your edits are staged: the person reviews the diff and accepts or rejects it. Never claim a change is saved.
-        - If the project has tests, run them after editing, and fix failures you caused.
+        - You never run anything yourself. run_tests shows the person the test command with a Run button; they decide.
+          If the project has tests, ask after editing, then finish with done. The result, if they run it, comes in their
+          next message; fix failures you caused then. Never say tests pass unless that message says so.
         - You cannot run other commands, install packages or change the system. Say so in your summary if the task needs it.
-        - Paths are relative to the project. Files outside it, .git, .env files and keys are off limits.
+        - Paths are relative to the project. Files outside it, .git, .env files, keys and files holding passwords or tokens are off limits.
         - If the request is unclear, reply with done and ask your question in the summary.
         """;
 
@@ -294,8 +437,9 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
         var rel = Path.GetRelativePath(s.Root, full);
         var parts = rel.Split('/');
         if (parts.Contains(".git")) throw new CodingException(".git is off limits.");
+        if (parts.Any(SecretDirs.Contains)) throw new CodingException("Folders for keys and passwords are off limits.");
         var name = parts[^1];
-        if (SecretName().IsMatch(name)) throw new CodingException("Secret files (.env, keys) are off limits.");
+        if (IsSecretName(name)) throw new CodingException("Secret files (.env, keys) are off limits.");
         for (var p = full; p.Length > s.Root.Length; p = Path.GetDirectoryName(p)!)
             if ((File.Exists(p) || Directory.Exists(p)) && new FileInfo(p).LinkTarget is not null)
                 throw new CodingException("Symbolic links are not followed.");
@@ -303,8 +447,29 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
         return full;
     }
 
-    [GeneratedRegex(@"^(\.env(\..*)?|id_(rsa|ed25519|ecdsa)(\.pub)?|.*\.(pem|key|p12|pfx|keystore)|\.netrc|\.npmrc|\.pypirc|credentials(\.json)?)$", RegexOptions.IgnoreCase)]
+    // Files that hold secrets by their name: .env files, SSH and TLS keys, keystores, credential and token files.
+    [GeneratedRegex(@"^(\.env(\..*)?|.+\.env|id_(rsa|dsa|ecdsa|ed25519)(_sk)?(\.pub)?|authorized_keys|known_hosts|.*\.(pem|key|p12|pfx|jks|keystore|kdbx|gpg|asc|ppk|tfstate|tfvars|secret)|\.netrc|\.npmrc|\.pypirc|\.pgpass|\.htpasswd|\.git-credentials|\.dockercfg|credentials(\.json)?|secrets?\.(json|ya?ml|toml|ini|env))$", RegexOptions.IgnoreCase)]
     private static partial Regex SecretName();
+    public static bool IsSecretName(string name) => SecretName().IsMatch(name);
+
+    // Text that holds a secret, wherever it is: private keys, cloud and GitHub tokens, and passwords or tokens
+    // written out as values (`password = "…"`, `"token": "…"`, `API_TOKEN=…` in env and ini files).
+    [GeneratedRegex("""
+        -----BEGIN\ [A-Z0-9\ ]*PRIVATE\ KEY[A-Z\ ]*-----(?:[\s\S]*?-----END\ [A-Z0-9\ ]*PRIVATE\ KEY[A-Z\ ]*-----|[\s\S]*\z)
+        | \b(?:AKIA|ASIA)[0-9A-Z]{16}\b
+        | (?i:aws_secret_access_key)\s*[=:]\s*\S{20,}
+        | \bgh[pousr]_[A-Za-z0-9]{36,}\b | \bgithub_pat_[A-Za-z0-9_]{22,} | \bglpat-[A-Za-z0-9_\-]{20,}
+        | \bxox[abprs]-[A-Za-z0-9\-]{10,} | \bsk-(?:ant-|proj-)?[A-Za-z0-9_\-]{20,} | \bAIza[0-9A-Za-z_\-]{35}\b
+        | (?i:\b(?:password|passwd|passphrase|secret|token|api[_-]?key|access[_-]?key|auth[_-]?token|client[_-]?secret|private[_-]?key))["']?\s*[:=]\s*["'](?![$<{%])[^"'\s]{6,}["']
+        | ^(?:export\ +)?[A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)[A-Z0-9_]*=(?![$"'{(])\S{6,}
+        """, RegexOptions.Multiline | RegexOptions.IgnorePatternWhitespace)]
+    private static partial Regex SecretText();
+    public static bool LooksSecret(string text) => SecretText().IsMatch(text);
+    public static string Redact(string text) => SecretText().Replace(text, "[secret hidden]");
+
+    // Files that decide what a test command does; the Run card names them when the agent changed one.
+    [GeneratedRegex(@"^(Makefile|GNUmakefile|.*\.mk|package\.json|pyproject\.toml|setup\.(py|cfg)|tox\.ini|pytest\.ini|conftest\.py|noxfile\.py|Cargo\.toml|build\.rs|\.cargo|go\.mod|.*\.(csproj|fsproj|sln|props|targets)|(jest|vitest|vite|babel|webpack)\.config\.\w+|\.(babel|mocha)rc.*)$", RegexOptions.IgnoreCase)]
+    private static partial Regex RunnerFile();
 
     private static string Rel(CodingSession s, string full) => full == s.Root ? "" : Path.GetRelativePath(s.Root, full);
 
@@ -315,12 +480,15 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
         if (info.Length > MaxFileBytes) throw new CodingException($"That file is too large to read ({info.Length / 1024} KB).");
         var bytes = File.ReadAllBytes(path);
         if (bytes.Contains((byte)0)) throw new CodingException("That is a binary file.");
-        return Encoding.UTF8.GetString(bytes);
+        var text = Encoding.UTF8.GetString(bytes);
+        if (LooksSecret(text)) throw new CodingException("That file looks like it holds a key, token or password, so it is off limits.");
+        return text;
     }
 
     private static void Stage(CodingSession s, string full, string content)
     {
         var rel = Rel(s, full);
+        if (rel.Split('/').Any(Dependencies.Contains)) throw new CodingException("Installed dependencies (node_modules, .venv) are not edited.");
         if (!s.Original.ContainsKey(rel)) s.Original[rel] = File.Exists(full) ? ReadText(full) : null;
         s.Staged[rel] = content;
     }
@@ -339,7 +507,7 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
                 if (lines.Count >= max) { lines.Add("…"); return; }
                 var name = Path.GetFileName(e);
                 var isDir = Directory.Exists(e) && new FileInfo(e).LinkTarget is null;
-                if (isDir && Skipped.Contains(name)) continue;
+                if (isDir && (Skipped.Contains(name) || SecretDirs.Contains(name))) continue;
                 lines.Add(new string(' ', (depth - level) * 2) + Path.GetRelativePath(root, e) + (isDir ? "/" : ""));
                 if (isDir && level > 1) Walk(e, level - 1);
             }
@@ -354,11 +522,11 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
         foreach (var file in Files(s.Root))
         {
             var rel = Path.GetRelativePath(s.Root, file);
-            if (SecretName().IsMatch(Path.GetFileName(file))) continue;
+            if (IsSecretName(Path.GetFileName(file))) continue;
             string text;
             try { if (new FileInfo(file).Length > MaxFileBytes) continue; text = File.ReadAllText(file); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
-            if (text.Contains('\0')) continue;
+            if (text.Contains('\0') || LooksSecret(text)) continue;
             if (s.Staged.TryGetValue(rel, out var staged)) text = staged;
             var lines = text.Split('\n');
             for (var i = 0; i < lines.Length && hits.Count < max; i++)
@@ -380,7 +548,7 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
             foreach (var e in entries)
             {
                 if (new FileInfo(e).LinkTarget is not null) continue;
-                if (Directory.Exists(e)) { if (!Skipped.Contains(Path.GetFileName(e))) stack.Push(e); }
+                if (Directory.Exists(e)) { if (!Skipped.Contains(Path.GetFileName(e)) && !SecretDirs.Contains(Path.GetFileName(e))) stack.Push(e); }
                 else yield return e;
             }
         }
@@ -408,62 +576,161 @@ public sealed partial class CodingAgent(ModelRouter router, ActivityJournal jour
         return null;
     }
 
-    // Tests run on a copy of the project with the staged edits, so the person's files are untouched until they accept.
-    private async Task<(bool Passed, string Output)> RunTestsAsync(CodingSession s, CancellationToken ct)
+    // bubblewrap, from NEXUS_BWRAP (the Nix module sets it) or the PATH. Without it tests do not run at all.
+    public static string? FindBwrap(string? configured)
     {
-        var copy = Directory.CreateTempSubdirectory("nexus-code-").FullName;
-        try
+        if (!string.IsNullOrWhiteSpace(configured)) return File.Exists(configured) ? configured : null;
+        var dirs = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(':', StringSplitOptions.RemoveEmptyEntries)
+            .Concat(["/run/current-system/sw/bin"]);
+        return dirs.Select(d => Path.Combine(d, "bwrap")).FirstOrDefault(File.Exists);
+    }
+
+    // The sandbox for a test run. The copy of the project (with the staged edits) is mounted read-write where the
+    // project is, installed dependencies read-only from the project, the system's programs read-only; the rest of
+    // the home folder is an empty tmpfs, /tmp is private and there is no network. Its own PID namespace and
+    // --die-with-parent mean that when bwrap is killed every process the tests started goes with it.
+    public static List<string> SandboxArgv(string project, string copy, IEnumerable<string> dependencies, string command, string home)
+    {
+        var argv = new List<string>
         {
-            CopyTree(s.Root, copy);
-            foreach (var (rel, content) in s.Staged)
-            {
-                var path = Path.Combine(copy, rel);
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                await File.WriteAllTextAsync(path, content, ct);
-            }
-            var start = new ProcessStartInfo("sh", ["-c", s.TestCommand!])
-            {
-                WorkingDirectory = copy, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false
-            };
-            using var process = Process.Start(start)!;
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TestTimeout);
-            var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
-            var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-            try { await process.WaitForExitAsync(timeout.Token); }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                process.Kill(true);
-                return (false, $"The tests did not finish within {TestTimeout.TotalMinutes} minutes.");
-            }
-            return (process.ExitCode == 0, await stdout + await stderr);
+            "--die-with-parent", "--new-session",
+            "--unshare-user-try", "--unshare-ipc", "--unshare-pid", "--unshare-uts", "--unshare-cgroup-try", "--unshare-net",
+            "--ro-bind", "/nix/store", "/nix/store",
+        };
+        foreach (var path in new[] { "/run/current-system", "/usr", "/bin", "/lib", "/lib64", "/etc/static", "/etc/profiles",
+                                     "/etc/passwd", "/etc/group", "/etc/nsswitch.conf", "/etc/localtime" })
+            argv.AddRange(["--ro-bind-try", path, path]);
+        argv.AddRange(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--tmpfs", home, "--bind", copy, project]);
+        foreach (var dependency in dependencies)
+            argv.AddRange(["--ro-bind", Path.Combine(project, dependency), Path.Combine(project, dependency)]);
+        argv.AddRange(["--chdir", project, "--", "sh", "-c", command]);
+        return argv;
+    }
+
+    // Only what a test command needs: no API tokens or other settings from Core's own environment.
+    public static Dictionary<string, string> SandboxEnvironment(string home)
+    {
+        var user = Environment.UserName;
+        return new()
+        {
+            ["PATH"] = $"/run/current-system/sw/bin:/etc/profiles/per-user/{user}/bin:/usr/local/bin:/usr/bin:/bin",
+            ["HOME"] = home, ["USER"] = user, ["TMPDIR"] = "/tmp", ["LANG"] = "C.UTF-8", ["TERM"] = "dumb", ["CI"] = "1", ["NO_COLOR"] = "1",
+        };
+    }
+
+    // Runs bwrap with a time limit, keeping the last MaxOutputChars of stdout and stderr together.
+    // On timeout or Stop the whole sandbox is killed, and the run waits for it to be gone.
+    public static async Task<SandboxResult> RunSandboxedAsync(string bwrap, IEnumerable<string> argv, IReadOnlyDictionary<string, string> environment,
+        TimeSpan timeout, CancellationToken ct)
+    {
+        var start = new ProcessStartInfo(bwrap)
+        {
+            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false
+        };
+        foreach (var arg in argv) start.ArgumentList.Add(arg);
+        start.Environment.Clear();
+        foreach (var (key, value) in environment) start.Environment[key] = value;
+        // --die-with-parent is a parent-death signal, which Linux sends when the *thread* that started bwrap ends.
+        // Thread-pool threads come and go, so bwrap is started from a thread of its own that waits for it.
+        var started = new TaskCompletionSource<Process>(TaskCreationOptions.RunContinuationsAsynchronously);
+        new Thread(() =>
+        {
+            Process p;
+            try { p = Process.Start(start)!; }
+            catch (Exception ex) { started.SetException(ex); return; }
+            started.SetResult(p);
+            try { p.WaitForExit(); } catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
+        }) { IsBackground = true, Name = "nexus-code-sandbox" }.Start();
+        using var process = await started.Task;
+        process.StandardInput.Close();
+        var output = new CappedOutput(MaxOutputChars);
+        var pumps = Task.WhenAll(output.PumpAsync(process.StandardOutput), output.PumpAsync(process.StandardError));
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        limit.CancelAfter(timeout);
+        bool timedOut = false, stopped = false;
+        try { await process.WaitForExitAsync(limit.Token); }
+        catch (OperationCanceledException)
+        {
+            stopped = ct.IsCancellationRequested;
+            timedOut = !stopped;
+            Kill(process);
+            await process.WaitForExitAsync(CancellationToken.None);
         }
-        finally
+        // The pipes close once nothing in the sandbox is left; if something still holds them, kill again and move on.
+        try { await pumps.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None); }
+        catch (TimeoutException) { Kill(process); }
+        return new SandboxResult(timedOut || stopped ? null : process.ExitCode, output.ToString(), output.Truncated, timedOut, stopped);
+    }
+
+    private static void Kill(Process process)
+    {
+        try { process.Kill(entireProcessTree: true); }
+        catch (InvalidOperationException) { }     // already gone
+    }
+
+    // Keeps the tail of the output; drops the front in large steps so a flood of output costs little.
+    private sealed class CappedOutput(int max)
+    {
+        private readonly StringBuilder _text = new();
+        private long _dropped;
+        public bool Truncated { get { lock (_text) return _dropped > 0; } }
+
+        public async Task PumpAsync(StreamReader reader)
         {
-            try { Directory.Delete(copy, true); } catch (IOException ex) { log.LogWarning("Could not remove {Copy}: {Message}", copy, ex.Message); }
+            var buffer = new char[8192];
+            int n;
+            while ((n = await reader.ReadAsync(buffer)) > 0)
+                lock (_text)
+                {
+                    _text.Append(buffer, 0, n);
+                    if (_text.Length > 2 * max) { var cut = _text.Length - max; _text.Remove(0, cut); _dropped += cut; }
+                }
+        }
+
+        public override string ToString()
+        {
+            lock (_text)
+            {
+                if (_text.Length > max) { var cut = _text.Length - max; _text.Remove(0, cut); _dropped += cut; }
+                return _dropped == 0 ? _text.ToString()
+                    : $"(output truncated: the first {(_dropped + 1023) / 1024} KiB are not shown, only the last {max / 1024} KiB)\n" + _text;
+            }
         }
     }
 
-    // Copies the project for a test run; dependency folders (node_modules, .venv) come too, as the tests need them, but not .git.
-    private static void CopyTree(string from, string to)
+    // Copies the project for a test run, without .git, caches and build output, never following links. Installed
+    // dependencies are not copied: they are returned, to be shown read-only from the project. At most
+    // MaxCopyBytes and MaxCopyFiles.
+    public static List<string> CopyTree(string from, string to)
     {
-        long bytes = 0;
-        foreach (var dir in Directory.EnumerateDirectories(from, "*", SearchOption.AllDirectories))
+        long bytes = 0, files = 0;
+        var dependencies = new List<string>();
+        var stack = new Stack<string>([from]);
+        while (stack.Count > 0)
         {
-            var rel = Path.GetRelativePath(from, dir);
-            if (rel.Split('/').Contains(".git") || new DirectoryInfo(dir).LinkTarget is not null) continue;
-            Directory.CreateDirectory(Path.Combine(to, rel));
+            var dir = stack.Pop();
+            foreach (var entry in Directory.EnumerateFileSystemEntries(dir))
+            {
+                var rel = Path.GetRelativePath(from, entry);
+                var name = Path.GetFileName(entry);
+                var info = new FileInfo(entry);
+                if (info.LinkTarget is not null) continue;
+                if (Directory.Exists(entry))
+                {
+                    if (NotCopied.Contains(name) || SecretDirs.Contains(name)) continue;
+                    Directory.CreateDirectory(Path.Combine(to, rel));
+                    if (Dependencies.Contains(name)) dependencies.Add(rel);
+                    else stack.Push(entry);
+                    continue;
+                }
+                bytes += info.Length;
+                if (++files > MaxCopyFiles || bytes > MaxCopyBytes)
+                    throw new CodingException($"The project is too large to copy for a test run (over {MaxCopyBytes >> 20} MB or {MaxCopyFiles} files, " +
+                                              "not counting .git, node_modules, .venv and build output).", 413);
+                File.Copy(entry, Path.Combine(to, rel));
+            }
         }
-        foreach (var file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
-        {
-            var rel = Path.GetRelativePath(from, file);
-            if (rel.Split('/').Contains(".git") || !Directory.Exists(Path.GetDirectoryName(Path.Combine(to, rel))!)) continue;
-            var info = new FileInfo(file);
-            if (info.LinkTarget is not null) continue;
-            bytes += info.Length;
-            if (bytes > 2L << 30) throw new CodingException("The project is too large to copy for a test run (over 2 GB).");
-            File.Copy(file, Path.Combine(to, rel));
-        }
+        return dependencies;
     }
 
     public static string TestSummary(string output, bool passed)
@@ -553,7 +820,7 @@ public static class CodingEndpoints
             try
             {
                 var s = agent.Start(request.Folder ?? "");
-                return Results.Ok(new { id = s.Id, folder = CodingAgent.Display(s.Root), tests = s.TestCommand });
+                return Results.Ok(new { id = s.Id, folder = CodingAgent.Display(s.Root), tests = s.TestCommand, sandbox = agent.Bwrap is not null });
             }
             catch (CodingException ex) { return Results.Problem(ex.Message, statusCode: ex.Status); }
         });
@@ -593,6 +860,22 @@ public static class CodingEndpoints
         app.MapPost("/code/sessions/{id}/undo", async (string id, CodingAgent agent, CancellationToken ct) =>
         {
             try { return Results.Ok(await agent.UndoAsync(agent.Get(id), ct)); }
+            catch (CodingException ex) { return Results.Problem(ex.Message, statusCode: ex.Status); }
+        });
+        // The person's Run on the agent's test card: runs that one offer, once, in the sandbox.
+        app.MapPost("/code/sessions/{id}/runs/{run}/confirm", async (string id, string run, CodingAgent agent, CancellationToken ct) =>
+        {
+            try { return Results.Ok(await agent.ConfirmRunAsync(agent.Get(id), run, ct)); }
+            catch (CodingException ex) { return Results.Problem(ex.Message, statusCode: ex.Status); }
+        });
+        app.MapPost("/code/sessions/{id}/runs/{run}/dismiss", (string id, string run, CodingAgent agent) =>
+        {
+            try { return Results.Ok(agent.DismissRun(agent.Get(id), run)); }
+            catch (CodingException ex) { return Results.Problem(ex.Message, statusCode: ex.Status); }
+        });
+        app.MapPost("/code/sessions/{id}/runs/stop", (string id, CodingAgent agent) =>
+        {
+            try { return Results.Ok(agent.StopRun(agent.Get(id))); }
             catch (CodingException ex) { return Results.Problem(ex.Message, statusCode: ex.Status); }
         });
     }

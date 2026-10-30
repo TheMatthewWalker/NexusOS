@@ -113,7 +113,7 @@ public static class NexusActions
         new("make_image", ActionSafety.Personal, "Make a picture from a description with the local image model (opens Images).",
             [new("description", "string", "What the picture shows.", MaxLength: 500)]),
         new("start_coding_task", ActionSafety.Personal,
-            "Open Code, the coding agent, on a project folder in the home folder and give it a task.",
+            "Open Code, the coding agent, on a project folder in the home folder, with a task filled in for the person to send.",
             [new("folder", "string", "The project folder, for example ~/projects/app.", MaxLength: 200),
              new("task", "string", "What to change, in plain words.", MaxLength: 1000)]),
         new("open_fix_it", ActionSafety.Personal, "Open the Fix it window to check a problem and offer fixes.",

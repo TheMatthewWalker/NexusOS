@@ -8,6 +8,9 @@ import "settings"
 // the files it changed, as diffs, on the right, with Accept, Reject and Undo.
 // Nothing is written to the project until the person accepts. The agent runs
 // in Core (CodingAgent.cs) on the selected model; this window only shows it.
+// The agent cannot run anything: when it wants the tests run, a card shows the
+// exact command, and only the person's Run sends it (once) to Core, which runs
+// it in a sandbox. A task from Nexus's chat is filled in, not sent.
 // Opened from the Nexus orbit (the studio role), Super+C, or
 // `nexus-shell-ipc call code open [folder]`.
 FloatingWindow {
@@ -30,12 +33,18 @@ FloatingWindow {
     property var files: []             // [{ path, created, added, removed, diff: [{ a, b, mark, text }] }]
     property int currentFile: 0
     property var testResult: null      // { passed, summary }
+    property var proposal: null        // the agent's request to run the tests: { id, command, files, affects }
+    property bool testing: false
+    property string testCommand: ""
+    property string testOutput: ""
+    property bool sandbox: true        // bubblewrap is there; without it Core runs no tests
     property bool canUndo: false
     property int startId: -1
     property int runId: -1
     property int actionId: -1
+    property int testId: -1
     property string pendingFolder: ""
-    property string pendingTask: ""    // a task from Nexus's chat, sent once the folder is open
+    property string pendingTask: ""    // a task from Nexus's chat, filled in once the folder is open; the person sends it
 
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
     function open(dir) {
@@ -50,14 +59,14 @@ FloatingWindow {
         pendingFolder = dir;
         startId = bridge.send("code-start", { folder: dir });
     }
-    // From a Nexus action card ("Do it"): open the folder, then ask.
+    // From a Nexus action card ("Do it"): open the folder and fill in the task, for the person to read and send.
     function start(dir, task) {
         pendingTask = task || "";
         open(dir);
     }
     function ask(text) {
-        if (!session || working || !text.trim()) return;
-        error = ""; working = true; testResult = null;
+        if (!session || working || testing || !text.trim()) return;
+        error = ""; working = true; testResult = null; proposal = null; testOutput = "";
         conversation = conversation.concat([{ role: "user", text: text.trim(), steps: [] }, { role: "agent", text: "", steps: [] }]);
         runId = bridge.send("code-send", { session: session, text: text.trim() });
     }
@@ -69,15 +78,34 @@ FloatingWindow {
         conversation = c;
     }
     function act(op, extra) { actionId = bridge.send(op, Object.assign({ session: session }, extra || {})) }
+    // Only from the Run button: the one place a test run starts.
+    function runTests() {
+        if (!proposal || working || testing) return;
+        error = ""; testing = true; testCommand = proposal.command; testOutput = "";
+        testId = bridge.send("code-run", { session: session, run: proposal.id });
+        proposal = null;
+    }
+    function dismissRun() {
+        if (!proposal) return;
+        act("code-dismiss", { run: proposal.id });
+        proposal = null;
+    }
 
     Connections {
         target: win.bridge
         function onResult(id, type, data) {
             if (id === win.startId) {
-                win.session = data.id; win.folder = data.folder; win.tests = data.tests || "";
-                win.conversation = []; win.files = []; win.canUndo = false;
+                win.session = data.id; win.folder = data.folder; win.tests = data.tests || ""; win.sandbox = data.sandbox !== false;
+                win.conversation = []; win.files = []; win.canUndo = false; win.proposal = null; win.testOutput = "";
+                // Filled in, not sent: the person reads the task and presses Enter.
+                if (win.pendingTask) { prompt.text = win.pendingTask; win.pendingTask = ""; prompt.cursorPosition = prompt.text.length }
                 prompt.forceActiveFocus();
-                if (win.pendingTask) { const task = win.pendingTask; win.pendingTask = ""; win.ask(task) }
+            } else if (id === win.testId) {
+                win.testing = false;
+                win.testResult = { passed: data.passed, summary: data.summary };
+                win.testOutput = data.output || "";
+                win.updateAgent(a => a.note = (data.passed ? "Tests pass: " : "Tests fail: ") + data.summary +
+                                               (data.truncated ? " (output truncated)" : "") + ". Ask Nexus to continue if something needs fixing.");
             } else if (id === win.actionId) {
                 if (data.type === "accepted") { win.files = []; win.canUndo = true;
                     win.updateAgent(a => a.note = "Saved " + data.files.length + " file" + (data.files.length === 1 ? "" : "s") + ".") }
@@ -89,7 +117,7 @@ FloatingWindow {
             if (id !== win.runId) return;
             if (ev.type === "step") {
                 win.updateAgent(a => a.steps = a.steps.concat([{ kind: ev.kind, title: ev.title, detail: ev.detail }]));
-                if (ev.tests) win.testResult = ev.tests;
+                if (ev.run) win.proposal = ev.run;      // shown as a card; nothing runs until Run
             } else if (ev.type === "changes") {
                 win.files = ev.files; win.currentFile = 0;
             } else if (ev.type === "message") {
@@ -101,6 +129,7 @@ FloatingWindow {
         function onFailed(id, message) {
             if (id === win.startId) win.error = message;
             else if (id === win.runId) { win.working = false; win.error = message }
+            else if (id === win.testId) { win.testing = false; win.error = message }
             else if (id === win.actionId) win.error = message;
         }
     }
@@ -112,7 +141,8 @@ FloatingWindow {
         function state(): string {
             return JSON.stringify({ visible: win.visible, session: win.session, folder: win.folder, working: win.working,
                                     files: win.files.map(f => f.path), steps: win.conversation.length ? win.conversation[win.conversation.length - 1].steps.length : 0,
-                                    error: win.error })
+                                    proposal: win.proposal ? win.proposal.command : "", testing: win.testing,
+                                    prompt: prompt.text, error: win.error })
         }
     }
 
@@ -179,7 +209,7 @@ FloatingWindow {
                 Text { visible: win.conversation.length === 0; width: parent.width; wrapMode: Text.Wrap
                        color: win.theme.inkSecondary; font.pixelSize: 13
                        text: "Ask for a change: fix a bug, add a test, explain a file. " +
-                             (win.tests ? "Nexus can run your tests (" + win.tests + ")." : "No test command was found in this project.") }
+                             (win.tests ? "Nexus can ask to run your tests (" + win.tests + "); they run only when you click Run." : "No test command was found in this project.") }
                 Repeater {
                     model: win.conversation
                     delegate: Column {
@@ -218,6 +248,45 @@ FloatingWindow {
                     }
                 }
                 Text { visible: win.working; text: "Working…"; color: "#FFA65C"; font.pixelSize: 13 }
+                // The agent's request to run the tests: the exact command, run only on the person's Run.
+                Rectangle {
+                    visible: win.proposal !== null || win.testing
+                    width: parent.width; height: runCard.implicitHeight + 24; radius: 12
+                    color: "#0B1430"; border.color: "#FFA65C"
+                    Column {
+                        id: runCard
+                        x: 12; y: 12; width: parent.width - 24; spacing: 8
+                        Text { width: parent.width; wrapMode: Text.Wrap; color: win.theme.ink; font.pixelSize: 13; font.weight: 500
+                               text: win.testing ? "Running the tests…" : "Nexus asks to run the tests" }
+                        Text { width: parent.width; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText
+                               text: win.proposal ? win.proposal.command : win.testCommand
+                               color: "#C9D4FF"; font.family: "JetBrains Mono"; font.pixelSize: 12; font.features: ({ "calt": 0, "liga": 0 }) }
+                        Text { width: parent.width; wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 12
+                               text: "On a copy of the project with the staged changes, in a sandbox: no network, and nothing of your home folder but this project. At most 5 minutes." }
+                        Text { visible: !!win.proposal && win.proposal.affects.length > 0
+                               width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; color: "#FFA65C"; font.pixelSize: 12
+                               text: win.proposal ? "The changes include " + win.proposal.affects.join(", ") + ", which decide what this command does. Read the diff first." : "" }
+                        Text { visible: !win.sandbox; width: parent.width; wrapMode: Text.Wrap; color: win.theme.error; font.pixelSize: 12
+                               text: "Bubblewrap is not installed, so Nexus cannot run tests safely and will not run them." }
+                        Row {
+                            spacing: 8
+                            Button { visible: !win.testing; theme: win.theme; primary: true; label: "Run"; enabled: !win.working && win.sandbox
+                                     onClicked: win.runTests() }
+                            Button { visible: !win.testing; theme: win.theme; label: "Not now"; onClicked: win.dismissRun() }
+                            Button { visible: win.testing; theme: win.theme; danger: true; label: "Stop"; onClicked: win.act("code-stop") }
+                        }
+                    }
+                }
+                // The end of the last run's output, as the person saw it.
+                Rectangle {
+                    visible: win.testOutput !== "" && !win.testing
+                    width: parent.width; height: Math.min(220, outputText.implicitHeight + 20); radius: 12; clip: true
+                    color: "#070C1E"; border.color: win.theme.glassBorder
+                    Text { id: outputText; x: 10; width: parent.width - 20; wrapMode: Text.WrapAnywhere; textFormat: Text.PlainText
+                           anchors.bottom: parent.bottom; anchors.bottomMargin: 10
+                           text: win.testOutput.slice(-4000); color: "#9AA9C9"; font.family: "JetBrains Mono"; font.pixelSize: 11
+                           font.features: ({ "calt": 0, "liga": 0 }) }
+                }
                 Text { visible: win.error !== ""; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
                        text: win.error; color: win.theme.error; font.pixelSize: 13 }
             }
@@ -231,7 +300,7 @@ FloatingWindow {
             TextInput {
                 id: prompt
                 x: 16; width: parent.width - 70; anchors.verticalCenter: parent.verticalCenter
-                color: win.theme.ink; font.pixelSize: 14; clip: true; enabled: !win.working
+                color: win.theme.ink; font.pixelSize: 14; clip: true; enabled: !win.working && !win.testing
                 Text { visible: !prompt.text; text: win.working ? "Nexus is working…" : "Ask for a change, or reply"
                        color: win.theme.inkSecondary; font.pixelSize: 14 }
                 onAccepted: { win.ask(text); text = "" }

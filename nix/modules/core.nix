@@ -8,6 +8,8 @@ let
     NEXUS_OLLAMA_MODEL = cfg.ollamaModel;
     NEXUS_CLOUD_EGRESS_ALLOWED = lib.boolToString cfg.allowCloudEgress;
     NEXUS_GUARDIAN_SOCKET = "/run/nexus-guardian/review.sock";
+    # The coding agent runs a project's tests only inside bubblewrap, never without it.
+    NEXUS_BWRAP = "${pkgs.bubblewrap}/bin/bwrap";
   } // cfg.extraEnvironment;
 in
 {
@@ -41,6 +43,8 @@ in
 
   config = lib.mkIf cfg.enable {
     environment.systemPackages = [ cfg.package ];
+    # bubblewrap (the coding agent's test sandbox) runs unprivileged, in a user namespace.
+    security.allowUserNamespaces = lib.mkDefault true;
     systemd.user.services.nexus-core = {
       description = "Nexus Core (per-user AI daemon)";
       wantedBy = [ "default.target" ];

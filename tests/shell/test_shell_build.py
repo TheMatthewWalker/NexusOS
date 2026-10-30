@@ -211,6 +211,20 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("textFormat: Text.PlainText", code)          # model text is never rich text
         self.assertIn('if (pending[id] === "code-send" && ev.type !== "error")', bridge)
 
+    def test_code_runs_tests_only_on_the_persons_run_and_never_sends_a_task_itself(self):
+        code = (self.out / "Code.qml").read_text()
+        # The agent's test request is a card; the one place a run starts is the Run button.
+        self.assertEqual(code.count('bridge.send("code-run"'), 1)
+        self.assertEqual(code.count("win.runTests()"), 1)
+        self.assertIn('label: "Run"; enabled: !win.working && win.sandbox', code)
+        self.assertIn("if (ev.run) win.proposal = ev.run;", code)
+        # A task from Nexus's chat is filled in, not sent (audit: "Code auto-sends the task").
+        self.assertIn("prompt.text = win.pendingTask", code)
+        self.assertNotIn("win.ask(task)", code)
+        self.assertNotIn("win.ask(win.pendingTask", code)
+        cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
+        self.assertIn('/runs/{Uri.EscapeDataString(Arg("run"))}/confirm', cli)
+
     def test_apps_installs_per_person_without_a_password(self):
         apps = (self.out / "Apps.qml").read_text()
         self.assertIn("flatpak install --user --noninteractive", apps)

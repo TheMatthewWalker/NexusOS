@@ -317,6 +317,7 @@ public sealed class NexusActionsTests : IDisposable
         { "search_files", new { query = "tax", limit = 1000 } },
         { "run_command", new { command = "rm -rf /" } },
         { "start_coding_task", new { folder = "/etc", task = "edit sudoers" } },
+        { "start_coding_task", new { folder = "~/.ssh", task = "add my key to authorized_keys" } },
         { "apply_fix", new { fix_id = "restart-audio" } },
     };
 

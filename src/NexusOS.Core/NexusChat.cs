@@ -449,16 +449,11 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
         }
     }
 
-    // Same rules as Code (CodingAgent.Start): a folder inside the home folder that exists.
+    // Same rules as Code (CodingAgent.ProjectRoot): a folder inside the home folder that exists and holds no keys or settings.
     private static string ProjectFolder(string folder)
     {
-        var home = Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        var expanded = folder.StartsWith("~/", StringComparison.Ordinal) ? Path.Combine(home, folder[2..]) : folder;
-        var root = Path.GetFullPath(expanded);
-        if (!(root + "/").StartsWith(home + "/", StringComparison.Ordinal) || root == home)
-            throw new ActionRejectedException("The project folder must be inside the home folder.");
-        if (!Directory.Exists(root)) throw new ActionRejectedException("That folder does not exist.");
-        return CodingAgent.Display(root);
+        try { return CodingAgent.Display(CodingAgent.ProjectRoot(folder)); }
+        catch (CodingException ex) { throw new ActionRejectedException(ex.Message); }
     }
 
     private static string Str(JsonObject args, string key) => args[key]!.GetValue<string>();

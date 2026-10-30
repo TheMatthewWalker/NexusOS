@@ -127,7 +127,7 @@ Column {
             cards.opened();
             return { ok: true, message: "Installing in a terminal." };
         case "images.make": imagesWin.make(p.prompt); cards.opened(); return { ok: true, message: "Making it in Images…" };
-        case "code.start": codeWin.start(p.folder, p.task); cards.opened(); return { ok: true, message: "Started in Code." };
+        case "code.start": codeWin.start(p.folder, p.task); cards.opened(); return { ok: true, message: "Opened in Code with the task filled in; press Enter there to send it." };
         case "fixit.open": fixItWin.open(p.problem); cards.opened(); return { ok: true, message: "Checking in Fix it…" };
         case "workspace.save": {
             const ws = Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 1;

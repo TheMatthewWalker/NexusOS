@@ -65,6 +65,12 @@ if [ -z "$disk" ]; then
 fi
 [ -b "$disk" ] || fail "$disk is not a disk"
 [ "$(lsblk -dno TYPE "$disk")" = disk ] || fail "$disk is a partition; give the whole disk"
+# A failed attempt leaves this disk mounted at /mnt: release that first, so
+# trying again works. Mounted anywhere else, the disk is really in use.
+if findmnt -rno SOURCE,TARGET | awk -v d="$disk" 'index($1, d) == 1 && $2 ~ "^/mnt(/|$)"' | grep -q .; then
+  echo "Unmounting what an earlier attempt left mounted at /mnt."
+  umount -R /mnt || fail "could not unmount /mnt from the earlier attempt; restart the computer and try again"
+fi
 if findmnt -rno SOURCE | grep -q "^$disk"; then
   fail "$disk is in use (mounted). Is it the disk the installer is running from?"
 fi

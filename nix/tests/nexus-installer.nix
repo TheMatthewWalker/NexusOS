@@ -51,12 +51,9 @@ pkgs.testers.runNixOSTest {
     environment.etc."nexusos".source = nexusSource;
     environment.etc."nexusos-model".source = testModel;
     environment.systemPackages = [ nexusInstall ];
-    nix.settings = {
-      experimental-features = [ "nix-command" "flakes" ];
-      substituters = lib.mkForce [ ];
-      hashed-mirrors = null;
-      connect-timeout = 1;
-    };
+    # The installer image's Nix settings, unchanged: it lists cache.nixos.org,
+    # which this VM cannot reach, as a laptop with no Wi-Fi cannot.
+    nix.settings.experimental-features = [ "nix-command" "flakes" ];
     # The same store contents as the installer image (nix/installer/iso.nix):
     # the installed system, nixpkgs' source and the offline build tools.
     system.extraDependencies = [ referenceSystem nixpkgsSource ] ++ import ../installer/offline-deps.nix pkgs;
@@ -80,6 +77,16 @@ pkgs.testers.runNixOSTest {
     with subtest("the installer refuses a partition and an unknown option"):
         installer.fail("nexus-install --disk /dev/vda1 --user alice --yes")
         installer.fail("nexus-install --bogus")
+
+    with subtest("after a failed attempt, trying again works"):
+        installer.succeed("echo 'nexus-test-pw' > /tmp/pw")
+        installer.succeed("echo '{ ... }: throw \"a failed first attempt\"' > /tmp/broken.nix")
+        installer.fail(
+            "nexus-install --disk /dev/vda --user alice --password-file /tmp/pw"
+            " --extra-module /tmp/broken.nix --yes >&2",
+            timeout=1800)
+        # That attempt left the disk mounted at /mnt; the next one must not refuse it.
+        installer.succeed("findmnt /mnt")
 
     with subtest("nexus-install puts NexusOS on the blank disk"):
         installer.succeed("echo 'nexus-test-pw' > /tmp/pw")

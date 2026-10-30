@@ -10,7 +10,11 @@ public sealed record GuardianChange(string Option, bool Enabled);
 public sealed record GuardianPlan(string Id, string Description, IReadOnlyList<GuardianChange> Changes, string NixPreview,
     string Risk, string RiskLevel, IReadOnlyList<string>? Packages = null);
 
-public sealed record GuardianOptionSpec(string Type, string Risk, bool? ElevatedWhen, string Summary, string? RiskNote);
+// AlsoSetWhenEnabled: settings written with the option whenever it is turned
+// on, as Nix text (for example key-only SSH with services.openssh.enable).
+// They are never options of their own, so they cannot be proposed by themselves.
+public sealed record GuardianOptionSpec(string Type, string Risk, bool? ElevatedWhen, string Summary, string? RiskNote,
+    IReadOnlyDictionary<string, string>? AlsoSetWhenEnabled = null);
 
 // The option allowlist lives only in schema/guardian-options.json (embedded at
 // build time) and is shared with the Python broker; see ADR-002.
@@ -21,6 +25,9 @@ public static class GuardianSchema
     public static IReadOnlyDictionary<string, GuardianOptionSpec> Options { get; }
     private static readonly Regex PackagePattern;
     private static readonly HashSet<string> ReservedWords;
+    // As guardian_schema.FIXED_PATH and FIXED_WORD: plain paths and words, rendered without quoting.
+    private static readonly Regex FixedPath = new(@"\A[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*){1,7}\z", RegexOptions.CultureInvariant);
+    private static readonly Regex FixedWord = new(@"\A[A-Za-z0-9_-]{1,64}\z", RegexOptions.CultureInvariant);
 
     // A plain nixpkgs attribute path ("hello", "python3Packages.requests"): no
     // flake references, store paths, quoting or Nix syntax.
@@ -38,14 +45,34 @@ public static class GuardianSchema
         MaxChanges = root.GetProperty("maxChanges").GetInt32();
         MaxDescriptionLength = root.GetProperty("maxDescriptionLength").GetInt32();
         var options = new Dictionary<string, GuardianOptionSpec>(StringComparer.Ordinal);
+        var names = root.GetProperty("options").EnumerateObject().Select(x => x.Name).ToHashSet(StringComparer.Ordinal);
+        var fixedKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var option in root.GetProperty("options").EnumerateObject())
         {
             var value = option.Value;
+            Dictionary<string, string>? also = null;
+            if (value.TryGetProperty("alsoSetWhenEnabled", out var fixedSettings))
+            {
+                also = new(StringComparer.Ordinal);
+                foreach (var setting in fixedSettings.EnumerateObject())
+                {
+                    if (!FixedPath.IsMatch(setting.Name) || names.Contains(setting.Name) || !fixedKeys.Add(setting.Name))
+                        throw new InvalidOperationException("Invalid fixed setting in Guardian schema.");
+                    also[setting.Name] = setting.Value.ValueKind switch
+                    {
+                        JsonValueKind.True => "true",
+                        JsonValueKind.False => "false",
+                        JsonValueKind.String when FixedWord.IsMatch(setting.Value.GetString()!) => "\"" + setting.Value.GetString() + "\"",
+                        _ => throw new InvalidOperationException("Invalid fixed setting in Guardian schema.")
+                    };
+                }
+            }
             options[option.Name] = new GuardianOptionSpec(value.GetProperty("type").GetString()!,
                 value.GetProperty("risk").GetString()!,
                 value.TryGetProperty("elevatedWhen", out var when) ? when.GetBoolean() : null,
                 value.GetProperty("summary").GetString()!,
-                value.TryGetProperty("riskNote", out var note) ? note.GetString() : null);
+                value.TryGetProperty("riskNote", out var note) ? note.GetString() : null,
+                also);
         }
         Options = options;
         var packages = root.GetProperty("packages");
@@ -63,7 +90,14 @@ public static class GuardianPlanner
     // Byte-identical to guardian_schema.render (schema/guardian-vectors.json).
     public static string RenderModule(IEnumerable<GuardianChange> sorted, IReadOnlyList<string> sortedPackages)
     {
-        var options = string.Concat(sorted.Select(x => "  " + x.Option + " = " + (x.Enabled ? "true" : "false") + ";\n"));
+        var lines = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var change in sorted)
+        {
+            lines[change.Option] = change.Enabled ? "true" : "false";
+            if (change.Enabled && GuardianSchema.Options.TryGetValue(change.Option, out var spec) && spec.AlsoSetWhenEnabled is { } also)
+                foreach (var (key, nix) in also) lines[key] = nix;
+        }
+        var options = string.Concat(lines.Select(x => "  " + x.Key + " = " + x.Value + ";\n"));
         if (sortedPackages.Count == 0) return "{\n" + options + "}\n";
         return "{ pkgs, ... }:\n{\n  environment.systemPackages = [ " +
                string.Join(' ', sortedPackages.Select(x => "pkgs." + x)) + " ];\n" + options + "}\n";

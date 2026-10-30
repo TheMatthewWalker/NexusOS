@@ -253,6 +253,44 @@ public sealed class NexusActionsTests : IDisposable
     }
 
     [Fact]
+    public async Task Turning_on_SSH_is_explained_and_proposed_key_only()
+    {
+        var stub = Model(Calls("change_system_option", new { option = "services.openssh.enable", enabled = true }));
+        using var factory = Factory(stub);
+        var action = OfType(await Ask(factory.Authorized(), "turn on ssh"), "action").Single();
+
+        // A Guardian proposal to review, never a "Do it" that changes the system.
+        Assert.Equal("system", action.GetProperty("safety").GetString());
+        var summary = action.GetProperty("summary").GetString()!;
+        Assert.StartsWith("Turn on OpenSSH remote login server.", summary);
+        Assert.Contains("Key-only", summary);
+        Assert.Contains("~/.ssh/authorized_keys", summary);
+        var plan = action.GetProperty("plan");
+        Assert.Equal("elevated", plan.GetProperty("riskLevel").GetString());
+        var nix = plan.GetProperty("nixPreview").GetString()!;
+        Assert.Contains("  services.openssh.enable = true;\n", nix);
+        Assert.Contains("  services.openssh.settings.PasswordAuthentication = false;\n", nix);
+        Assert.Contains("  services.openssh.settings.KbdInteractiveAuthentication = false;\n", nix);
+        Assert.Contains("  services.openssh.settings.PermitRootLogin = \"no\";\n", nix);
+        // The model is told up front, so it can explain before offering.
+        Assert.Contains("Key-only", NexusActions.ByName["change_system_option"].Description);
+        Assert.Contains("key-only", AssistantContextBuilder.Guide);
+    }
+
+    [Theory]
+    [InlineData("services.openssh.settings.PasswordAuthentication")]
+    [InlineData("services.openssh.settings.KbdInteractiveAuthentication")]
+    [InlineData("services.openssh.settings.PermitRootLogin")]
+    public async Task SSH_password_logins_cannot_be_offered(string option)
+    {
+        var stub = Model(Calls("change_system_option", new { option, enabled = true }), Says("I can't do that."));
+        using var factory = Factory(stub);
+        var events = await Ask(factory.Authorized(), "let me log in with a password");
+        Assert.Empty(OfType(events, "action"));
+        Assert.Equal("rejected", OfType(events, "tool").Single().GetProperty("status").GetString());
+    }
+
+    [Fact]
     public async Task A_system_option_outside_the_Guardian_allowlist_is_refused()
     {
         var stub = Model(Calls("change_system_option", new { option = "boot.kernelParams", enabled = true }), Says("I can't do that."));

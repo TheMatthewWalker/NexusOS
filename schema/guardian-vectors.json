@@ -25,9 +25,9 @@
           "enabled": false
         }
       ],
-      "moduleText": "{\n  networking.networkmanager.enable = false;\n  services.openssh.enable = true;\n}\n",
-      "planId": "ccf4682eb1c3afc2516f5ca4",
-      "candidateId": "d8198c06b83cca5e34f6a922",
+      "moduleText": "{\n  networking.networkmanager.enable = false;\n  services.openssh.enable = true;\n  services.openssh.settings.KbdInteractiveAuthentication = false;\n  services.openssh.settings.PasswordAuthentication = false;\n  services.openssh.settings.PermitRootLogin = \"no\";\n}\n",
+      "planId": "63ab2079c2ecc8883857f633",
+      "candidateId": "fb476a0970395435c04f60cb",
       "risk": "elevated"
     },
     {
@@ -61,9 +61,9 @@
           "enabled": true
         }
       ],
-      "moduleText": "{\n  networking.networkmanager.enable = true;\n  services.flatpak.enable = true;\n  services.openssh.enable = true;\n  services.printing.enable = false;\n}\n",
-      "planId": "192a53baed34a9ceabb2359b",
-      "candidateId": "445f03d8999fc01356bb53ba",
+      "moduleText": "{\n  networking.networkmanager.enable = true;\n  services.flatpak.enable = true;\n  services.openssh.enable = true;\n  services.openssh.settings.KbdInteractiveAuthentication = false;\n  services.openssh.settings.PasswordAuthentication = false;\n  services.openssh.settings.PermitRootLogin = \"no\";\n  services.printing.enable = false;\n}\n",
+      "planId": "223698a841f9b5085410866f",
+      "candidateId": "ec67d1b0da5f883aafc16837",
       "risk": "elevated"
     },
     {
@@ -90,13 +90,41 @@
           "package": "gnome-calculator"
         }
       ],
-      "moduleText": "{ pkgs, ... }:\n{\n  environment.systemPackages = [ pkgs.gnome-calculator pkgs.python3Packages.requests ];\n  services.openssh.enable = true;\n}\n",
-      "planId": "52cf58be9c97bfb4b611e01d",
-      "candidateId": "2857975119e3985b7679cfb0",
+      "moduleText": "{ pkgs, ... }:\n{\n  environment.systemPackages = [ pkgs.gnome-calculator pkgs.python3Packages.requests ];\n  services.openssh.enable = true;\n  services.openssh.settings.KbdInteractiveAuthentication = false;\n  services.openssh.settings.PasswordAuthentication = false;\n  services.openssh.settings.PermitRootLogin = \"no\";\n}\n",
+      "planId": "c2cea34c7ce93b6c623bfcd0",
+      "candidateId": "527853f563bbc2a4594feae2",
       "risk": "elevated"
     }
   ],
   "rejected": [
+    [
+      {
+        "option": "services.openssh.settings.PasswordAuthentication",
+        "enabled": true
+      }
+    ],
+    [
+      {
+        "option": "services.openssh.enable",
+        "enabled": true
+      },
+      {
+        "option": "services.openssh.settings.PasswordAuthentication",
+        "enabled": true
+      }
+    ],
+    [
+      {
+        "option": "services.openssh.settings.KbdInteractiveAuthentication",
+        "enabled": true
+      }
+    ],
+    [
+      {
+        "option": "services.openssh.settings.PermitRootLogin",
+        "enabled": "yes"
+      }
+    ],
     [
       {
         "option": "imports",

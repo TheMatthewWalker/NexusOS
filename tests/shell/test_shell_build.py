@@ -38,7 +38,7 @@ class ShellBuild(unittest.TestCase):
     def test_every_qml_file_and_generated_input_is_present(self):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
                      "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "Images.qml", "ActionCards.qml", "Guardian.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
-                     "Search.qml", "Overview.qml", "FirstRun.qml", "Explain.qml", "MoveIn.qml", "lib/firstrun.mjs", "lib/bundles.mjs",
+                     "Search.qml", "Overview.qml", "FirstRun.qml", "Explain.qml", "MoveIn.qml", "lib/movein.sh", "lib/firstrun.mjs", "lib/bundles.mjs",
                      *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About", "Search"]],
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
@@ -303,14 +303,39 @@ class ShellBuild(unittest.TestCase):
         shell = (self.out / "shell.qml").read_text()
         nix = (ROOT / "nix/modules/desktop.nix").read_text()
         self.assertIn('"udisksctl", "mount", "--no-user-interaction", "-b", path, "-o", "ro"', mi)
-        self.assertIn("rsync -r -t --ignore-existing", mi)
         self.assertIn('"lsblk", "-J"', mi)
-        for word in ["sudo", "pkexec", "--remove-source-files", "rm -"]:
-            self.assertNotIn(word, mi)
+        helper = (self.out / "lib/movein.sh").read_text()
+        self.assertIn("rsync -r -t --ignore-existing", helper)
+        for text in [mi, helper]:
+            for word in ["sudo", "pkexec", "--remove-source-files", "rm -", "--delete"]:
+                self.assertNotIn(word, text)
         self.assertIn('target: "movein"', mi)
         self.assertIn("MoveIn { id: moveInWin", shell)
         self.assertIn("services.udisks2.enable", nix)
         self.assertIn("pkgs.rsync", nix)
+
+    def test_move_in_does_not_trust_the_old_drive(self):
+        """Names on the old drive never pick a destination; the helper (tested in test_movein.py) copies."""
+        mi = (self.out / "MoveIn.qml").read_text()
+        helper = (self.out / "lib/movein.sh").read_text()
+        self.assertIn('Quickshell.shellPath("lib/movein.sh")', mi)
+        self.assertIn('scanner.command = ["sh", helper, "scan", root];', mi)
+        self.assertIn('rsync.command = ["sh", helper, "copy", root, copying.user, copying.folder,', mi)
+        # NUL-separated records, never lines, and no path from the drive comes back to the shell.
+        self.assertIn('text.split("\\0")', mi)
+        self.assertNotIn('text.split("\\n")', re.search(r"id: scanner[\s\S]*?\n    \}", mi).group(0))
+        self.assertNotIn("path: f[", mi)
+        self.assertNotIn('"sh", "-c"', mi)
+        self.assertIn("!win.validUser(f[1])", mi)
+        for flag in ["--no-links", "--no-devices", "--no-specials", "--no-perms", "--no-owner", "--no-group", "--ignore-existing"]:
+            self.assertIn(flag, helper)
+        rsync = helper.split("exec rsync", 1)[1].split('"$dest/"', 1)[0].split()
+        for flag in ["-a", "--archive", "-l", "--links", "-L", "--copy-links", "-K", "--keep-dirlinks", "-p", "-o", "-g", "-D"]:
+            self.assertNotIn(flag, rsync)
+        self.assertIn("Documents|Desktop|Downloads|Pictures|Music|Videos) printf '%s' \"$1\"", helper)
+        self.assertIn("''|.*|*/*|*[[:cntrl:]]*) return 1", helper)
+        self.assertIn('die "refusing: $1 is a symlink"', helper)
+        self.assertIn("printf 'item\\t%s\\t%s\\t%s\\0'", helper)
 
     def test_nexus_actions_wait_for_the_persons_click(self):
         """Action cards (NexusActions.cs): the shell performs only what Core hands back after "Do it"."""

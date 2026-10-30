@@ -19,6 +19,10 @@ DRV_PATH = re.compile(r"/nix/store/[0-9a-df-np-sv-z]{32}-[A-Za-z0-9+._?=-]+\.drv
 # A flake reference plus attribute, e.g. "path:/etc/nixos#nixosConfigurations.host".
 HOST_CONFIG = re.compile(r"[A-Za-z0-9+._:/?=&-]{1,200}#nixosConfigurations\.[A-Za-z0-9_-]{1,64}\Z")
 ID_LENGTH = 24
+# Settings an option brings with it (alsoSetWhenEnabled): a plain option path
+# and a true/false or a short plain word, so they render without quoting.
+FIXED_PATH = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*){1,7}\Z")
+FIXED_WORD = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 
 
 def load_schema(path=SCHEMA_PATH):
@@ -26,6 +30,15 @@ def load_schema(path=SCHEMA_PATH):
         schema = json.load(stream)
     if schema.get("schemaVersion") != 1 or not isinstance(schema.get("options"), dict):
         raise ValueError("Unsupported Guardian schema")
+    seen = set()
+    for spec in schema["options"].values():
+        for key, value in spec.get("alsoSetWhenEnabled", {}).items():
+            # Never proposable on their own, and set by one option only.
+            if FIXED_PATH.fullmatch(key) is None or key in schema["options"] or key in seen:
+                raise ValueError("Invalid fixed setting in Guardian schema")
+            if not (type(value) is bool or (isinstance(value, str) and FIXED_WORD.fullmatch(value))):
+                raise ValueError("Invalid fixed setting in Guardian schema")
+            seen.add(key)
     return schema
 
 
@@ -79,9 +92,25 @@ def normalise(changes, schema=SCHEMA):
     return split(changes, schema)[0]
 
 
+def _nix(value):
+    if type(value) is bool:
+        return "true" if value else "false"
+    return '"' + value + '"'
+
+
+def settings(values, schema=SCHEMA):
+    """Every option the module sets: the changes plus what turning one on always brings
+    (for example key-only SSH with services.openssh.enable)."""
+    out = dict(values)
+    for key, value in values.items():
+        if value is True:
+            out.update(schema["options"][key].get("alsoSetWhenEnabled", {}))
+    return out
+
+
 def render(changes, schema=SCHEMA):
     values, packages = split(changes, schema)
-    lines = [f"  {key} = {'true' if value else 'false'};" for key, value in sorted(values.items())]
+    lines = [f"  {key} = {_nix(value)};" for key, value in sorted(settings(values, schema).items())]
     if not packages:
         return "{\n" + "\n".join(lines) + "\n}\n"
     # Packages come from the host configuration's own pinned nixpkgs.

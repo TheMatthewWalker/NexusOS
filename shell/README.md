@@ -16,6 +16,7 @@ The NexusOS desktop interface (SpaceUI), written in [Quickshell](https://quicksh
 | System sentences | `qml/lib/describe.mjs` | Turns real readings into one plain sentence per planet. Tested with Node (`tests/shell/describe.test.mjs`) |
 | Core link | `qml/CoreBridge.qml` | One long-lived `nexus bridge` process (see below) |
 | App roles | `qml/AppDirectory.qml` | Maps the six orbit roles to installed desktop entries |
+| Bring my stuff over | `qml/MoveIn.qml`, `qml/lib/movein.sh` | Copies Documents, Pictures and so on from an old drive. The helper treats the drive as untrusted: destinations only from a fixed list in the home folder, checked names, no symlinks or special files. Tested with crafted drives (`tests/shell/test_movein.py`) |
 
 Super+Space opens and closes Nexus. You can also run
 `nexus-shell-ipc call nexus toggle`.

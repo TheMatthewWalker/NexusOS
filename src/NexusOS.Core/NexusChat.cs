@@ -367,7 +367,9 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 GuardianPlan plan;
                 try { plan = GuardianPlanner.Preview(description, [new GuardianChange(option, enabled)]); }
                 catch (ArgumentException) { throw new ActionRejectedException("Guardian does not allow that change."); }
-                return await ProposeAsync(action, args, description, plan, ct);
+                // A risky change (remote login) says what it means on the card, from the schema, not the model.
+                var summary = plan.RiskLevel == "elevated" && spec.RiskNote is { } note ? description + ". " + note : description;
+                return await ProposeAsync(action, args, summary, plan, ct);
             }
         }
     }

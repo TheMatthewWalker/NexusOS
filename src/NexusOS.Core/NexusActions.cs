@@ -136,9 +136,11 @@ public static class NexusActions
             "Install software for every account (a NixOS package, for example htop). Goes to Guardian for the person to approve.",
             [new("package", "string", "The nixpkgs package name.", MaxLength: 128)]),
         new("change_system_option", ActionSafety.System,
-            "Turn a system service or option on or off. Goes to Guardian for the person to approve. Options: " +
+            "Turn a system service or option on or off. Goes to Guardian for the person to review and approve; " +
+            "explain a risky change before offering it. Options: " +
             string.Join("; ", GuardianSchema.Options.OrderBy(x => x.Key, StringComparer.Ordinal)
-                .Select(x => x.Key + " (" + x.Value.Summary.TrimEnd('.') + ")")) + ".",
+                .Select(x => x.Key + " (" + x.Value.Summary.TrimEnd('.') +
+                             (x.Value.AlsoSetWhenEnabled is null ? "" : ". " + x.Value.RiskNote?.TrimEnd('.')) + ")")) + ".",
             [new("option", "string", "The option.", Choices: GuardianSchema.Options.Keys.Order(StringComparer.Ordinal).ToArray()),
              new("enabled", "boolean", "On (true) or off (false).")]),
     ];

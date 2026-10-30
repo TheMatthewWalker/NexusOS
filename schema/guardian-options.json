@@ -18,7 +18,12 @@
       "risk": "elevated",
       "elevatedWhen": true,
       "summary": "OpenSSH remote login server",
-      "riskNote": "Enables remote access; review firewall and authentication."
+      "riskNote": "Enables remote access: opens port 22 in the firewall. Key-only: password and keyboard-interactive logins and root login are turned off, so add your public key to ~/.ssh/authorized_keys first.",
+      "alsoSetWhenEnabled": {
+        "services.openssh.settings.KbdInteractiveAuthentication": false,
+        "services.openssh.settings.PasswordAuthentication": false,
+        "services.openssh.settings.PermitRootLogin": "no"
+      }
     },
     "services.printing.enable": {
       "type": "bool",

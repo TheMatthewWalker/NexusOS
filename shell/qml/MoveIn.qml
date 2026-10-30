@@ -12,6 +12,9 @@ import "settings"
 // copied, never moved, and nothing already in the home folder is overwritten
 // (--ignore-existing). Everything stays on this computer. Browser bookmarks
 // and app equivalents are coming later, and the window says so.
+// The drive is not trusted: lib/movein.sh does the looking and copying, with
+// NUL-separated output, checked names, no symlinks or special files, and
+// destinations only from a fixed list under the home folder (see the script).
 // Opened from Welcome, Settings, About, or `nexus-shell-ipc call movein open`.
 FloatingWindow {
     id: win
@@ -24,16 +27,19 @@ FloatingWindow {
 
     readonly property string home: Quickshell.env("HOME") || ""
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
+    readonly property string helper: Quickshell.env("NEXUS_MOVEIN") || Quickshell.shellPath("lib/movein.sh")
     // Partitions that belong to this system are never offered.
     readonly property var systemMounts: ["/", "/boot", "/boot/efi", "/efi", "/nix", "/nix/store", "/home", "/var", "[SWAP]"]
     readonly property var folderNames: ["Documents", "Desktop", "Downloads", "Pictures", "Music", "Videos", "Movies"]
+    // A user-folder name from the drive: one plain component (as movein.sh checks it again).
+    function validUser(name) { return name === "" || (name.length <= 255 && !/^\.|\/|[\x00-\x1f\x7f]/.test(name)) }
     property var drives: []
     property string source: ""             // device path, or a folder path
     property string sourceKind: ""         // drive | folder
     property string root: ""               // where the old files are (mount point or folder)
     property bool weMounted: false
     property string os: ""
-    property var found: []                 // { user, folder, bytes, path, on }
+    property var found: []                 // { user, folder, bytes, on }
     property string status: ""
     property string phase: "pick"          // pick | mounting | scanning | ready | copying | done
     property real freeBytes: -1
@@ -94,27 +100,15 @@ FloatingWindow {
     }
     function scan() {
         phase = "scanning"; status = "Looking in the usual places and measuring folders…";
-        scanner.command = ["sh", "-c", scanScript, "sh", root];
+        scanner.command = ["sh", helper, "scan", root];
         scanner.running = true;
     }
-    // Prints "os<TAB>Windows|Mac" and one "user<TAB>folder<TAB>bytes<TAB>path" line per folder found.
-    readonly property string scanScript:
-        "r=$1; [ -d \"$r\" ] || { echo 'missing'; exit 2; }\n" +
-        "if [ -d \"$r/Windows/System32\" ] || { [ -d \"$r/Users\" ] && [ -d \"$r/ProgramData\" ]; }; then printf 'os\\tWindows\\n';\n" +
-        "elif [ -d \"$r/System/Library\" ] || { [ -d \"$r/Users\" ] && [ -d \"$r/Applications\" ]; }; then printf 'os\\tMac\\n'; fi\n" +
-        "homes=''\n" +
-        "if [ -d \"$r/Users\" ]; then for u in \"$r\"/Users/*/; do n=$(basename \"$u\");\n" +
-        "  case \"$n\" in Public|Default|'Default User'|'All Users'|defaultuser0|Shared|Guest|.*) continue;; esac\n" +
-        "  for f in Documents Desktop Downloads Pictures Music Videos Movies; do [ -d \"$u$f\" ] || continue;\n" +
-        "    s=$(du -sb -- \"$u$f\" 2>/dev/null | cut -f1); printf '%s\\t%s\\t%s\\t%s\\n' \"$n\" \"$f\" \"${s:-0}\" \"$u$f\"; done; done; fi\n" +
-        "for f in Documents Desktop Downloads Pictures Music Videos Movies; do [ -d \"$r/$f\" ] || continue;\n" +
-        "  s=$(du -sb -- \"$r/$f\" 2>/dev/null | cut -f1); printf '%s\\t%s\\t%s\\t%s\\n' '' \"$f\" \"${s:-0}\" \"$r/$f\"; done"
     // Where a folder goes in the home folder: Movies becomes Videos; with several people on the old drive, each gets a subfolder.
     function destination(item) {
         const name = item.folder === "Movies" ? "Videos" : item.folder;
-        const users = new Set(found.map(f => f.user));
-        return home + "/" + name + (users.size > 1 && item.user ? "/" + item.user : "");
+        return home + "/" + name + (perUser() && item.user ? "/" + item.user : "");
     }
+    function perUser() { return new Set(found.map(f => f.user)).size > 1 }
     function toggle(user, folder) {
         found = found.map(f => f.user === user && f.folder === folder ? Object.assign({}, f, { on: !f.on }) : f);
     }
@@ -135,8 +129,8 @@ FloatingWindow {
             return;
         }
         copying = copyQueue[0]; copyQueue = copyQueue.slice(1); currentPct = 0;
-        rsync.command = ["sh", "-c", "mkdir -p -- \"$2\" && exec rsync -r -t --ignore-existing --no-perms --chmod=Du=rwx,Fu=rw --info=progress2 -- \"$1/\" \"$2/\"",
-                         "sh", copying.path, destination(copying)];
+        // The helper works out both paths again from the root, the user and the folder name.
+        rsync.command = ["sh", helper, "copy", root, copying.user, copying.folder, perUser() && copying.user ? "1" : "0"];
         rsync.running = true;
     }
     function cancel() { if (rsync.running) { copyQueue = []; rsync.running = false } }
@@ -180,11 +174,11 @@ FloatingWindow {
         stdout: StdioCollector {
             onStreamFinished: {
                 const items = [];
-                for (const line of text.split("\n")) {
-                    const f = line.split("\t");
-                    if (f[0] === "os" && f.length === 2) { win.os = f[1]; continue }
-                    if (f.length !== 4 || !win.folderNames.includes(f[1])) continue;
-                    items.push({ user: f[0], folder: f[1], bytes: Number(f[2]) || 0, path: f[3], on: f[1] !== "Downloads" });
+                for (const rec of text.split("\0")) {
+                    const f = rec.split("\t");
+                    if (f[0] === "os" && f.length === 2) { win.os = f[1] === "Mac" ? "Mac" : "Windows"; continue }
+                    if (f[0] !== "item" || f.length !== 4 || !win.validUser(f[1]) || !win.folderNames.includes(f[2])) continue;
+                    items.push({ user: f[1], folder: f[2], bytes: Number(f[3]) || 0, on: f[2] !== "Downloads" });
                 }
                 win.found = items;
                 win.phase = "ready";

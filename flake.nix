@@ -83,7 +83,7 @@
             (python3.withPackages (ps: [ ps.pygobject3 ps.pycairo ps.pillow ps.pywayland ]))
             wlr-protocols libxkbcommon
             gtk4 gtk4-layer-shell webkitgtk_6_0 gobject-introspection glib-networking
-            nodejs_22 esbuild
+            nodejs_22 esbuild rsync dash
           ];
           SPIKE_MESA = "${pkgs.mesa}";
           SPIKE_WAYLAND_XML = "${pkgs.wayland-scanner.out}/share/wayland/wayland.xml";

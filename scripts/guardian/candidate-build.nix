@@ -27,6 +27,9 @@ let
     virtualisation.graphics = false;
     virtualisation.memorySize = 2048;
     virtualisation.diskSize = 4096;
+    # The test machine boots without a bootloader, so it needs no trial-boot
+    # entry (guardian-trial); leaving it out saves a second evaluation.
+    specialisation = lib.mkForce { };
     systemd.services.nexus-guardian-vm-check = {
       description = "Guardian: report whether the candidate started in its test machine";
       wantedBy = [ "multi-user.target" ];

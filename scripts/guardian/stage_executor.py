@@ -4,7 +4,8 @@
 The only system mutation in Guardian. Root-only. It never switches the running
 system: it sets the system profile, runs `switch-to-configuration boot`, then
 keeps the bootloader's default on the observed baseline and sets a one-time
-entry for the candidate:
+entry for the candidate's trial-boot specialisation (guardian-trial: the same
+system, with `panic=N boot.panic_on_fail` on that entry only):
 
   GRUB          saved_entry = baseline, next_entry = candidate (grub-editenv)
   systemd-boot  LoaderEntryDefault = baseline, LoaderEntryOneShot = candidate (bootctl)
@@ -22,7 +23,7 @@ import time
 
 import grub_entries
 import systemd_boot
-from baseline_inspect import inspect
+from baseline_inspect import TRIAL_SPECIALISATION, inspect
 from guardian_schema import STORE_PATH
 
 PROFILE = "/nix/var/nix/profiles/system"
@@ -47,9 +48,17 @@ def record(state_dir, event):
         stream.write(json.dumps({**event, "at": int(time.time())}, sort_keys=True) + "\n")
 
 
-def _grub_trial(runner, toplevel, baseline, grub_cfg_path, grubenv, grub_editenv):
+def trial_system(toplevel):
+    """The store path of toplevel's trial-boot specialisation, or None if it has none."""
+    path = os.path.realpath(os.path.join(toplevel, "specialisation", TRIAL_SPECIALISATION))
+    if STORE_PATH.fullmatch(path) is None or not os.path.isfile(os.path.join(path, "init")):
+        return None
+    return path
+
+
+def _grub_trial(runner, trial_toplevel, baseline, grub_cfg_path, grubenv, grub_editenv):
     cfg = Path(grub_cfg_path).read_text(encoding="utf-8")
-    trial = grub_entries.entry_for(cfg, toplevel)
+    trial = grub_entries.entry_for(cfg, trial_toplevel)
     fallback = grub_entries.entry_for(cfg, baseline, prefer_submenu=True)
     if trial is None or fallback is None:
         raise StagingError("Could not locate both generations in grub.cfg")
@@ -57,9 +66,9 @@ def _grub_trial(runner, toplevel, baseline, grub_cfg_path, grubenv, grub_editenv
     return trial, fallback
 
 
-def _systemd_boot_trial(runner, toplevel, baseline, esp, bootctl):
+def _systemd_boot_trial(runner, trial_toplevel, baseline, esp, bootctl):
     directory = Path(esp) / "loader" / "entries"
-    trial = systemd_boot.entry_for(directory, toplevel)
+    trial = systemd_boot.entry_for(directory, trial_toplevel, TRIAL_SPECIALISATION)
     fallback = systemd_boot.entry_for(directory, baseline)
     if trial is None or fallback is None or trial == fallback:
         raise StagingError("Could not locate both generations among the systemd-boot entries")
@@ -72,7 +81,7 @@ def _systemd_boot_trial(runner, toplevel, baseline, esp, bootctl):
 
 def stage(broker, decision_hash, *, runner=run, observer=inspect, grub_cfg_path=GRUB_CFG,
           grubenv=GRUBENV, grub_editenv="grub-editenv", pre_stage=None, bootloader="grub", esp=ESP,
-          bootctl="bootctl"):
+          bootctl="bootctl", trial_of=trial_system):
     if bootloader not in BOOTLOADERS:
         raise StagingError("Unsupported bootloader")
     pending = Path(broker.state_dir) / "pending-boot.json"
@@ -89,6 +98,11 @@ def stage(broker, decision_hash, *, runner=run, observer=inspect, grub_cfg_path=
         raise StagingError("The running system changed since review; resubmit the candidate")
     if STORE_PATH.fullmatch(toplevel or "") is None or not os.path.isfile(os.path.join(toplevel, "bin", "switch-to-configuration")):
         raise StagingError("Approved toplevel is not a NixOS system in the local store")
+    # Only the trial's own entry resets on a failed boot; without it a broken
+    # trial would stop at its failure instead of falling back unattended.
+    trial_toplevel = trial_of(toplevel)
+    if trial_toplevel is None:
+        raise StagingError("Approved system has no Guardian trial-boot entry (services.nexus-guardian.staging)")
     if pre_stage is not None:
         try:
             snapshots = pre_stage()
@@ -101,9 +115,9 @@ def stage(broker, decision_hash, *, runner=run, observer=inspect, grub_cfg_path=
     try:
         runner([os.path.join(toplevel, "bin", "switch-to-configuration"), "boot"])
         if bootloader == "grub":
-            trial, fallback = _grub_trial(runner, toplevel, baseline, grub_cfg_path, grubenv, grub_editenv)
+            trial, fallback = _grub_trial(runner, trial_toplevel, baseline, grub_cfg_path, grubenv, grub_editenv)
         else:
-            trial, fallback = _systemd_boot_trial(runner, toplevel, baseline, esp, bootctl)
+            trial, fallback = _systemd_boot_trial(runner, trial_toplevel, baseline, esp, bootctl)
     except BaseException:
         # Leave the machine booting the baseline exactly as before.
         runner(["nix-env", "--profile", PROFILE, "--set", baseline])
@@ -112,7 +126,8 @@ def stage(broker, decision_hash, *, runner=run, observer=inspect, grub_cfg_path=
             _forget_efi_entries(runner, bootctl)
         record(broker.state_dir, {"event": "stage-failed", "decision": decision_hash, "toplevel": toplevel})
         raise
-    state = {"decision": decision_hash, "toplevel": toplevel, "baseline": baseline, "bootloader": bootloader,
+    state = {"decision": decision_hash, "toplevel": toplevel, "trialSystem": trial_toplevel,
+             "baseline": baseline, "bootloader": bootloader,
              "trialEntry": trial, "fallbackEntry": fallback, "stagedAt": int(time.time())}
     fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as stream:

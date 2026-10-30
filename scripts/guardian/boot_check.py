@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Post-boot Guardian assessment: confirm a healthy trial boot or restore the baseline.
 
-Runs once per boot (nexus-guardian-boot-check.service). With a pending trial:
-  - running the candidate and healthy  -> make it the bootloader default; confirmed
+Runs once per boot (nexus-guardian-boot-check.service). With a pending trial
+(running the candidate means its trial-boot entry, or its plain entry):
+  - running the candidate and healthy -> make it the bootloader default; confirmed
   - running the candidate but unhealthy -> restore the baseline for next boot
   - running the baseline                -> the trial failed and the bootloader fell
                                            back; restore the baseline profile
@@ -58,7 +59,8 @@ def check(state_dir, *, current=None, health=None, runner=run, grub_editenv="gru
     def follow():
         follow_profile(bootloader, runner, grub_editenv, grubenv, bootctl)
     current = current if current is not None else os.path.realpath("/run/current-system")
-    if current == pending["toplevel"]:
+    # Trials staged before trial-boot entries existed record only the toplevel.
+    if current in (pending["toplevel"], pending.get("trialSystem")):
         ok, reason = (health or system_health)(required_units)
         if ok:
             follow()  # Default entry now follows the new profile.

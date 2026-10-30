@@ -177,7 +177,15 @@ pkgs.testers.runNixOSTest {
         assert "No such candidate" in out, out
         target.succeed("grep -q org.nexusos.guardian.approve /run/current-system/sw/share/polkit-1/actions/org.nexusos.guardian.policy")
         target.succeed("test -x /run/current-system/sw/bin/nexus-guardian-desktop-approve")
-        target.succeed("grep -q boot.panic_on_fail /proc/cmdline")
+        # Only the trial-boot entry resets on a failed boot (Guardian's panic=10).
+        # Not boot.panic_on_fail or /proc/cmdline: the test instrumentation in
+        # this system adds boot.panic_on_fail and panic=1 to every entry.
+        trial_entry = "/boot/loader/entries/nixos-generation-1-specialisation-guardian-trial.conf"
+        target.succeed("grep -qw panic=10 /run/current-system/specialisation/guardian-trial/kernel-params")
+        target.succeed(f"grep '^options' {trial_entry} | grep -qw panic=10")
+        target.succeed("grep -qx 'default nixos-generation-1.conf' /boot/loader/loader.conf")
+        target.fail("grep -qw panic=10 /run/current-system/kernel-params")
+        target.fail("grep -qw panic=10 /boot/loader/entries/nixos-generation-1.conf")
         target.succeed("journalctl -b -u nexus-guardian-boot-check | grep -q nothing-pending")
 
     with subtest("the machine can rebuild itself from /etc/nixos"):

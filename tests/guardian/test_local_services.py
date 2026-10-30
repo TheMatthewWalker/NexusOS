@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from support import BASELINE, CHANGES, DRV, TOPLEVEL, BrokerFixture
+from support import BASELINE, CHANGES, DRV, TOPLEVEL, TRIAL, BrokerFixture
 import systemd_boot
 from attestation import load_trusted_keys, verify
 from boot_check import check
@@ -22,13 +22,17 @@ OTHER = "/nix/store/" + "6" * 32 + "-nixos-system-lab-26.05"
 VM_DRV = "/nix/store/" + "8" * 32 + "-nexus-guardian-vm-test.drv"
 
 
-def write_entries(directory, generations, specialisation=None):
+def write_entries(directory, generations, specialisation=None, trials=None):
+    """trials maps a generation number to its trial-boot specialisation (guardian-trial)."""
     entries = Path(directory) / "loader" / "entries"
     entries.mkdir(parents=True, exist_ok=True)
     for number, path in generations:
         (entries / f"nixos-generation-{number}.conf").write_text(
             f"title NexusOS\nversion Generation {number}\nlinux /EFI/nixos/k-bzImage.efi\n"
-            f"initrd /EFI/nixos/i-initrd.efi\noptions init={path}/init panic=10 boot.panic_on_fail\n")
+            f"initrd /EFI/nixos/i-initrd.efi\noptions init={path}/init loglevel=4\n")
+    for number, path in (trials or {}).items():
+        (entries / f"nixos-generation-{number}-specialisation-guardian-trial.conf").write_text(
+            f"options init={path}/init loglevel=4 panic=10 boot.panic_on_fail\n")
     if specialisation:
         number, path = specialisation
         (entries / f"nixos-generation-{number}-specialisation-x.conf").write_text(f"options init={path}/init\n")
@@ -55,6 +59,15 @@ class SystemdBootEntryTests(unittest.TestCase):
             self.assertIsNone(systemd_boot.entry_for(entries, BASELINE[:-2]))  # No prefix matches.
             self.assertIsNone(systemd_boot.entry_for(Path(esp) / "missing", BASELINE))
 
+    def test_finds_the_trial_boot_entry_only_by_its_specialisation(self):
+        with tempfile.TemporaryDirectory() as esp:
+            entries = write_entries(esp, [(1, BASELINE), (2, TOPLEVEL)], specialisation=(2, OTHER), trials={2: TRIAL})
+            self.assertEqual("nixos-generation-2-specialisation-guardian-trial.conf",
+                             systemd_boot.entry_for(entries, TRIAL, "guardian-trial"))
+            self.assertIsNone(systemd_boot.entry_for(entries, TRIAL))  # Never as a plain generation.
+            self.assertIsNone(systemd_boot.entry_for(entries, OTHER, "guardian-trial"))
+            self.assertEqual("nixos-generation-2.conf", systemd_boot.entry_for(entries, TOPLEVEL))
+
 
 class SystemdBootStagingTests(unittest.TestCase):
     def setUp(self):
@@ -72,18 +85,22 @@ class SystemdBootStagingTests(unittest.TestCase):
 
     def stage(self, runner):
         return stage(self.fx.broker, self.decision, runner=runner, observer=self.fx.observer,
-                     bootloader="systemd-boot", esp=self.esp.name)
+                     bootloader="systemd-boot", esp=self.esp.name,
+                     trial_of=lambda toplevel: TRIAL if toplevel == TOPLEVEL else None)
 
     def test_one_shot_candidate_with_baseline_as_efi_default(self):
-        write_entries(self.esp.name, [(1, BASELINE), (2, TOPLEVEL)])
+        write_entries(self.esp.name, [(1, BASELINE), (2, TOPLEVEL)], trials={2: TRIAL})
         runner = Runner()
         state = self.stage(runner)
+        # One shot of the trial-boot entry; the plain entries never get panic=N boot.panic_on_fail.
         self.assertEqual([["nix-env", "--profile", PROFILE, "--set", TOPLEVEL],
                           [TOPLEVEL + "/bin/switch-to-configuration", "boot"],
                           ["bootctl", "set-default", "nixos-generation-1.conf"],
-                          ["bootctl", "set-oneshot", "nixos-generation-2.conf"]], runner.commands)
+                          ["bootctl", "set-oneshot", "nixos-generation-2-specialisation-guardian-trial.conf"]],
+                         runner.commands)
         pending = json.loads((Path(self.fx.state) / "pending-boot.json").read_text())
         self.assertEqual("systemd-boot", pending["bootloader"])
+        self.assertEqual(TRIAL, pending["trialSystem"])
         self.assertEqual("systemd-boot", state["bootloader"])
 
     def test_missing_entry_restores_baseline_and_clears_efi_overrides(self):
@@ -96,8 +113,16 @@ class SystemdBootStagingTests(unittest.TestCase):
                           ["bootctl", "set-oneshot", ""], ["bootctl", "set-default", ""]], runner.commands[2:])
         self.assertFalse((Path(self.fx.state) / "pending-boot.json").exists())
 
-    def test_firmware_refusing_the_one_shot_restores_baseline(self):
+    def test_missing_trial_boot_entry_restores_baseline(self):
         write_entries(self.esp.name, [(1, BASELINE), (2, TOPLEVEL)])
+        runner = Runner()
+        with self.assertRaises(StagingError):
+            self.stage(runner)
+        self.assertIn(["nix-env", "--profile", PROFILE, "--set", BASELINE], runner.commands)
+        self.assertNotIn(["bootctl", "set-oneshot", "nixos-generation-2.conf"], runner.commands)
+
+    def test_firmware_refusing_the_one_shot_restores_baseline(self):
+        write_entries(self.esp.name, [(1, BASELINE), (2, TOPLEVEL)], trials={2: TRIAL})
         runner = Runner(fail_on=lambda command: command[:2] == ["bootctl", "set-oneshot"] and command[2] != "")
         with self.assertRaises(OSError):
             self.stage(runner)
@@ -111,15 +136,16 @@ class SystemdBootCheckTests(unittest.TestCase):
         self.addCleanup(self.dir.cleanup)
         self.state = Path(self.dir.name)
         (self.state / "pending-boot.json").write_text(json.dumps(
-            {"decision": "d" * 64, "toplevel": TOPLEVEL, "baseline": BASELINE, "bootloader": "systemd-boot",
-             "trialEntry": "nixos-generation-2.conf", "fallbackEntry": "nixos-generation-1.conf"}))
+            {"decision": "d" * 64, "toplevel": TOPLEVEL, "trialSystem": TRIAL, "baseline": BASELINE,
+             "bootloader": "systemd-boot", "trialEntry": "nixos-generation-2-specialisation-guardian-trial.conf",
+             "fallbackEntry": "nixos-generation-1.conf"}))
 
     def run_check(self, current, healthy=True):
         runner = Runner()
         return check(self.state, current=current, health=lambda _: (healthy, "test"), runner=runner), runner.commands
 
     def test_healthy_trial_drops_the_efi_default(self):
-        self.assertEqual(("confirmed", [["bootctl", "set-default", ""]]), self.run_check(TOPLEVEL))
+        self.assertEqual(("confirmed", [["bootctl", "set-default", ""]]), self.run_check(TRIAL))
 
     def test_failed_trial_restores_baseline(self):
         outcome, commands = self.run_check(BASELINE)
@@ -129,7 +155,7 @@ class SystemdBootCheckTests(unittest.TestCase):
                           ["bootctl", "set-default", ""]], commands)
 
     def test_unhealthy_trial_rolls_back(self):
-        outcome, commands = self.run_check(TOPLEVEL, healthy=False)
+        outcome, commands = self.run_check(TRIAL, healthy=False)
         self.assertEqual("rolled-back", outcome)
         self.assertEqual(["nix-env", "--profile", PROFILE, "--set", BASELINE], commands[0])
 

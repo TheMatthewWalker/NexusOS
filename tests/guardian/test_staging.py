@@ -4,21 +4,35 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support import BASELINE, BrokerFixture, TOPLEVEL
+from support import BASELINE, BrokerFixture, TOPLEVEL, TRIAL
 import grub_entries
 from boot_check import check
 from stage_executor import PROFILE, StagingError, stage
 
 
-def grub_cfg(default, generations):
-    """A grub.cfg in the layout NixOS install-grub.pl generates."""
-    lines = ['if [ -s $prefix/grubenv ]; then', '  load_env', 'fi',
-             'menuentry "NixOS - Default" {', '  savedefault',
-             f'  linux /nix/store/k-linux/bzImage init={default}/init loglevel=4', '}',
-             'submenu "NixOS - All configurations" --class submenu {']
+def grub_cfg(default, generations, trials=None):
+    """A grub.cfg in the layout NixOS install-grub.pl generates; trials maps a
+    system to its trial-boot specialisation, which gets its own entry."""
+    trials = trials or {}
+
+    def entry(name, path, params="loglevel=4"):
+        return [f'menuentry "{name}" {{', '  savedefault',
+                f'  linux /nix/store/k-linux/bzImage init={path}/init {params}', '}']
+    trial_params = "loglevel=4 panic=10 boot.panic_on_fail"
+    lines = ['if [ -s $prefix/grubenv ]; then', '  load_env', 'fi']
+    if default in trials:
+        lines += entry("NixOS - Default", default) + entry("NixOS - Guardian trial boot", trials[default], trial_params)
+    else:
+        lines += entry("NixOS - Default", default)
+    lines.append('submenu "NixOS - All configurations" --class submenu {')
     for number, path in generations:
-        lines += [f'menuentry "NixOS - Configuration {number}" {{', '  savedefault',
-                  f'  linux /nix/store/k-linux/bzImage init={path}/init loglevel=4', '}']
+        if path in trials:
+            lines.append(f'submenu "NixOS - Configuration {number}" --class submenu {{')
+            lines += entry("NixOS - Configuration - Default", path)
+            lines += entry("NixOS - Configuration - Guardian trial boot", trials[path], trial_params)
+            lines.append('}')
+        else:
+            lines += entry(f"NixOS - Configuration {number}", path)
     lines.append('}')
     return "\n".join(lines) + "\n"
 
@@ -30,6 +44,13 @@ class GrubEntryTests(unittest.TestCase):
         self.assertEqual("1>0", grub_entries.entry_for(cfg, TOPLEVEL, prefer_submenu=True))
         self.assertEqual("1>1", grub_entries.entry_for(cfg, BASELINE, prefer_submenu=True))
         self.assertIsNone(grub_entries.entry_for(cfg, "/nix/store/" + "9" * 32 + "-nixos-system-x"))
+
+    def test_trial_boot_entries_are_located_apart_from_the_plain_ones(self):
+        cfg = grub_cfg(TOPLEVEL, [(2, TOPLEVEL), (1, BASELINE)], trials={TOPLEVEL: TRIAL})
+        self.assertEqual("1", grub_entries.entry_for(cfg, TRIAL))
+        self.assertEqual("0", grub_entries.entry_for(cfg, TOPLEVEL))
+        self.assertEqual("2>0>0", grub_entries.entry_for(cfg, TOPLEVEL, prefer_submenu=True))
+        self.assertEqual("2>1", grub_entries.entry_for(cfg, BASELINE, prefer_submenu=True))
 
     def test_prefix_paths_do_not_match(self):
         cfg = grub_cfg(BASELINE + "-extra", [(1, BASELINE + "-extra")])
@@ -57,25 +78,35 @@ class StagingTests(unittest.TestCase):
         self.decision = self.fx.broker.review(self.fx.uid, {"candidateId": candidate["candidateId"],
                                                             "attestation": self.fx.attest(candidate)})["decision"]
         self.cfg = Path(self.store.name) / "grub.cfg"
-        self.cfg.write_text(grub_cfg(TOPLEVEL, [(2, TOPLEVEL), (1, BASELINE)]))
+        self.cfg.write_text(grub_cfg(TOPLEVEL, [(2, TOPLEVEL), (1, BASELINE)], trials={TOPLEVEL: TRIAL}))
         # stage() requires the approved toplevel to look like a NixOS system.
         self.isfile = os.path.isfile
         os.path.isfile = lambda path: path == os.path.join(TOPLEVEL, "bin", "switch-to-configuration") or self.isfile(path)
         self.addCleanup(lambda: setattr(os.path, "isfile", self.isfile))
 
     def stage(self, runner, **kwargs):
+        kwargs.setdefault("trial_of", lambda toplevel: TRIAL if toplevel == TOPLEVEL else None)
         return stage(self.fx.broker, self.decision, runner=runner, observer=self.fx.observer,
                      grub_cfg_path=self.cfg, grubenv="/tmp/grubenv", **kwargs)
 
     def test_stages_for_one_trial_boot_with_baseline_fallback(self):
         runner = Runner()
         state = self.stage(runner)
+        # The one-time entry is the trial-boot specialisation; the default stays the baseline's plain entry.
         self.assertEqual([["nix-env", "--profile", PROFILE, "--set", TOPLEVEL],
                           [TOPLEVEL + "/bin/switch-to-configuration", "boot"],
-                          ["grub-editenv", "/tmp/grubenv", "set", "saved_entry=1>1", "next_entry=0"]], runner.commands)
+                          ["grub-editenv", "/tmp/grubenv", "set", "saved_entry=2>1", "next_entry=1"]], runner.commands)
         self.assertEqual(BASELINE, state["baseline"])
+        self.assertEqual(TRIAL, state["trialSystem"])
         pending = Path(self.fx.state) / "pending-boot.json"
         self.assertEqual(0o600, pending.stat().st_mode & 0o777)
+
+    def test_a_system_without_a_trial_boot_entry_is_not_staged(self):
+        runner = Runner()
+        with self.assertRaises(StagingError):
+            self.stage(runner, trial_of=lambda toplevel: None)
+        self.assertEqual([], runner.commands)
+        self.assertFalse((Path(self.fx.state) / "pending-boot.json").exists())
 
     def test_never_switches_the_running_system(self):
         runner = Runner()
@@ -143,7 +174,8 @@ class BootCheckTests(unittest.TestCase):
         self.addCleanup(self.dir.cleanup)
         self.state = Path(self.dir.name)
         (self.state / "pending-boot.json").write_text(json.dumps(
-            {"decision": "d" * 64, "toplevel": TOPLEVEL, "baseline": BASELINE, "trialEntry": "0", "fallbackEntry": "1>1"}))
+            {"decision": "d" * 64, "toplevel": TOPLEVEL, "trialSystem": TRIAL, "baseline": BASELINE,
+             "trialEntry": "1", "fallbackEntry": "2>1"}))
 
     def run_check(self, current, healthy=True):
         runner = Runner()
@@ -161,8 +193,19 @@ class BootCheckTests(unittest.TestCase):
         self.assertEqual([["grub-editenv", "/tmp/grubenv", "set", "saved_entry=0"]], commands)
         self.assertFalse((self.state / "pending-boot.json").exists())
 
+    def test_healthy_trial_boot_entry_is_confirmed(self):
+        # The trial boots its specialisation, so that is the running system.
+        outcome, commands = self.run_check(TRIAL)
+        self.assertEqual("confirmed", outcome)
+        self.assertEqual([["grub-editenv", "/tmp/grubenv", "set", "saved_entry=0"]], commands)
+
+    def test_trial_staged_without_a_trial_system_is_still_assessed(self):
+        (self.state / "pending-boot.json").write_text(json.dumps(
+            {"decision": "d" * 64, "toplevel": TOPLEVEL, "baseline": BASELINE, "trialEntry": "0", "fallbackEntry": "1>1"}))
+        self.assertEqual("confirmed", self.run_check(TOPLEVEL)[0])
+
     def test_unhealthy_trial_restores_baseline(self):
-        outcome, commands = self.run_check(TOPLEVEL, healthy=False)
+        outcome, commands = self.run_check(TRIAL, healthy=False)
         self.assertEqual("rolled-back", outcome)
         self.assertEqual(["nix-env", "--profile", PROFILE, "--set", BASELINE], commands[0])
         self.assertEqual([BASELINE + "/bin/switch-to-configuration", "boot"], commands[1])

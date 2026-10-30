@@ -48,10 +48,16 @@ in
       # also get a user manager, and have no writable home for Core's state.
       unitConfig.ConditionUser = "!@system";
       inherit environment;
+      # Core always comes back, however often it fails: the wait between
+      # restarts grows from 2 seconds to a minute, and it is never given up on
+      # (only `systemctl --user stop` keeps it stopped).
+      startLimitIntervalSec = 0;
       serviceConfig = {
         ExecStart = "${cfg.package}/bin/nexus-core";
-        Restart = "on-failure";
+        Restart = "always";
         RestartSec = 2;
+        RestartSteps = 6;
+        RestartMaxDelaySec = 60;
         NoNewPrivileges = true;
         UMask = "0077";
       };

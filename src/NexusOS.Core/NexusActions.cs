@@ -85,6 +85,9 @@ public static class NexusActions
             Private: true),
         new("get_settings", ActionSafety.Read,
             "The person's current desktop settings (windows, blur, animations, scale, night light, high contrast) and the AI model in use.", []),
+        new("get_app_details", ActionSafety.Read,
+            "Before installing a Flathub app: its publisher, whether Flathub verified them, licence, download size and permissions in plain words.",
+            [new("app_id", "string", "The Flathub app id.", MaxLength: 128, Pattern: FlathubId)]),
         new("get_system_updates", ActionSafety.Read,
             "Security updates for the system (kernel, Firefox, Chromium...): when Guardian last checked, and whether updates are ready to approve.", []),
 
@@ -107,8 +110,13 @@ public static class NexusActions
         new("remove_app", ActionSafety.Personal, "Remove a Flathub app this person installed.",
             [new("app_id", "string", "The Flathub app id.", MaxLength: 128, Pattern: FlathubId)]),
         new("apt_install", ActionSafety.Personal,
-            "Install an Ubuntu package with apt in the Ubuntu container (command-line tools, Ubuntu software). Opens a terminal so the person sees it.",
-            [new("package", "string", "The apt package name, for example htop.", MaxLength: 100, Pattern: @"[a-z0-9][a-z0-9+.-]{0,99}")]),
+            "Install an Ubuntu package with apt in the Ubuntu container, in a terminal the person sees. It is not a sandbox: it runs as them and can read their home folder.",
+            [new("package", "string", "The apt package name, for example htop.", MaxLength: 100, Pattern: @"[a-z0-9][a-z0-9+.-]{0,99}"),
+             new("isolated", "boolean", "true for software not fully trusted: a separate container with its own home folder (command-line tools only).",
+                 Required: false)]),
+        new("undo_app_change", ActionSafety.Personal,
+            "Undo an app install or removal from the journal (get_today_summary gives each entry's id): remove what was installed, or reinstall what was removed.",
+            [new("entry", "integer", "The journal entry's id.", Min: 1, Max: int.MaxValue)]),
         new("create_automation", ActionSafety.Personal,
             "Create an automation from one sentence, for example 'At 22:00 every day, turn on night light'.",
             [new("sentence", "string", "The automation in one sentence.", MaxLength: RuleParser.MaxSentenceLength)]),
@@ -248,13 +256,14 @@ public static class NexusActions
 
 // An action waiting for the person. Perform is the shell's instruction for
 // desktop actions; Rule, FixToken and Plan hold what Core itself will use.
+// Details are facts Core looked up for the card (a Flathub app's publisher and permissions): { lines, warning }.
 public sealed record PendingAction(string Id, NexusAction Action, JsonObject Args, string Summary, DateTimeOffset Expires,
-    JsonObject? Perform = null, RuleDefinition? Rule = null, string? FixToken = null, GuardianPlan? Plan = null)
+    JsonObject? Perform = null, RuleDefinition? Rule = null, string? FixToken = null, GuardianPlan? Plan = null, object? Details = null)
 {
     // actionId repeats id for `nexus bridge`, which tags every event with its own request id.
     public object Event() => new
     {
-        type = "action", id = Id, actionId = Id, action = Action.Name, args = Args, safety = Action.SafetyName, summary = Summary,
+        type = "action", id = Id, actionId = Id, action = Action.Name, args = Args, safety = Action.SafetyName, summary = Summary, details = Details,
         plan = Plan is null ? null : new { id = Plan.Id, description = Plan.Description, changes = Plan.Changes, packages = Plan.Packages,
                                            nixPreview = Plan.NixPreview, risk = Plan.Risk, riskLevel = Plan.RiskLevel }
     };
@@ -271,13 +280,13 @@ public sealed class PendingActions(TimeProvider time)
     public static bool IsValidId(string? id) => id is { Length: 24 } && id.All(ch => ch is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     public PendingAction Add(NexusAction action, JsonObject args, string summary, JsonObject? perform = null,
-        RuleDefinition? rule = null, string? fixToken = null, GuardianPlan? plan = null)
+        RuleDefinition? rule = null, string? fixToken = null, GuardianPlan? plan = null, object? details = null)
     {
         var now = time.GetUtcNow();
         foreach (var old in _items.Values.Where(x => x.Expires <= now)) _items.TryRemove(old.Id, out _);
         while (_items.Count >= MaxPending && _items.Values.MinBy(x => x.Expires) is { } oldest) _items.TryRemove(oldest.Id, out _);
         var item = new PendingAction(Convert.ToHexString(RandomNumberGenerator.GetBytes(12)).ToLowerInvariant(), action, args,
-            summary, now + Lifetime, perform, rule, fixToken, plan);
+            summary, now + Lifetime, perform, rule, fixToken, plan, details);
         _items[item.Id] = item;
         return item;
     }

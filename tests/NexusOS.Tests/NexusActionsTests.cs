@@ -94,10 +94,12 @@ public sealed class NexusActionsTests : IDisposable
     {
         var stub = Model(Says("Hello."));
         using var factory = Factory(stub);
-        await Ask(factory.Authorized(), "hello");
+        await Ask(factory.Authorized(), "turn the volume down");
         using var body = JsonDocument.Parse(stub.Bodies[0]);
         var tools = body.RootElement.GetProperty("tools").EnumerateArray().ToArray();
-        Assert.Equal(NexusActions.All.Length, tools.Length);
+        // Only the actions the question is about (ActionSelection.cs), with "this computer" always.
+        Assert.Equal(["change_setting", "get_settings", "get_system_state", "open_settings"],
+            tools.Select(t => t.GetProperty("function").GetProperty("name").GetString()).Order());
         var setting = tools.Single(t => t.GetProperty("function").GetProperty("name").GetString() == "change_setting");
         Assert.Equal("function", setting.GetProperty("type").GetString());
         var parameters = setting.GetProperty("function").GetProperty("parameters");

@@ -58,8 +58,10 @@ public sealed class LlamaServerProcessTests
                 TestConfig.Of(("NEXUS_LLAMA_SERVER_BIN", Fixture), ("NEXUS_LLAMA_MODEL_PATH", model),
                     ("NEXUS_LLAMA_PORT", "18080"), ("NEXUS_LLAMA_GPU_LAYERS", "12")),
                 new InferenceTokenSettings(TestConfig.Of(("NEXUS_CONTEXT_TOKENS", "2048"))));
-            Assert.Equal(["--model", model, "--host", "127.0.0.1", "--port", "18080", "--ctx-size", "2048", "--n-gpu-layers", "12"],
+            // --jinja: llama-server takes tools (Nexus's actions) only with it.
+            Assert.Equal(["--model", model, "--host", "127.0.0.1", "--port", "18080", "--ctx-size", "2048", "--n-gpu-layers", "12", "--jinja"],
                 process.Arguments());
+            Assert.True(process.ToolCalling);
             Assert.Equal("http://127.0.0.1:18080", process.Endpoint);
         }
         finally { File.Delete(model); }
@@ -88,6 +90,76 @@ public sealed class LlamaServerProcessTests
             await provider.UnloadAsync(CancellationToken.None);
             Assert.False(process.IsRunning);
             Assert.False(PortOpen(port));
+        }
+        finally { File.Delete(model); }
+    }
+
+    private static readonly ToolSpec[] OneTool = [NexusActions.ByName["get_system_state"].Tool];
+
+    private static async Task<string> Turn(LlamaCppProvider provider)
+    {
+        var text = "";
+        await foreach (var piece in provider.StreamTurnAsync([new TurnMessage("user", "hello")], OneTool,
+                           InferenceTokenBudgetPlanner.Calculate(4096, 64), CancellationToken.None))
+            text += piece.Text;
+        return text;
+    }
+
+    [Fact]
+    public async Task TheManagedServerGetsToolsWithJinja()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var model = Path.GetTempFileName();
+        var config = TestConfig.Of(("NEXUS_LLAMA_SERVER_BIN", Fixture), ("NEXUS_LLAMA_MODEL_PATH", model),
+            ("NEXUS_LLAMA_PORT", FreePort().ToString()));
+        var factory = new RealHttpFactory();
+        using var process = new LlamaServerProcess(factory, config, new InferenceTokenSettings(TestConfig.Of()));
+        try
+        {
+            Assert.Equal("jinja=true tools=1", await Turn(new LlamaCppProvider(factory, config, process)));
+            Assert.True(process.ToolCalling);
+        }
+        finally { await process.StopAsync(CancellationToken.None); File.Delete(model); }
+    }
+
+    [Fact]
+    public async Task AnOlderServerWithoutJinjaStartsAnywayAndGetsNoTools()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var model = Path.GetTempFileName();
+        var config = TestConfig.Of(("NEXUS_LLAMA_SERVER_BIN", Fixture), ("NEXUS_LLAMA_MODEL_PATH", model),
+            ("NEXUS_LLAMA_PORT", FreePort().ToString()));
+        var factory = new RealHttpFactory();
+        // The fixture then does not know --jinja and exits on it, as an old llama-server does.
+        Environment.SetEnvironmentVariable("FAKE_LLAMA_OLD", "1");
+        using var process = new LlamaServerProcess(factory, config, new InferenceTokenSettings(TestConfig.Of()));
+        try
+        {
+            var provider = new LlamaCppProvider(factory, config, process);
+            Assert.Equal("jinja=false tools=0", await Turn(provider));
+            Assert.False(process.ToolCalling);
+            Assert.DoesNotContain("--jinja", process.Arguments());
+            Assert.False(provider.ToolsLikely);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FAKE_LLAMA_OLD", null);
+            await process.StopAsync(CancellationToken.None);
+            File.Delete(model);
+        }
+    }
+
+    [Fact]
+    public void JinjaCanBeTurnedOff()
+    {
+        var model = Path.GetTempFileName();
+        try
+        {
+            var process = new LlamaServerProcess(new StubHttpFactory(StubHandler.Json(System.Net.HttpStatusCode.OK, "{}")),
+                TestConfig.Of(("NEXUS_LLAMA_SERVER_BIN", Fixture), ("NEXUS_LLAMA_MODEL_PATH", model), ("NEXUS_LLAMA_JINJA", "false")),
+                new InferenceTokenSettings(TestConfig.Of()));
+            Assert.DoesNotContain("--jinja", process.Arguments());
+            Assert.False(process.ToolCalling);
         }
         finally { File.Delete(model); }
     }

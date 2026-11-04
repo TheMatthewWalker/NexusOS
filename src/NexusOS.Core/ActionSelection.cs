@@ -30,19 +30,22 @@ public static class ActionSelection
 
     private static readonly Group[] Groups =
     [
-        G("apps", @"apps?|applications?|install\w*|uninstall\w*|remove|delete|open|launch|start|run|programs?|software|packages?|" +
-                  @"flathub|flatpak|apt|download|get me|try|tools?|browser|firefox|chrom\w*|spotify|discord|steam|gimp|obs|vlc|" +
-                  @"libreoffice|office|terminal|editor|player|games?",
-            "list_installed_apps", "open_app", "install_app", "remove_app", "apt_install", "try_app", "install_system_software"),
+        G("open", @"open|launch|start|run|apps?|applications?|programs?|browser|firefox|chrom\w*|terminal|editor|player",
+            "list_installed_apps", "open_app"),
+        G("install", @"install\w*|software|packages?|flathub|flatpak|apt|download|get me|tools?|spotify|discord|steam|gimp|obs|vlc|" +
+                     @"libreoffice|office|games?",
+            "install_app", "apt_install", "install_system_software"),
+        G("remove", @"uninstall\w*|remove|delete|get rid of", "remove_app", "list_installed_apps"),
+        G("try", @"try|trial|without installing|sandbox\w*", "try_app"),
         G("settings", @"settings?|preferences?|volume|loud\w*|quiet\w*|mute\w*|sound|audio|speakers?|headphones?|night ?light|" +
                       @"scale|scaling|bigger|smaller|larger|zoom|text size|blur|animations?|motion|contrast|tile|tiled|tiling|" +
                       @"float\w*|windows|wi-?fi|network|internet|bluetooth|display|screen|monitor|brightness|power|battery|" +
-                      @"privacy|accessib\w*|dark|theme|turn (?:on|off)|switch|enable|disable",
+                      @"privacy|accessib\w*|dark|theme",
             "get_settings", "open_settings", "change_setting"),
         G("fix", @"fix\w*|broken|break\w*|not working|doesn'?t work|isn'?t working|won'?t|can'?t|cannot|problems?|issues?|wrong|" +
-                 @"slow|health|healthy|check|disk|space|full|errors?|crash\w*|freez\w*|frozen|lag\w*|no sound|wi-?fi|internet|" +
-                 @"connect\w*|battery|help",
-            "get_health_report", "diagnose_problem", "open_fix_it", "apply_fix"),
+                 @"errors?|crash\w*|freez\w*|frozen|no sound",
+            "diagnose_problem", "open_fix_it"),
+        G("health", @"health|healthy|check ?up|slow|disk|space|full|lag\w*|overheat\w*", "get_health_report"),
         G("files", @"find|search\w*|files?|documents?|docs?|folders?|where|photos?|pictures?|pdfs?|notes?|essays?|" +
                    @"spreadsheets?|look for|letters?|invoices?|receipts?",
             "search_files"),
@@ -67,19 +70,36 @@ public static class ActionSelection
             "install_system_software", "change_system_option"),
     ];
 
+    // Offered once a look-up has run, because only then are they useful: a fix
+    // diagnose_problem found, the app list's ids.
+    public static readonly IReadOnlyDictionary<string, string[]> FollowOn = new Dictionary<string, string[]>(StringComparer.Ordinal)
+    {
+        ["diagnose_problem"] = ["apply_fix", "open_fix_it"],
+        ["get_health_report"] = ["diagnose_problem", "open_fix_it"],
+        ["list_installed_apps"] = ["open_app", "remove_app"],
+        ["get_system_updates"] = ["check_for_updates"],
+        ["list_automations"] = ["create_automation"],
+    };
+
     private static readonly HashSet<string> Grouped =
-        Groups.SelectMany(g => g.Actions).Concat(Always).ToHashSet(StringComparer.Ordinal);
+        Groups.SelectMany(g => g.Actions).Concat(Always).Concat(FollowOn.Values.SelectMany(x => x)).ToHashSet(StringComparer.Ordinal);
+
+    // Paths and app ids ("~/projects/app", "org.mozilla.firefox") are not words about what to do.
+    private static readonly Regex Paths = new(@"(?:~|\.{0,2}/)\S*|\S+\.\S+\.\S+", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+
+    private static string Words(string text) => Paths.Replace(text, " ");
 
     // The groups a piece of text is about.
     public static IReadOnlyList<string> GroupsFor(string text) =>
-        Groups.Where(g => g.Words.IsMatch(text)).Select(g => g.Name).ToArray();
+        Groups.Where(g => g.Words.IsMatch(Words(text))).Select(g => g.Name).ToArray();
 
     // The action names to offer for this question (earlier: the person's previous question, if any).
     public static IReadOnlySet<string> NamesFor(string prompt, string? earlier = null)
     {
-        var groups = Groups.Where(g => g.Words.IsMatch(prompt)).ToList();
+        var words = Words(prompt);
+        var groups = Groups.Where(g => g.Words.IsMatch(words)).ToList();
         if (earlier is { Length: > 0 } && IsFollowUp(prompt))
-            groups.AddRange(Groups.Where(g => g.Words.IsMatch(earlier) && !groups.Contains(g)));
+            groups.AddRange(Groups.Where(g => g.Words.IsMatch(Words(earlier)) && !groups.Contains(g)));
         var names = new HashSet<string>(Always, StringComparer.Ordinal);
         foreach (var g in groups) names.UnionWith(g.Actions);
         foreach (var action in NexusActions.All) if (!Grouped.Contains(action.Name)) names.Add(action.Name);

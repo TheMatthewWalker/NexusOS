@@ -78,6 +78,8 @@ try
             return await PrintGet("/inference/status");
         case "rules":
             return await RulesCommand.RunAsync(http, args[1..], Console.In, Console.Out, Console.Error);
+        case "actions":
+            return await ActionsCommand.RunAsync(http, args[1..], Console.Out, Console.Error);
         case "unload":
             using (var res = await http.PostAsync("/inference/unload", null))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
@@ -304,9 +306,15 @@ async Task<int> StreamAnswer(string prompt)
         if (type == "delta") { Console.Write(ev.GetProperty("text").GetString()); Console.Out.Flush(); }
         else if (type == "error") { Console.Error.WriteLine($"\nnexus: {ev.GetProperty("message").GetString()}"); ok = false; }
         else if (type == "done") Console.WriteLine();
-        // Actions wait for the person's click in the Nexus window; the command line only says what was offered.
+        // Actions wait for the person: "Do it" in the Nexus window, or `nexus actions confirm` here.
         else if (type == "action")
-            Console.Error.WriteLine($"\nNexus offers to: {ev.GetProperty("summary").GetString()}. Ask in Nexus (Super+Space) to do it.");
+        {
+            var offerId = ev.GetProperty("id").GetString();
+            Console.Error.WriteLine($"\nNexus offers to: {ev.GetProperty("summary").GetString()}");
+            if (ev.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.String)
+                Console.Error.WriteLine("    " + detail.GetString()!.ReplaceLineEndings("\n    "));
+            Console.Error.WriteLine($"Do it: nexus actions confirm {offerId}   Not now: nexus actions dismiss {offerId}");
+        }
     }
     return ok ? 0 : 1;
 }
@@ -338,6 +346,8 @@ async IAsyncEnumerable<JsonElement> StreamEvents(string path, object body)
 // never holds the API token itself; this process reads it like any CLI call.
 //   {"id":1,"op":"chat","prompt":"..."}     -> delta, tool and action events, then done or error
 //   (an action card's "Do it": {"op":"api","method":"POST","path":"/actions/<id>/confirm"})
+//   {"id":1,"op":"followup","action":"<id>","ok":true,"message":".."} -> delta events, then done or error:
+//     after "Do it", Nexus says what happened (one short turn, no tools)
 //   {"id":2,"op":"suggest","prompt":"...","model":false}
 //   {"id":3,"op":"apps"} | {"id":4,"op":"health"}
 //   {"id":5,"op":"unload"}                  -> {"type":"unloaded","data":{"vramFreedBytes":N|null}}
@@ -420,10 +430,21 @@ async Task<int> Bridge()
             });
             continue;
         }
-        if (op is "chat" or "code-send")
+        if (op is "chat" or "code-send" or "followup")
         {
-            var path = op == "chat" ? "/chat/stream" : $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/messages";
-            object body = op == "chat" ? new { prompt } : new { text = Arg("text") };
+            var path = op switch
+            {
+                "chat" => "/chat/stream",
+                "followup" => $"/actions/{Uri.EscapeDataString(Arg("action"))}/followup",
+                _ => $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/messages"
+            };
+            object body = op switch
+            {
+                "chat" => new { prompt },
+                "followup" => new { ok = req.TryGetProperty("ok", out var ok) && ok.ValueKind is JsonValueKind.True or JsonValueKind.False
+                                        ? ok.GetBoolean() : (bool?)null, message = Arg("message") },
+                _ => new { text = Arg("text") }
+            };
             _ = Task.Run(async () =>
             {
                 try { await foreach (var ev in StreamEvents(path, body)) Emit(id, ev); }
@@ -564,6 +585,7 @@ static void Usage()
 {
     Console.WriteLine("nexus [health [report]|fixit <problem>|fixit apply <fix id> <token>|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge|journal [--today] [--kind K]|journal forget-today|try <app> [-- args]|try keep <app>]");
     Console.WriteLine(RulesCommand.Usage);
+    Console.WriteLine(ActionsCommand.Usage);
     Console.WriteLine("nexus search <query> | search status | search formats | search reindex | search erase");
     Console.WriteLine("nexus search sources [list | add <folder>... | rm <folder>]   (search -- <query> to search for a subcommand word)");
 }

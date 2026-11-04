@@ -34,6 +34,8 @@ ShellRoot {
     property string provider: ""
     property string error: ""
     property int chatId: -1
+    property int followId: -1               // Nexus saying what happened after "Do it"
+    property string followText: ""
     property string lastPrompt: ""
     property string toolNote: ""            // a look-up Nexus is running, e.g. "Searching your files"
     property int suggestId: -1
@@ -82,7 +84,7 @@ ShellRoot {
     function ask(prompt) {
         if (!bridge.online) return;
         error = ""; reply = ""; provider = ""; mode = "thinking"; toolNote = ""; actionCards.clear();
-        lastPrompt = prompt;
+        lastPrompt = prompt; followId = -1;
         chatId = bridge.chat(prompt);
     }
     function openApp(id) {
@@ -124,6 +126,12 @@ ShellRoot {
     CoreBridge {
         id: bridge
         onDelta: (id, text) => {
+            if (id === root.followId && id !== -1) {
+                if (root.followText === "" && root.reply !== "") root.reply += "\n\n";
+                root.followText += text;
+                if (root.expanded) root.reply += text;
+                return;
+            }
             if (id !== root.chatId) return;
             root.mode = "responding";
             root.reply += text;
@@ -136,6 +144,12 @@ ShellRoot {
         onTool: (id, ev) => { if (id === root.chatId) root.toolNote = ev.status === "running" ? (ev.summary || "Working") + "…" : "" }
         onAction: (id, ev) => { if (id === root.chatId) { root.toolNote = ""; actionCards.offer(ev) } }
         onDone: (id, provider) => {
+            if (id === root.followId && id !== -1) {
+                // Nexus closed to show the app: say it as a notification instead.
+                if (!root.expanded && root.followText) root.gameToast("Nexus: " + root.followText.trim());
+                root.followId = -1;
+                return;
+            }
             if (id !== root.chatId) return;
             root.provider = provider; root.toolNote = "";
             settle.restart();
@@ -603,6 +617,7 @@ ShellRoot {
                             appsWin: appsWin; imagesWin: imagesWin; codeWin: codeWin; fixItWin: fixItWin
                             overview: overview; moveInWin: moveInWin; firstRun: firstRun
                             onOpened: root.collapse()
+                            onFinished: (cardId, ok, message) => { root.followText = ""; root.followId = bridge.followUp(cardId, ok, message) }
                             onOpenRole: role => root.openApp(role)
                             // The Guardian approval dialog, where the desktop has one (Guardian.qml).
                             onReview: card => {

@@ -44,7 +44,8 @@ public sealed record NexusAction(string Name, ActionSafety Safety, string Descri
 
     private static object Schema(ActionParam p)
     {
-        var schema = new Dictionary<string, object> { ["description"] = p.Description };
+        var schema = new Dictionary<string, object>();
+        if (p.Description.Length > 0) schema["description"] = p.Description;
         schema["type"] = p.Type == "value" ? new[] { "string", "number", "boolean" } : p.Type;
         if (p.Choices is not null) schema["enum"] = p.Choices;
         if (p.Type == "integer") { schema["minimum"] = p.Min; schema["maximum"] = p.Max; }
@@ -75,14 +76,14 @@ public static class NexusActions
         // ---- read: run at once ----
         new("get_system_state", ActionSafety.Read, "This computer: system, processor, memory, AI model, date and time.", []),
         new("get_health_report", ActionSafety.Read, "Health check: disk, updates, network, sound, battery, problems.", []),
-        new("diagnose_problem", ActionSafety.Read, "Run Fix it's read-only checks for a problem; returns the cause and fixes.",
-            [new("problem", "string", "In the person's words, e.g. 'no sound'.", MaxLength: 300)]),
-        new("search_files", ActionSafety.Read, "Search the person's own files by words or meaning.",
+        new("diagnose_problem", ActionSafety.Read, "Run Fix it checks (read-only) for a problem; returns the cause and fixes.",
+            [new("problem", "string", "In their words, e.g. no sound.", MaxLength: 300)]),
+        new("search_files", ActionSafety.Read, "Search their own files by words or meaning.",
             [new("query", "string", "What to look for.", MaxLength: 200),
              new("limit", "integer", "How many, 1-10.", Required: false, Min: 1, Max: 10)], Private: true),
         new("list_installed_apps", ActionSafety.Read, "Installed apps, with the id to open each.", []),
-        new("list_automations", ActionSafety.Read, "The person's automations and whether each is on.", []),
-        new("get_today_summary", ActionSafety.Read, "Today's activity journal: changes, installs, what left the computer.", [],
+        new("list_automations", ActionSafety.Read, "Automations, and whether each is on.", []),
+        new("get_today_summary", ActionSafety.Read, "Today in the activity journal: changes, installs, what left the computer.", [],
             Private: true),
         new("get_settings", ActionSafety.Read, "Current desktop settings and the AI model in use.", []),
         new("get_system_updates", ActionSafety.Read, "System security updates: last check, and whether any wait for approval.", []),
@@ -91,14 +92,14 @@ public static class NexusActions
         new("open_app", ActionSafety.Personal, "Open an app by id or name, or files, browser, terminal, settings, studio.",
             [new("app", "string", "App id or name.", MaxLength: 100, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._+-]{0,99}")]),
         new("open_settings", ActionSafety.Personal, "Open a Settings page.",
-            [new("page", "string", "The page.", Choices: SettingsPages),
+            [new("page", "string", "", Choices: SettingsPages),
              new("item", "string", "Item to highlight, e.g. wifi, volume, nightlight.",
                  Required: false, MaxLength: 20, Pattern: "[a-z]{1,20}")]),
         new("change_setting", ActionSafety.Personal,
             "Change a personal setting. volume 0-100; night_light, blur, animations, high_contrast on/off; " +
             "scale 1, 1.25, 1.5, 1.75 or 2; windows floating/tiled.",
-            [new("setting", "string", "Which.", Choices: PersonalSettings),
-             new("value", "value", "New value.", MaxLength: 16)]),
+            [new("setting", "string", "", Choices: PersonalSettings),
+             new("value", "value", "", MaxLength: 16)]),
         new("install_app", ActionSafety.Personal, "Install a Flathub desktop app for this person (no password).",
             [new("app_id", "string", "Flathub id, e.g. com.spotify.Client.", MaxLength: 128, Pattern: FlathubId)]),
         new("remove_app", ActionSafety.Personal, "Remove a Flathub app this person installed.",
@@ -106,36 +107,33 @@ public static class NexusActions
         new("apt_install", ActionSafety.Personal, "Install an Ubuntu apt package in the Ubuntu container, in a visible terminal.",
             [new("package", "string", "apt package, e.g. htop.", MaxLength: 100, Pattern: @"[a-z0-9][a-z0-9+.-]{0,99}")]),
         new("create_automation", ActionSafety.Personal, "Create an automation from one sentence.",
-            [new("sentence", "string", "e.g. 'At 22:00 every day, turn on night light'.", MaxLength: RuleParser.MaxSentenceLength)]),
+            [new("sentence", "string", "e.g. At 22:00 every day, turn on night light.", MaxLength: RuleParser.MaxSentenceLength)]),
         new("make_image", ActionSafety.Personal, "Make a picture from a description (opens Images).",
             [new("description", "string", "What it shows.", MaxLength: 500)]),
         new("start_coding_task", ActionSafety.Personal, "Open Code, the coding agent, on a home-folder project with a task filled in.",
             [new("folder", "string", "e.g. ~/projects/app.", MaxLength: 200),
              new("task", "string", "What to change.", MaxLength: 1000)]),
         new("open_fix_it", ActionSafety.Personal, "Open Fix it to check a problem and offer fixes.",
-            [new("problem", "string", "In the person's words.", MaxLength: 300)]),
-        new("remember_workspace", ActionSafety.Personal, "Remember the current workspace's apps under a name.",
+            [new("problem", "string", "In their words.", MaxLength: 300)]),
+        new("remember_workspace", ActionSafety.Personal, "Remember the apps of the current workspace under a name.",
             [new("name", "string", "Short name.", MaxLength: 40, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}")]),
         new("restore_workspace", ActionSafety.Personal, "Bring back a remembered workspace.",
-            [new("name", "string", "Its name.", MaxLength: 40, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}")]),
+            [new("name", "string", "", MaxLength: 40, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}")]),
         new("try_app", ActionSafety.Personal, "Try a nixpkgs program in a sandbox that keeps nothing.",
             [new("package", "string", "nixpkgs name, e.g. gimp.", MaxLength: 100, Pattern: @"[A-Za-z0-9][A-Za-z0-9._+-]{0,99}")]),
         new("open_move_in", ActionSafety.Personal, "Open Move in: copy documents and photos from an old Windows or macOS drive.", []),
         new("open_welcome", ActionSafety.Personal, "Open the welcome setup (apps and settings for what the person does).", []),
         new("check_for_updates", ActionSafety.Personal, "Ask Guardian to check for security updates now.", []),
         new("apply_fix", ActionSafety.Personal, "Apply a personal fix diagnose_problem offered.",
-            [new("fix_id", "string", "Fix id.", MaxLength: 64, Pattern: @"[a-z0-9][a-z0-9._-]{0,63}")]),
+            [new("fix_id", "string", "", MaxLength: 64, Pattern: @"[a-z0-9][a-z0-9._-]{0,63}")]),
 
         // ---- system: a Guardian proposal, never run by Core ----
         new("install_system_software", ActionSafety.System, "Install a NixOS package for every account (Guardian approval).",
             [new("package", "string", "nixpkgs name.", MaxLength: 128)]),
         new("change_system_option", ActionSafety.System,
-            "Turn a system option on or off (Guardian approval). " +
-            string.Join("; ", GuardianSchema.Options.OrderBy(x => x.Key, StringComparer.Ordinal)
-                .Select(x => x.Key.Split('.')[^2] + ": " + x.Value.Summary.TrimEnd('.'))) +
-            ". openssh is Key-only remote login: explain it first.",
-            [new("option", "string", "The option.", Choices: GuardianSchema.Options.Keys.Order(StringComparer.Ordinal).ToArray()),
-             new("enabled", "boolean", "On or off.")]),
+            "Turn a system service on or off (Guardian approval). openssh is Key-only remote login: explain it first.",
+            [new("option", "string", "", Choices: GuardianSchema.Options.Keys.Order(StringComparer.Ordinal).ToArray()),
+             new("enabled", "boolean", "")]),
     ];
 
     private const string FlathubId = @"[A-Za-z][A-Za-z0-9_-]{0,63}(\.[A-Za-z0-9_-]{1,64}){2,6}";

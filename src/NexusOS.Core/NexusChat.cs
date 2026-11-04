@@ -77,6 +77,9 @@ public sealed class NexusChat(ModelRouter router, ActionRunner runner)
                     outcome = ActionRunner.Malformed(known);
                 }
                 if (outcome.Malformed) malformed++;
+                // A look-up that ran makes its natural next steps available (ActionSelection.FollowOn).
+                if (outcome is { Status: "done", Action: { } ran } && ActionSelection.FollowOn.ContainsKey(ran.Name))
+                    offer = runner.WithFollowOn(offer, ran.Name, provider);
                 if (outcome.Pending is { } pending)
                 {
                     offered.Add(pending);
@@ -146,6 +149,12 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
     // Every action the provider may have (GET /actions lists them all).
     public IReadOnlyList<ToolSpec> ToolsFor(string provider) =>
         NexusActions.All.Where(a => Offered(a, provider)).Select(a => a.Tool).ToArray();
+
+    public IReadOnlyList<ToolSpec> WithFollowOn(IReadOnlyList<ToolSpec> offered, string ran, string provider)
+    {
+        var names = offered.Select(t => t.Name).Concat(ActionSelection.FollowOn[ran]).ToHashSet(StringComparer.Ordinal);
+        return NexusActions.All.Where(a => names.Contains(a.Name) && Offered(a, provider)).Select(a => a.Tool).ToArray();
+    }
 
     // The ones this question is about (ActionSelection.cs).
     public IReadOnlyList<ToolSpec> ToolsFor(string provider, string prompt, string? earlier = null)
@@ -725,8 +734,8 @@ public static class NexusActionEndpoints
             if (request?.Message is { Length: > 1000 }) return Results.BadRequest(new { error = "message must be at most 1000 characters." });
             if (!PendingActions.IsValidId(id) || completed.Take(id) is not { } done)
                 return Results.NotFound(new { error = "There is nothing to follow up for that action." });
-            using var slot = await concurrency.TryEnterAsync(ct);
-            if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            using var slot = await concurrency.EnterAsync(ct);
+            if (slot is null) return Results.Problem("Nexus is still busy with an earlier request; it will take this one as soon as that finishes.", statusCode: StatusCodes.Status503ServiceUnavailable);
             var prompt = NexusChat.FollowUpPrompt(done, request?.Ok, request?.Message);
             var started = false;
             async Task WriteEvent(object value)

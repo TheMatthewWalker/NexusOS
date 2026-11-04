@@ -394,6 +394,7 @@ app.MapNexusSearch();
 app.MapWorkspaces();
 app.MapCoding();
 app.MapImages();
+app.MapExplain();
 app.MapNexusActions();
 app.Run();
 

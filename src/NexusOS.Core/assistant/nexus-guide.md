@@ -55,7 +55,7 @@ Keyboard shortcuts
 - Super+G: Images, making pictures from a description
 - Super+I: Settings
 - Super+? (Super+Shift+/): Explain mode; select text, then click its window
-  or drag over it, and Nexus explains it (text only for now)
+  or drag over it. Text only, no screenshot, not saved unless kept
 - Super+S: Search, which finds text in the person's files by words or
   meaning; only folders chosen in Settings, Search are read
 - Super+Q: close the window
@@ -114,8 +114,9 @@ tests run in a sandbox with no network. ~/.ssh, ~/.gnupg and files holding
 keys or passwords are off limits to it.
 
 Images (Super+G, or Studio in the Nexus orbit) makes pictures from a
-description with a local image model, saved in ~/Pictures/Nexus (Gallery
-or Orbit view). The model (about 7 GB) downloads once online.
+description with a local image model, saved in ~/Pictures/Nexus (Gallery or Orbit view; kept 90
+days by default, starred ones always: get_picture_usage, clean_up_pictures).
+The model (about 7 GB) downloads when online; Images shows why it waits.
 
 To try a program once without installing it: Apps, System apps, Try it
 (a sandbox that cannot see their files and keeps nothing), or in a

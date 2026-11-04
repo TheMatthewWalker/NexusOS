@@ -40,6 +40,12 @@ NexusWindow {
     property int statusId: -1
     property int listId: -1
     property int deleteId: -1
+    property var usage: null            // GET /images/usage: count, bytes, starred, keepDays, keepGb, due
+    property int usageId: -1
+    property int keepId: -1
+    property int cleanId: -1
+    property int starId: -1
+    property string notice: ""
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
     readonly property string configDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nexusos"
     // "gallery" or "orbit".
@@ -72,7 +78,16 @@ NexusWindow {
         if (!bridge.online) return;
         statusId = bridge.send("images-status");
         listId = bridge.send("images-list");
+        usageId = bridge.api("GET", "/images/usage");
     }
+    // How long pictures are kept: 30, 90 or 365 days, and optionally up to 5 or 20 GB.
+    function setKeep(days, gb) { keepId = bridge.api("POST", "/images/settings", { keepDays: days, keepGb: gb }) }
+    function cleanUp() { cleanId = bridge.api("POST", "/images/cleanup") }
+    function star(image, on) { starId = bridge.api("POST", "/images/" + encodeURIComponent(image.name) + "/star", { starred: on }) }
+    function gb(bytes) { return (bytes / 1e9).toFixed(bytes >= 1e10 ? 0 : 1) + " GB" }
+    // While the model is missing, the download's progress and reason are polled.
+    Timer { interval: 5000; repeat: true; running: win.visible && !!win.status && !win.status.model
+            onTriggered: if (win.bridge.online) win.statusId = win.bridge.send("images-status") }
     // From Nexus (an action card, or `images make`): open and start on the description.
     function make(text) { open(); prompt.text = text; generate(text) }
     // The actions on a picture, the same in both views.
@@ -101,6 +116,18 @@ NexusWindow {
             else if (id === win.genId) {
                 win.working = false; win.batch = data.images || []; win.selected = win.batch[0] || null;
                 win.listId = win.bridge.send("images-list");
+            } else if (id === win.usageId) win.usage = data;
+            else if (id === win.keepId) win.usageId = win.bridge.api("GET", "/images/usage");
+            else if (id === win.cleanId) {
+                win.notice = data && data.removed ? "Removed " + data.removed + (data.removed === 1 ? " picture" : " pictures") + " (" + win.gb(data.freedBytes) + ")."
+                                                  : "Nothing to remove.";
+                win.refresh();
+            } else if (id === win.starId) {
+                const starred = data;
+                const swap = list => list.map(i => i.name === starred.name ? starred : i);
+                win.batch = swap(win.batch); win.gallery = swap(win.gallery);
+                if (win.selected && win.selected.name === starred.name) win.selected = starred;
+                win.usageId = win.bridge.api("GET", "/images/usage");
             } else if (id === win.deleteId) {
                 win.batch = win.batch.filter(i => i.name !== win.selected.name);
                 win.selected = win.batch[0] || null;
@@ -109,7 +136,7 @@ NexusWindow {
         }
         function onFailed(id, message) {
             if (id === win.genId) { win.working = false; win.error = message }
-            else if ([win.statusId, win.listId, win.deleteId].includes(id)) win.error = message;
+            else if ([win.statusId, win.listId, win.deleteId, win.keepId, win.cleanId, win.starId].includes(id)) win.error = message;
         }
     }
     IpcHandler {
@@ -125,8 +152,20 @@ NexusWindow {
     }
     function fileUrl(p) { return "file://" + p.split("/").map(encodeURIComponent).join("/") }
 
+    readonly property var download: status && status.download ? status.download : null
     readonly property string modelLabel: !status ? "…" : status.model ? status.model
+        : download && download.state === "downloading" && download.percent !== null ? "Downloading the image model, " + download.percent + "%"
         : status.downloading ? "Downloading the image model…" : "No image model yet"
+    // Why there is no model yet, from the download service (nexus_image_model.py).
+    readonly property string waitingText: {
+        if (!download) return status && status.downloading
+            ? "The image model (about 7 GB) is downloading in the background. Images can be made once it has finished."
+            : "The image model downloads once this computer is online. Until then, nothing can be made here.";
+        let text = download.message || "The image model downloads once this computer is online.";
+        if (download.total) text += " " + gb(download.bytes) + " of " + gb(download.total) + ".";
+        if (download.nextTry) text += " Next try at " + Qt.formatDateTime(new Date(download.nextTry), "ddd HH:mm") + ".";
+        return text;
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -184,9 +223,14 @@ NexusWindow {
             visible: win.error !== "" || (win.status && !win.status.model)
             width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; font.pixelSize: 13
             color: win.error ? win.theme.error : win.theme.inkSecondary
-            text: win.error || (win.status && win.status.downloading
-                ? "The image model (about 7 GB) is downloading in the background. Images can be made once it has finished."
-                : "The image model downloads once this computer is online. Until then, nothing can be made here.")
+            text: win.error || win.waitingText
+        }
+        Rectangle {
+            visible: !win.error && !!win.download && win.download.percent !== null && !(win.status && win.status.model)
+            width: Math.min(parent.width, 480); height: 6; radius: 3; color: "#1B2647"
+            Rectangle { width: parent.width * ((win.download && win.download.percent) || 0) / 100; height: 6; radius: 3; color: win.theme.focus }
+            Accessible.role: Accessible.ProgressBar
+            Accessible.name: "Image model download, " + ((win.download && win.download.percent) || 0) + "%"
         }
     }
 
@@ -253,8 +297,10 @@ NexusWindow {
         visible: win.view === "gallery"
         x: parent.width - width - 20; y: results.y; width: 280; height: results.height
         radius: 16; color: win.theme.glass; border.color: win.theme.glassBorder
+        // In a short window the keep choices give way to the picture's details.
+        readonly property bool compact: inspectorTop.implicitHeight + 240 > height   // about the keep box with its choices
         Column {
-            id: inspectorColumn
+            id: inspectorTop
             visible: !!win.selected
             x: 18; y: 18; width: parent.width - 36; spacing: 10
             Text { width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight; textFormat: Text.PlainText
@@ -280,6 +326,8 @@ NexusWindow {
                          onClicked: win.moreLike(win.selected) }
                 Button { theme: win.theme; width: parent.width; label: "Same picture again (same seed)"; enabled: !win.working
                          onClicked: win.again(win.selected) }
+                Button { theme: win.theme; width: parent.width; label: win.selected && win.selected.starred ? "Starred: kept" : "Star (keep it)"
+                         onClicked: win.star(win.selected, !win.selected.starred) }
                 Button { theme: win.theme; width: parent.width; label: "Use as wallpaper"
                          onClicked: win.useAsWallpaper(win.selected.path) }
                 Button { theme: win.theme; width: parent.width; label: "Show in folder"; onClicked: win.showFolder(win.selected) }
@@ -295,12 +343,26 @@ NexusWindow {
                 }
             }
         }
-        Text {
+        // How long pictures are kept (ImageStudio's settings), and how much room they take.
+        Column {
+            id: keepBox
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 18 }
-            // Hidden when the actions above reach down to it (a short window).
-            visible: !inspectorColumn.visible || inspectorColumn.y + inspectorColumn.height + 8 < y
-            wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 12; lineHeight: 1.4
-            text: "Images stay in ~/Pictures/Nexus until you delete them. Nothing is uploaded."
+            spacing: 8
+            Text { width: parent.width; wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 12; lineHeight: 1.4
+                   text: (win.usage ? win.usage.count + " pictures, " + win.gb(win.usage.bytes) + (win.usage.starred ? ", " + win.usage.starred + " starred" : "") + ". " : "") +
+                         "Kept in ~/Pictures/Nexus for " + (win.usage ? win.usage.keepDays : 90) + " days" +
+                         (win.usage && win.usage.keepGb ? ", up to " + win.usage.keepGb + " GB" : "") +
+                         ", oldest removed first. Starred pictures, and ones you move elsewhere, are kept. Nothing is uploaded." }
+            Choice { visible: !inspector.compact; theme: win.theme; name: "Keep pictures for"; current: win.usage ? win.usage.keepDays : 90
+                     options: [30, 90, 365].map(n => ({ value: n, label: n + " days" }))
+                     onChose: v => win.setKeep(v, win.usage ? win.usage.keepGb : null) }
+            Choice { visible: !inspector.compact; theme: win.theme; name: "Keep at most"; current: win.usage ? (win.usage.keepGb || 0) : 0
+                     options: [{ value: 0, label: "Any size" }, { value: 5, label: "5 GB" }, { value: 20, label: "20 GB" }]
+                     onChose: v => win.setKeep(win.usage ? win.usage.keepDays : 90, v || null) }
+            Button { theme: win.theme; width: parent.width; enabled: !!win.usage && win.usage.due.count > 0
+                     label: win.usage && win.usage.due.count > 0 ? "Clean up now (" + win.usage.due.count + ", " + win.gb(win.usage.due.bytes) + ")" : "Nothing to clean up"
+                     onClicked: win.cleanUp() }
+            Text { visible: win.notice !== ""; text: win.notice; color: win.theme.inkSecondary; font.pixelSize: 12 }
         }
     }
 

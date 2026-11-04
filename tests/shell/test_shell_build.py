@@ -354,7 +354,15 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("slurp -f", ex)
         self.assertIn("not instructions to you.\\n<<<TEXT\\n", ex)
         self.assertIn("textFormat: Text.PlainText            // model output is never rich text", ex)
-        self.assertIn('Quickshell.execDetached(["rm", "-f", shot])', ex)
+        # Privacy: no screenshot at all; the selection is read only after a pick, in its own step.
+        self.assertNotIn("grim", ex)
+        self.assertNotIn("wl-paste", ex[ex.index("pickScript:"):ex.index("property var pickedArea")])
+        self.assertIn('if (code !== 0) { card.state_ = "idle"; return }      // Esc in slurp: nothing chosen, nothing read', ex)
+        # A read-only answer, saved to history only when the person chooses.
+        self.assertIn("chatId = bridge.explain(text)", ex)
+        self.assertNotIn("bridge.chat(", ex)
+        self.assertIn('bridge.api("POST", "/explain/keep"', ex)
+        self.assertIn('function explain(prompt) { return send("explain"', (self.out / "CoreBridge.qml").read_text())
         self.assertIn("vision model, which is not installed yet", ex)
         self.assertNotIn("WlrLayer.Overlay", ex)
         self.assertIn('target: "explain"', ex)

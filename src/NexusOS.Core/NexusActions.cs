@@ -87,6 +87,8 @@ public static class NexusActions
             "The person's current desktop settings (windows, blur, animations, scale, night light, high contrast) and the AI model in use.", []),
         new("get_system_updates", ActionSafety.Read,
             "Security updates for the system (kernel, Firefox, Chromium...): when Guardian last checked, and whether updates are ready to approve.", []),
+        new("get_picture_usage", ActionSafety.Read,
+            "How much room the pictures Nexus made take in ~/Pictures/Nexus, how long they are kept, and how many a clean-up would remove.", []),
 
         // ---- personal: offered to the person, run on "Do it" ----
         new("open_app", ActionSafety.Personal,
@@ -114,6 +116,11 @@ public static class NexusActions
             [new("sentence", "string", "The automation in one sentence.", MaxLength: RuleParser.MaxSentenceLength)]),
         new("make_image", ActionSafety.Personal, "Make a picture from a description with the local image model (opens Images).",
             [new("description", "string", "What the picture shows.", MaxLength: 500)]),
+        new("clean_up_pictures", ActionSafety.Personal,
+            "Remove pictures Nexus made that are past how long they are kept (oldest first; starred ones stay). " +
+            "Give keep_days or keep_gb to change how long or how much is kept first (keep_gb 0: no size limit).",
+            [new("keep_days", "integer", "Keep pictures for this many days.", Required: false, Min: 1, Max: ImageStudio.ImageSettings.MaxKeepDays),
+             new("keep_gb", "integer", "Keep at most this many GB of pictures; 0 for no size limit.", Required: false, Min: 0, Max: 10000)]),
         new("start_coding_task", ActionSafety.Personal,
             "Open Code, the coding agent, on a project folder in the home folder, with a task filled in for the person to send.",
             [new("folder", "string", "The project folder, for example ~/projects/app.", MaxLength: 200),

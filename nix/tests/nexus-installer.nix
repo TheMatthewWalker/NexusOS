@@ -78,6 +78,15 @@ pkgs.testers.runNixOSTest {
         installer.fail("nexus-install --disk /dev/vda1 --user alice --yes")
         installer.fail("nexus-install --bogus")
 
+    with subtest("the graphical installer's probe sees the disk, and alongside needs room beside something"):
+        out = installer.succeed("nexus-install --probe-json")
+        assert '"event":"probe"' in out and '"path":"/dev/vda"' in out, out
+        assert '"possible":false' in out and "no partitions" in out, out
+        installer.fail("nexus-install --alongside --user alice --yes")
+        out = installer.fail("echo 'nexus-test-pw' | nexus-install --progress-json --alongside --disk /dev/vda"
+                             " --user alice --password-file - --yes")
+        assert '"event":"error"' in out and "no partitions" in out, out
+
     with subtest("after a failed attempt, trying again works"):
         installer.succeed("echo 'nexus-test-pw' > /tmp/pw")
         installer.succeed("echo '{ ... }: throw \"a failed first attempt\"' > /tmp/broken.nix")

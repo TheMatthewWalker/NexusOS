@@ -1,0 +1,140 @@
+{
+   "blockdevices": [
+      {
+         "name": "sda",
+         "path": "/dev/sda",
+         "size": 15502147584,
+         "type": "disk",
+         "model": "SanDisk 3.2Gen1  ",
+         "tran": "usb",
+         "rm": true,
+         "ro": false,
+         "mountpoints": [
+            null
+         ],
+         "children": [
+            {
+               "name": "sda1",
+               "path": "/dev/sda1",
+               "size": 6442450944,
+               "type": "part",
+               "model": null,
+               "tran": null,
+               "rm": true,
+               "ro": false,
+               "mountpoints": [
+                  "/iso"
+               ]
+            },
+            {
+               "name": "sda2",
+               "path": "/dev/sda2",
+               "size": 3145728,
+               "type": "part",
+               "model": null,
+               "tran": null,
+               "rm": true,
+               "ro": false,
+               "mountpoints": [
+                  null
+               ]
+            }
+         ]
+      },
+      {
+         "name": "nvme0n1",
+         "path": "/dev/nvme0n1",
+         "size": 512110190592,
+         "type": "disk",
+         "model": "Samsung SSD 980 PRO 512GB",
+         "tran": "nvme",
+         "rm": false,
+         "ro": false,
+         "mountpoints": [
+            null
+         ],
+         "children": [
+            {
+               "name": "nvme0n1p1",
+               "path": "/dev/nvme0n1p1",
+               "size": 536870912,
+               "type": "part",
+               "model": null,
+               "tran": null,
+               "rm": false,
+               "ro": false,
+               "mountpoints": [
+                  null
+               ]
+            }
+         ]
+      },
+      {
+         "name": "sdb",
+         "path": "/dev/sdb",
+         "size": 2000398934016,
+         "type": "disk",
+         "model": "WDC WD20EZAZ-00G",
+         "tran": "sata",
+         "rm": false,
+         "ro": false,
+         "mountpoints": [
+            null
+         ],
+         "children": [
+            {
+               "name": "sdb1",
+               "path": "/dev/sdb1",
+               "size": 2000397795328,
+               "type": "part",
+               "model": null,
+               "tran": null,
+               "rm": false,
+               "ro": false,
+               "mountpoints": [
+                  "/mnt"
+               ]
+            }
+         ]
+      },
+      {
+         "name": "sr0",
+         "path": "/dev/sr0",
+         "size": 0,
+         "type": "rom",
+         "model": "DVD",
+         "tran": "sata",
+         "rm": true,
+         "ro": false,
+         "mountpoints": [
+            null
+         ]
+      },
+      {
+         "name": "zram0",
+         "path": "/dev/zram0",
+         "size": 8589934592,
+         "type": "disk",
+         "model": null,
+         "tran": null,
+         "rm": false,
+         "ro": false,
+         "mountpoints": [
+            "[SWAP]"
+         ]
+      },
+      {
+         "name": "mmcblk0boot0",
+         "path": "/dev/mmcblk0boot0",
+         "size": 4194304,
+         "type": "disk",
+         "model": null,
+         "tran": null,
+         "rm": false,
+         "ro": true,
+         "mountpoints": [
+            null
+         ]
+      }
+   ]
+}

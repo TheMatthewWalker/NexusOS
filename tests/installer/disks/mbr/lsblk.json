@@ -1,0 +1,18 @@
+{
+   "blockdevices": [
+      {
+         "path": "/dev/sda",
+         "fstype": null,
+         "children": [
+            {
+               "path": "/dev/sda1",
+               "fstype": "ntfs"
+            },
+            {
+               "path": "/dev/sda2",
+               "fstype": "ntfs"
+            }
+         ]
+      }
+   ]
+}

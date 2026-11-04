@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = (ROOT / "nix/installer/nexus-install.sh").read_text()
-BLOCK = SCRIPT[SCRIPT.index("# --- Hardware"):SCRIPT.index("# --- Confirm")]
+BLOCK = SCRIPT[SCRIPT.index("# --- Hardware"):SCRIPT.index("# --- end of hardware scan")]
 
 INTEL = "0000:00:02.0 VGA compatible controller [0300]: Intel Corporation Raptor Lake-P [Iris Xe Graphics] [8086:a7a0] (rev 04)"
 RTX = "0000:01:00.0 VGA compatible controller [0300]: NVIDIA Corporation AD107M [GeForce RTX 4060 Max-Q / Mobile] [10de:28a0] (rev a1)"

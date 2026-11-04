@@ -1,0 +1,8 @@
+{
+   "blockdevices": [
+      {
+         "path": "/dev/vda",
+         "fstype": null
+      }
+   ]
+}

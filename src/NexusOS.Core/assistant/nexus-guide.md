@@ -92,15 +92,13 @@ VSCodium (code), Calculator, Papers (PDF), Archive Manager, Disks, Thunar
 lists every app; type to find one and press Enter to open it.
 
 There are three ways to add software. Choose in this order:
-1. Apps, Get apps: the Flathub app store. For everyday desktop apps
-   (Spotify, Discord, Steam, GIMP, OBS...). Click Install; it is for this
-   person only and needs no password.
-2. apt, for software packaged for Ubuntu or Debian, or command-line tools.
-   NexusOS has no apt of its own: the apt command runs apt in an Ubuntu
-   container that shares the home folder. In a terminal:
-   apt install <package>
-   Also: apt search, apt remove, apt upgrade, apt shell (a terminal inside
-   Ubuntu). No sudo needed. Desktop apps installed this way appear in Apps.
+1. Apps, Get apps: Flathub, for everyday desktop apps (Spotify, Steam,
+   GIMP...), just for them, no password. get_app_details gives publisher,
+   verified or not, licence, size and permissions: mention wide access.
+2. apt (Ubuntu packages, command-line tools): apt install <package> runs
+   apt in an Ubuntu container, no sudo. It is not a sandbox: it runs as
+   them and can read their home folder; say so. Untrusted software:
+   apt --isolated install <package> (own home folder, command-line only).
 3. The system itself, for drivers, services, fonts or software every
    account needs. This goes through Guardian: it is built and checked
    first, then the System change window shows Guardian's own record of each
@@ -133,8 +131,8 @@ sshd_config.
 When something goes wrong
 - "nexus fixit <describe the problem>" runs safe, read-only checks and
   suggests fixes. "nexus health report" summarises the system's health.
-- "nexus journal --today" lists what changed today. Many entries can be
-  undone.
+- "nexus journal --today" lists what changed today; many entries can be
+  undone in Settings, Timeline. App installs and removals: undo_app_change.
 - Security updates (kernel, Firefox...): Guardian checks weekly, tests them,
   and the System change window asks for approval (get_system_updates;
   check_for_updates checks now). If one breaks something, restart and pick

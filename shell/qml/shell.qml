@@ -172,6 +172,7 @@ ShellRoot {
         theme: root.dark; bridge: bridge; desktop: desktop; reduced: root.reduced
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
         onFixIt: problem => fixItWin.open(problem)
+        onAppChange: perform => appsWin.perform(perform)
         onOpenWelcome: firstRun.open()
         onMoveIn: moveInWin.open()
     }

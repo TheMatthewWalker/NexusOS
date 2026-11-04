@@ -231,6 +231,37 @@ class ShellBuild(unittest.TestCase):
         self.assertNotIn("sudo", apps)
         self.assertNotIn("pkexec", apps)
 
+    def test_apps_says_what_an_app_can_do_before_installing_and_journals_an_undo(self):
+        """Install sheet from Core's details; changes reported to the journal; leftover data only on request."""
+        apps = (self.out / "Apps.qml").read_text()
+        cards = (self.out / "ActionCards.qml").read_text()
+        timeline = (self.out / "settings/TimelinePage.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        # Install opens the sheet; only the sheet's button installs.
+        self.assertIn("onClicked: win.requestInstall(modelData.id)", apps)
+        self.assertEqual(apps.count("onClicked: win.install("), 1)
+        self.assertIn('bridge.api("GET", "/apps/flathub/" + id)', apps)
+        self.assertIn("win.sheet.warning", apps)
+        # Each change is reported with what Undo needs, read from flatpak info.
+        self.assertIn('bridge.api("POST", "/apps/changes", body)', apps)
+        self.assertIn("LC_ALL=C flatpak info", apps)
+        self.assertIn("--commit=", apps)
+        # Leftover data: offered after a removal, deleted only from its own button.
+        self.assertIn('label: "Delete its data"; onClicked: win.deleteLeftover()', apps)
+        self.assertEqual(apps.count("win.deleteLeftover()"), 1)
+        self.assertIn('"rm -rf -- \\"$HOME/.var/app/$1\\""', apps)
+        # apt is said plainly, with the isolated container on offer.
+        self.assertIn("Ubuntu software runs as you and can read your home folder", apps)
+        self.assertIn("apt --isolated", apps)
+        # Nexus's cards and the Timeline's Undo go through Apps.perform.
+        self.assertIn("appsWin.perform(p)", cards)
+        self.assertIn("modelData.details.warning", cards)
+        self.assertIn("page.host.appChange(data.perform)", timeline)
+        self.assertIn("onAppChange: perform => appsWin.perform(perform)", shell)
+        apt = (ROOT / "nix/packages/nexus-apt.sh").read_text()
+        self.assertIn("is NOT a sandbox", apt)
+        self.assertIn("nexus \"${args[@]}\"", apt)
+
     def test_reply_scrolls_instead_of_being_cut_off(self):
         shell = (self.out / "shell.qml").read_text()
         self.assertNotIn("maximumLineCount: 6", shell)
@@ -366,7 +397,8 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("desktop.set(p.key, p.value)", cards)      # journalled with undo by DesktopSettings.set
         self.assertIn('ref: "sound:volume"', cards)
         self.assertIn('ref === "sound:volume"', (self.out / "Settings.qml").read_text())
-        self.assertIn('"apt install \\"$1\\"', cards)              # apt runs in a terminal the person sees
+        # apt runs in a terminal the person sees (Apps.aptRun, which cards reach through appsWin.perform).
+        self.assertIn('then apt --isolated \\"$1\\" \\"$2\\"; else apt \\"$1\\" \\"$2\\"; fi', (self.out / "Apps.qml").read_text())
         self.assertIn("guardianWin.open(", shell)                 # the Guardian dialog, where there is one
         self.assertIn("ActionCards {", shell)
         self.assertIn('pending[id] === "chat" && ev.type === "action"', bridge)

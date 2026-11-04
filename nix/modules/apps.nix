@@ -3,7 +3,12 @@
 #  - Flatpak with Flathub, which the Apps window installs from per person,
 #    with no password and no system change;
 #  - `apt`, which runs apt in an Ubuntu container (distrobox) for software
-#    that is only packaged for Ubuntu or Debian.
+#    that is only packaged for Ubuntu or Debian. That container is not a
+#    sandbox: Ubuntu software runs as the person and can read their home
+#    folder. `apt --isolated` uses a second container (plain podman) with
+#    its own home folder, for software they do not fully trust.
+# Installs and removals from Apps and from apt are journalled by Nexus Core
+# with an Undo (src/NexusOS.Core/AppChanges.cs).
 # Software for the whole system is still added in /etc/nixos/local.nix and
 # applied through Guardian.
 { config, lib, pkgs, ... }:
@@ -11,7 +16,7 @@ let
   cfg = config.nexusos.apps;
   apt = pkgs.writeShellApplication {
     name = "apt";
-    runtimeInputs = with pkgs; [ distrobox podman coreutils util-linux ];
+    runtimeInputs = with pkgs; [ distrobox podman coreutils util-linux gawk ];
     text = builtins.readFile ../packages/nexus-apt.sh;
   };
 in
@@ -34,7 +39,11 @@ in
     apt = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "The `apt` command: apt in an Ubuntu container (distrobox and podman).";
+      description = ''
+        The `apt` command: apt in an Ubuntu container (distrobox and podman).
+        The container shares the home folder and is not a sandbox;
+        `apt --isolated` uses a separate one that cannot see it.
+      '';
     };
   };
 

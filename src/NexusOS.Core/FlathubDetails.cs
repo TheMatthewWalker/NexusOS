@@ -97,7 +97,8 @@ public static partial class FlatpakPermissions
                     break;
             }
         }
-        return found.OrderByDescending(p => p.Broad).ToArray();
+        // Wide access first, and among it access to files first: the warning names the first.
+        return found.OrderBy(p => p.Broad ? p.Text.Contains("files", StringComparison.Ordinal) ? 0 : 1 : 2).ToArray();
     }
 
     private static (string Text, bool Broad)? Filesystem(string entry)

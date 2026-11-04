@@ -49,12 +49,16 @@ EOF
 json=0 reported=0 last_cmd=""
 for arg in "$@"; do case "$arg" in --progress-json|--probe-json) exec 3>&1 1>&2; json=1; break ;; esac; done
 emit() { [ "$json" -eq 0 ] || jq -cn "$@" >&3; }
+log_tail() {  # the log's last lines, as a JSON list
+  if [ -n "$log" ] && [ -r "$log" ]; then tail -n 15 "$log" | jq -Rsc 'split("\n") | map(select(. != ""))'; else echo "[]"; fi
+}
 fail() {
   printf '\nnexus-install: %s\n' "$*" >&2
   [ -z "$log" ] || printf 'The full log is in %s\n' "$log" >&2
   if [ "$json" -eq 1 ] && [ "$reported" -eq 0 ]; then
     reported=1
-    emit --arg m "$*" --arg log "$log" '{event: "error", message: $m} + (if $log == "" then {} else {log: $log} end)'
+    emit --arg m "$*" --arg log "$log" --argjson tail "$(log_tail)" \
+      '{event: "error", message: $m, tail: $tail} + (if $log == "" then {} else {log: $log} end)'
   fi
   exit 1
 }
@@ -111,7 +115,7 @@ json=$((progress | probe))
 if [ "$probe" -eq 0 ]; then
   log="${log:-/tmp/nexus-install.log}"
   if { : >> "$log"; } 2>/dev/null; then
-    chmod 644 "$log" 2>/dev/null || true
+    [ ! -f "$log" ] || [ -L "$log" ] || chmod 644 "$log" 2>/dev/null || true
     if [ "$progress" -eq 1 ]; then exec 1>>"$log" 2>&1; else exec > >(tee -a "$log") 2>&1; fi
     echo "nexus-install started $(date -Is)" >> "$log"
   else
@@ -132,13 +136,21 @@ step() {  # step ID TITLE
   say "$2"
 }
 # A command that fails stops the install (set -e); say which, with the log's last lines.
+# Installing alongside, a failed attempt also removes the partition it added,
+# so the disk is as it was and trying again finds the same free space.
+added_part=""
 on_exit() {
   local rc=$?
-  [ "$rc" -ne 0 ] && [ "$json" -eq 1 ] && [ "$reported" -eq 0 ] || return 0
+  [ "$rc" -ne 0 ] || return 0
+  if [ -n "$added_part" ]; then
+    echo "Removing the partition this attempt added ($added_part)."
+    umount -R /mnt 2>/dev/null || true
+    cryptsetup close nexusos-root 2>/dev/null || true
+    sfdisk --delete "$disk" "${added_part##*[!0-9]}" > /dev/null 2>&1 && partx -u "$disk" 2>/dev/null || true
+  fi
+  [ "$json" -eq 1 ] && [ "$reported" -eq 0 ] || return 0
   reported=1
-  local tail_lines="[]"
-  [ -n "$log" ] && [ -r "$log" ] && tail_lines="$(tail -n 15 "$log" | jq -Rsc 'split("\n") | map(select(. != ""))')"
-  emit --arg m "Installing stopped: \`${last_cmd:-a step}\` failed (exit $rc)." --arg log "$log" --argjson tail "$tail_lines" \
+  emit --arg m "Installing stopped: \`${last_cmd:-a step}\` failed (exit $rc)." --arg log "$log" --argjson tail "$(log_tail)" \
     '{event: "error", message: $m, tail: $tail} + (if $log == "" then {} else {log: $log} end)'
 }
 trap 'last_cmd=$BASH_COMMAND; printf "\nnexus-install stopped: \"%s\" failed (line %s).%s\n" "$BASH_COMMAND" "$LINENO" "${log:+ The full log is in $log}" >&2' ERR
@@ -229,7 +241,8 @@ else graphics="basic display (no graphics processor found)"
 fi
 [ "$nvidia" = off ] && [ -n "$(grep -E '\[10de:' <<<"$gpus" || true)" ] && graphics="$graphics; NVIDIA card left without its driver (--no-nvidia)"
 # The summary's lines, shown here and by the graphical installer.
-processor_line="${cpu_name:-unknown}, ${memory_gib} GB memory$([ "$laptop" = true ] && echo ", laptop")"
+processor_line="${cpu_name:-unknown}, ${memory_gib} GB memory"
+[ "$laptop" = false ] || processor_line="$processor_line, laptop"
 ai_line="$ai_model, $ai_where"
 # --- end of hardware scan
 
@@ -493,6 +506,7 @@ if [ "$alongside" -eq 1 ]; then
     sleep 1
   done
   [ -n "$root_part" ] && [ -b "$root_part" ] || fail "the new partition on $disk did not appear; restart the computer and try again"
+  added_part="$root_part"
   boot_part="$plan_esp"
   wipefs -af "$root_part" > /dev/null
 else
@@ -664,6 +678,7 @@ printf '%s:%s\n' "$user" "$password" | nixos-enter --root /mnt -c 'chpasswd'
 
 [ -z "$log" ] || { mkdir -p /mnt/var/log && cp "$log" /mnt/var/log/nexus-install.log; }
 sync
+added_part=""
 say "NexusOS is installed"
 echo "Remove the installer USB stick, then restart the computer."
 emit '{event: "done"}'

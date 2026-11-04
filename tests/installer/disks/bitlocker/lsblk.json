@@ -1,0 +1,26 @@
+{
+   "blockdevices": [
+      {
+         "path": "/dev/nvme0n1",
+         "fstype": null,
+         "children": [
+            {
+               "path": "/dev/nvme0n1p1",
+               "fstype": "vfat"
+            },
+            {
+               "path": "/dev/nvme0n1p2",
+               "fstype": null
+            },
+            {
+               "path": "/dev/nvme0n1p3",
+               "fstype": "BitLocker"
+            },
+            {
+               "path": "/dev/nvme0n1p4",
+               "fstype": "ntfs"
+            }
+         ]
+      }
+   ]
+}

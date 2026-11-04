@@ -1,7 +1,9 @@
 # Installing NexusOS (alpha)
 
 NexusOS is an alpha. Install it on a spare computer or a virtual machine,
-not on the machine you rely on: the installer erases the whole disk you pick.
+not on the machine you rely on. The installer either erases the whole disk you
+pick or, beside Windows, uses only free space you have made there; back up
+anything you care about first either way.
 
 ## What you need
 
@@ -41,25 +43,41 @@ On Windows or macOS, a tool such as balenaEtcher or Rufus (in "DD image" mode) d
 
 Boot the computer from the stick (usually F12, F11, F8 or Esc during start-up opens the boot menu). Choose **NexusOS live**. If the screen stays black on a computer with an NVIDIA card, restart and choose **NexusOS live (NVIDIA)** instead.
 
-The live desktop starts by itself, with a terminal called **Install NexusOS**:
+The live desktop starts by itself and opens the **Install NexusOS** window. Behind it, the live screen has **Install NexusOS** (opens the window again), **Connect to Wi-Fi**, Restart, Shut down and **Install in a terminal** (the text installer, `nexus-install`).
 
-![The live NexusOS desktop with the Install NexusOS terminal](evidence/img/M7-live-installer.png)
-
-- Close that terminal to look around. Nothing in the live session is kept.
-- Super+Space opens Nexus.
-- The local model does not run in the live session, so Nexus answers only after installation. Everything else works.
+The live session is only for installing: Nexus, apps and the Welcome setup start once NexusOS is installed. Nothing in it is kept.
 
 ## 4. Install
 
-1. Optional: connect to the internet. Hover over the system panel (top right). With Wi-Fi on, it lists nearby networks: click one, type its password and press Enter. A cable or your phone's USB tethering also works. Online, the install can take a little less time; it does not need it.
-2. In the **Install NexusOS** terminal, press Enter. If you closed it, press Super+Return (or Ctrl+Alt+T) for a new terminal and run `sudo nexus-install`.
-3. The installer asks for:
-   - the disk to install to (it lists the disks with their sizes and models);
-   - your login name, full name and password (at least 10 characters: it also unlocks the disk and approves system changes);
-   - then you type the disk name again to confirm it may be erased.
+1. Optional: connect to the internet with **Connect to Wi-Fi** (or a cable, or your phone's USB tethering). Online, the install can take a little less time; it does not need it.
+2. In the **Install NexusOS** window:
+   - **Welcome**: it looks at the computer's disks and hardware (nothing changes yet).
+   - **Disk**: the disks, with their models and sizes (the USB stick is greyed out). Choose one, then **Install alongside Windows** (if the disk allows it, see below) or **Erase this disk**.
+   - **You**: your name, a login name (suggested from your name), your password twice (at least 10 characters: it logs you in, approves system changes and unlocks the disk) and the computer's name.
+   - **Time zone**: the detected one is chosen; type a city to change it.
+   - **Summary**: the disk and what happens to it, encryption (on unless you untick it), and what the hardware scan found (Processor, Graphics, Local AI). Press **Install**, or **Erase and install**.
+   - **Install**: each step as it happens. If something fails, the window shows the installer's own message, the last lines of its log and the log's path (`/tmp/nexus-install.log`); **Try again** or go back and change something.
+   - **Done**: press **Restart now**, and remove the stick when the screen goes dark.
 
-   It then partitions the disk, writes the configuration and installs NexusOS from the stick. That takes 5–30 minutes, depending on your disk.
-4. When it says **NexusOS is installed**, remove the stick and restart.
+   It takes 5–30 minutes, depending on your disk. The installed system keeps the log in `/var/log/nexus-install.log`.
+
+In a terminal instead (**Install in a terminal**, or `sudo nexus-install`), the same questions are asked in text, and you type the disk name to confirm. Every question has a flag (`nexus-install --help`), for example:
+
+```sh
+sudo nexus-install --disk /dev/nvme0n1 --alongside --user ada --full-name "Ada Lovelace" --timezone Europe/London
+```
+
+### Beside Windows (dual boot)
+
+NexusOS can go into free space on a Windows disk, keeping Windows. It never shrinks or moves a partition: make the room in Windows first.
+
+1. In Windows, back up, then open **Disk Management** (right-click Start), right-click the Windows (C:) partition, choose **Shrink volume**, and shrink it by at least 32 GB (64 GB or more is better). Leave the new space unallocated.
+2. If Windows uses **BitLocker**, have your recovery key to hand (aka.ms/myrecoverykey): Windows may ask for it once after NexusOS adds its boot menu. Turning off Windows' Fast startup (Control Panel, Power Options) is a good idea too.
+3. Boot the stick and choose **Install alongside Windows** on the Disk step.
+
+The installer adds one encrypted partition in the largest free space and reuses Windows' EFI system partition without formatting it. That partition needs at least 200 MB free for NexusOS's start-up files; if it has less (Windows often makes it 100 MB), the installer says so and stops. NexusOS's start-up menu (systemd-boot) finds Windows Boot Manager by itself, so both appear at start-up. NexusOS keeps the clock in local time, as Windows does, and keeps only three older start-up entries on the shared partition.
+
+The installer refuses, and says why, when: there is no free space (or less than 32 GB), the disk uses the old MBR layout (Windows started in legacy BIOS mode), the disk has no EFI system partition or more than one, the EFI partition is too full, or the disk already has a NexusOS partition from an earlier attempt (delete it in Disk Management). If an attempt fails part-way, the partition it added is removed again.
 
 Each start, NexusOS asks for your password twice: first to unlock the encrypted disk (a text prompt, before anything else runs), then on the login screen.
 
@@ -134,7 +152,7 @@ Windows keeps the Super (Windows) key for itself, so Super shortcuts do not reac
 
 | Step | Detail |
 |---|---|
-| Disk | A GPT table with a 1 GiB EFI system partition (`BOOT`) and an ext4 root (`nexusos`) inside LUKS2 encryption (`nexusos-crypt`), unlocked with your password |
+| Disk | Erasing: a GPT table with a 1 GiB EFI system partition (`BOOT`) and an ext4 root (`nexusos`) inside LUKS2 encryption (`nexusos-crypt`), unlocked with your password. Alongside: only that root partition, in the free space, with the existing EFI partition reused |
 | Source | The NexusOS source from the stick is copied to `/etc/nixos/nexusos` |
 | Configuration | `/etc/nixos/flake.nix` imports NexusOS. `/etc/nixos/local.nix` holds your user name, computer name and time zone. `/etc/nixos/hardware-configuration.nix` is generated for your hardware |
 | Boot loader | systemd-boot, keeping the last 20 system versions. Pick an older one at start-up if an update goes wrong |
@@ -157,8 +175,7 @@ Only after a confirmed restart is `/etc/nixos/flake.lock` updated, so `nixos-reb
 
 ## Not in this alpha
 
-- Dual boot, and choosing partitions by hand. The installer always uses a whole disk.
-- A graphical installer. The installer runs in a terminal.
+- Choosing partitions by hand, or shrinking a partition to make room (do that in Windows).
 - A Files app of its own: Thunar is the file manager. System-wide settings (software, services) are changed in `local.nix`.
 - Nexus applying settings for you: it explains and points to the right page, and you make the change.
 

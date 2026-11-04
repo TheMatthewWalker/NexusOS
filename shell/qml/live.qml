@@ -16,13 +16,17 @@ ShellRoot {
         orbit: Qt.rgba(0.55, 0.62, 1.0, 0.22), error: "#FF8FA3", muted: "#7885A3"
     })
     readonly property string terminal: Quickshell.env("NEXUS_TERMINAL") || "kitty"
-    function install() {
-        Quickshell.execDetached([Quickshell.env("NEXUS_HYPRCTL") || "hyprctl", "dispatch", "focuswindow", "title:^(Install NexusOS)$"]);
-        Quickshell.execDetached(["sh", "-c", "pgrep -f nexus-install-welcome > /dev/null || exec \"$1\" --title 'Install NexusOS' nexus-install-welcome",
+    // The terminal installer, for anyone who prefers it (or if the graphical one cannot start).
+    function terminalInstall() {
+        Quickshell.execDetached([Quickshell.env("NEXUS_HYPRCTL") || "hyprctl", "dispatch", "focuswindow", "title:^(Install NexusOS in a terminal)$"]);
+        Quickshell.execDetached(["sh", "-c", "pgrep -f nexus-install-welcome > /dev/null || exec \"$1\" --title 'Install NexusOS in a terminal' nexus-install-welcome",
                                  "sh", root.terminal]);
     }
 
     DesktopSettings { id: desktop }
+    // The graphical installer (Installer.qml), open from the start.
+    Installer { id: installer; theme: root.theme }
+    Component.onCompleted: installer.open()
     // Only the Network page: Wi-Fi is the one setting installing can use.
     Settings { id: settings; theme: root.theme; bridge: null; desktop: desktop; only: ["network"] }
     TopBar { theme: root.theme; settings: settings; live: true }
@@ -61,13 +65,14 @@ ShellRoot {
                     }
                     Row {
                         spacing: 10
-                        Button { theme: root.theme; primary: true; label: "Install NexusOS"; onClicked: root.install() }
+                        Button { theme: root.theme; primary: true; label: "Install NexusOS"; onClicked: installer.open() }
                         Button { theme: root.theme; label: "Connect to Wi-Fi"; onClicked: settings.open("network", "wifi") }
                     }
                     Row {
                         spacing: 10
                         Button { theme: root.theme; label: "Restart"; onClicked: Quickshell.execDetached(["systemctl", "reboot"]) }
                         Button { theme: root.theme; label: "Shut down"; onClicked: Quickshell.execDetached(["systemctl", "poweroff"]) }
+                        Button { theme: root.theme; label: "Install in a terminal"; onClicked: root.terminalInstall() }
                     }
                 }
             }

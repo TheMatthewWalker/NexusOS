@@ -1,8 +1,15 @@
 # The NexusOS installer image: a live NexusOS desktop that opens the
-# installer in a terminal. Build it with `nix build .#iso`.
+# graphical installer (shell/qml/Installer.qml); the terminal installer is a
+# button away. Build it with `nix build .#iso`.
 { config, lib, pkgs, modulesPath, nexusSource, referenceSystem, referenceSystemNvidia, nixpkgsSource, bundledModel ? null, ... }:
 let
   nexus-install = pkgs.callPackage ../packages/nexus-install.nix { };
+  # What the graphical installer runs through pkexec, which starts programs
+  # with a bare PATH: nixos-install and its helpers expect the system's.
+  nexus-install-as-root = pkgs.writeShellScript "nexus-install-as-root" ''
+    export PATH=/run/wrappers/bin:/run/current-system/sw/bin:$PATH
+    exec ${nexus-install}/bin/nexus-install "$@"
+  '';
   welcome = pkgs.writeShellScriptBin "nexus-install-welcome" ''
     cat <<'EOF'
 
@@ -64,7 +71,20 @@ in
     live = true;
     autologinUser = "nixos";
     coreDetail = 40;
+    extraHyprlandConfig = "env = NEXUS_INSTALL,${nexus-install-as-root}";
   };
+  # The graphical installer runs exactly that program as root through pkexec,
+  # and the live user may do so without a password: the live system keeps
+  # nothing, and its user already has sudo without one.
+  security.polkit.enable = true;
+  security.polkit.extraConfig = ''
+    polkit.addRule(function (action, subject) {
+      if (action.id == "org.freedesktop.policykit.exec" && subject.user == "nixos" &&
+          action.lookup("program") == "${nexus-install-as-root}") {
+        return polkit.Result.YES;
+      }
+    });
+  '';
   services.nexus-core.enable = false;
   # Wi-Fi: NetworkManager runs wpa_supplicant under its own control
   # (networking.wireless.enable with dbusControlled). Turning

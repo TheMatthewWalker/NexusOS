@@ -15,7 +15,7 @@ import "settings"
 // files; nothing kept when it closes); Keep it asks Core (/try/keep) for a
 // normal Guardian install proposal, which still needs approval.
 // Opened by Super+A, the top bar, Nexus, or `nexus-shell-ipc call apps open [tab]`.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     property var bridge

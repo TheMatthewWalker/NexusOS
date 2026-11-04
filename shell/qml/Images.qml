@@ -13,7 +13,7 @@ import "settings"
 // with the prompt at the centre and the chosen one beside it. Both views show
 // win.shown and call the same functions (openImage, moreLike, remix, remove).
 // Opened from Studio, Super+G, or `nexus-shell-ipc call images open`.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     property var bridge

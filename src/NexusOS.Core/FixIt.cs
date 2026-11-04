@@ -140,7 +140,7 @@ public sealed class FixItService(ProbeRunner probes, FixLibrary library, IComman
     {
         if (string.Equals(config["NEXUS_FIXIT_MODEL"], "false", StringComparison.OrdinalIgnoreCase)) return null;
         if (router.Current.Name == ProviderNames.OpenAiCompatible) return null;
-        using var slot = await concurrency.TryEnterAsync(ct);
+        using var slot = await concurrency.EnterAsync(ct);
         if (slot is null) return null;
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
         limit.CancelAfter(ModelTimeout);

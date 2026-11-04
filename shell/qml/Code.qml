@@ -18,7 +18,7 @@ import "settings"
 // read the same properties and call the same functions; nothing is copied.
 // Opened from the Nexus orbit (the studio role), Super+C, or
 // `nexus-shell-ipc call code open [folder]`.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     property var bridge

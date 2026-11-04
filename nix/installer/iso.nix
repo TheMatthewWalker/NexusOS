@@ -8,12 +8,10 @@ let
 
       Welcome to NexusOS.
 
-      You are running the live system: nothing is installed yet, and nothing
-      you do here is kept. Close this window to keep exploring.
+      Nothing is installed yet. Press Enter to install NexusOS on this
+      computer, or close this window to go back.
 
-      To install NexusOS on this computer, press Enter. No internet
-      connection is needed: everything is on this USB stick. To connect
-      anyway, open the system panel (top right) and pick a Wi-Fi network.
+      No internet connection is needed: everything is on this USB stick.
 
     EOF
     read -r _
@@ -58,14 +56,16 @@ in
   };
   environment.etc."nexusos".source = nexusSource;
 
+  # The live session offers only Wi-Fi and Install (shell/qml/live.qml):
+  # Nexus, apps, the Welcome setup and system changes belong to the installed
+  # system, so Core does not run here at all.
   services.nexus-desktop = {
     enable = true;
+    live = true;
     autologinUser = "nixos";
     coreDetail = 40;
-    extraHyprlandConfig = ''
-      exec-once = kitty --title "Install NexusOS" ${welcome}/bin/nexus-install-welcome
-    '';
   };
+  services.nexus-core.enable = false;
   # Wi-Fi: NetworkManager runs wpa_supplicant under its own control
   # (networking.wireless.enable with dbusControlled). Turning
   # networking.wireless off here once left the live system with no Wi-Fi at all.

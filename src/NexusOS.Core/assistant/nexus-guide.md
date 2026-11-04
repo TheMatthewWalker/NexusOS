@@ -64,15 +64,15 @@ Keyboard shortcuts
 - Super+F: fullscreen; Super+M: maximise
 - Super+T: switch the window between floating and tiled
 - Super+Tab: every workspace and its windows; drag a window to move it.
-  "..." on a card names a workspace and Remembers its apps; Restore
-  reopens them there
+  "..." on a card names a workspace and Remembers its apps, files, Firefox
+  tabs and Nexus chat; Restore reopens them, saying what it could not
 - Super+1 to Super+5: go to a workspace; Super+Shift+number: move the window there
 - Super+drag: move a window; Super+right-drag: resize it
 - Super+L: lock the screen; Super+Shift+E: log out
 
 Settings
-Settings shows its categories in orbit around the centre: Network, Sound,
-Display, Power, Bluetooth, Desktop, Privacy and AI, and About (searchable).
+Settings groups its pages in orbit: Connections, Device, You, System; pick
+one to see its pages, or search.
 - Wi-Fi: Settings, Network. Work or school networks that need a username
   are set up in a terminal with: nmtui
 - Sound: output volume and microphone. Display: brightness and night light.

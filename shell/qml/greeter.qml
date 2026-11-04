@@ -78,7 +78,9 @@ ShellRoot {
         if (problem) {
             message = problem; failed = true;
             if (!currentField.text) currentField.forceActiveFocus();
-            else if (newField.text.length < minLength || newField.text === currentField.text) newField.forceActiveFocus();
+            else if (newField.text.length < minLength || newField.text === currentField.text) {
+                newField.text = ""; againField.text = ""; newField.forceActiveFocus();
+            }
             else { againField.text = ""; againField.forceActiveFocus() }
             return;
         }

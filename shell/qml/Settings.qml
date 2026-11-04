@@ -61,12 +61,15 @@ NexusWindow {
     // screen: the open page's group shows its pages, the others are one
     // planet each that opens the page last used in it. Deep links still name
     // a page (open("health", "")): its group opens with it.
-    readonly property var groups: [
+    readonly property var allGroups: [
         { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth"] },
         { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power"] },
         { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "accessibility", "privacy"] },
         { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "timeline", "automations", "search", "about"] }
     ]
+    // Only the pages this Settings shows (`only`); a group left empty is not shown.
+    readonly property var groups: allGroups.map(g => Object.assign({}, g, { members: g.members.filter(m => pages.some(p => p.id === m)) }))
+                                           .filter(g => g.members.length > 0)
     function groupOf(pageId) { return groups.find(g => g.members.includes(pageId)) || groups[0] }
     readonly property string expandedGroup: groupOf(page).key
     // Changes only when another group opens, so moving within a group keeps the planets (and the keyboard focus).

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -16,10 +17,10 @@ public sealed record ChatTurnResult(string Answer, string Provider, IReadOnlyLis
     // What history keeps, so a follow-up question knows what was offered.
     public string ForHistory => Offered.Count == 0 ? Answer
         : (Answer.Length > 0 ? Answer + "\n" : "") +
-          string.Join("\n", Offered.Select(x => $"(Offered to the person, who decides with Do it or Not now: {x.Summary})"));
+          string.Join("\n", Offered.Select(x => $"(Offered to the person, who decides with Do it or Not now: {x.Line})"));
 }
 
-public sealed record ActionOutcome(NexusAction? Action, string Status, object? Result, PendingAction? Pending);
+public sealed record ActionOutcome(NexusAction? Action, string Status, object? Result, PendingAction? Pending, bool Malformed = false);
 
 public sealed record ConfirmResult(string Status, string Message, JsonObject? Perform = null, object? Detail = null);
 
@@ -27,9 +28,11 @@ public sealed class NexusChat(ModelRouter router, ActionRunner runner)
 {
     public const int MaxModelTurns = 5;
     public const int MaxResultChars = 4000;
+    public const int MaxFollowUpNoteChars = 300;
 
-    // Room the tool definitions take in the input budget, so earlier exchanges are trimmed to fit.
-    public int ReservedChars => JsonSerializer.Serialize(ModelTools.Wire(runner.ToolsFor(router.Current.Name))).Length;
+    // Room the offered tool definitions take in the input budget, so earlier exchanges are trimmed to fit.
+    public int ReservedCharsFor(string prompt) =>
+        JsonSerializer.Serialize(ModelTools.Wire(runner.ToolsFor(router.Current.Name, prompt))).Length;
 
     public async Task<ChatTurnResult> RunAsync(string prompt, ChatContext context, Func<object, Task> emit, CancellationToken ct)
     {
@@ -37,9 +40,16 @@ public sealed class NexusChat(ModelRouter router, ActionRunner runner)
         var answer = new StringBuilder();
         var offered = new List<PendingAction>();
         var provider = router.Current.Name;
+        // Only the actions this question is about (ActionSelection.cs); a short
+        // follow-up keeps those of the question before it.
+        var earlier = context.Earlier.LastOrDefault(m => m.Role == "user")?.Content;
+        var offer = runner.ToolsFor(provider, prompt, earlier);
+        var malformed = 0;
         for (var turn = 1; turn <= MaxModelTurns; turn++)
         {
-            var tools = turn < MaxModelTurns ? runner.ToolsFor(router.Current.Name) : [];
+            // The last turn offers no tools, so the model has to answer; so does
+            // the turn after a second malformed call: it was told once already.
+            var tools = turn < MaxModelTurns && malformed < 2 ? offer : [];
             var (pieces, used) = router.StreamTurn(messages, tools, ct);
             provider = used;
             var text = new StringBuilder();
@@ -54,14 +64,27 @@ public sealed class NexusChat(ModelRouter router, ActionRunner runner)
             foreach (var call in calls)
             {
                 var known = NexusActions.ByName.TryGetValue(call.Name, out var named) ? named : null;
-                if (known?.Safety == ActionSafety.Read)
+                if (known?.Safety == ActionSafety.Read && !call.Malformed)
                     await emit(new { type = "tool", name = known.Name, status = "running", summary = ActionRunner.Doing(known) });
-                var outcome = await runner.HandleAsync(call, provider, ct);
+                ActionOutcome outcome;
+                try { outcome = await runner.HandleAsync(call, provider, ct); }
+                // A call the model got wrong in a way validation did not foresee
+                // (bad text encoding, odd JSON) is the model's mistake, not the
+                // stream's: it is told, once, and the answer goes on.
+                catch (Exception ex) when (ex is ArgumentException or JsonException or InvalidOperationException
+                                               or FormatException or KeyNotFoundException or OverflowException)
+                {
+                    outcome = ActionRunner.Malformed(known);
+                }
+                if (outcome.Malformed) malformed++;
+                // A look-up that ran makes its natural next steps available (ActionSelection.FollowOn).
+                if (outcome is { Status: "done", Action: { } ran } && ActionSelection.FollowOn.ContainsKey(ran.Name))
+                    offer = runner.WithFollowOn(offer, ran.Name, provider);
                 if (outcome.Pending is { } pending)
                 {
                     offered.Add(pending);
                     await emit(pending.Event());
-                    messages.Add(new TurnMessage("tool", Wrap(call.Name, new { offered = pending.Summary, waitingFor = "the person" }), Answers: call));
+                    messages.Add(new TurnMessage("tool", Wrap(call.Name, new { offered = pending.Line, waitingFor = "the person" }), Answers: call));
                     continue;
                 }
                 await emit(new { type = "tool", name = outcome.Action?.Name ?? "unknown", status = outcome.Status });
@@ -77,6 +100,32 @@ public sealed class NexusChat(ModelRouter router, ActionRunner runner)
             await emit(new { type = "delta", text = stopped });
         }
         return new ChatTurnResult(answer.ToString(), provider, offered);
+    }
+
+    // After "Do it": one short turn, with no tools, so Nexus can say what
+    // happened and offer a next step ("Done: Firefox is installing. Want me to
+    // pin it?"). It cannot loop: no tools are offered, and a finished action
+    // has one follow-up at most (CompletedActions.Take).
+    // What the model is told. ok and note come from the desktop, which carried
+    // the action out (false: it could not); they are data like any result.
+    public static string FollowUpPrompt(CompletedAction done, bool? ok, string? note)
+    {
+        var status = ok == false ? "failed" : done.Status;
+        var desktop = note is { Length: > 0 } ? NexusActions.Clean(note, MaxFollowUpNoteChars) : null;
+        return "(The person chose Do it on your offer. What happened is below.)\n" +
+               Wrap(done.Action.Action.Name, new { did = done.Action.Line, status, message = done.Message, desktop }) +
+               "\nIn one or two short sentences, say what happened. If there is an obvious next step, offer it as a question. " +
+               "Do not offer the same action again.";
+    }
+
+    public async Task<ChatTurnResult> FollowUpAsync(string prompt, ChatContext context, Func<object, Task> emit, CancellationToken ct)
+    {
+        var messages = context.Messages(prompt).Select(m => new TurnMessage(m.Role, m.Content)).ToList();
+        var (pieces, provider) = router.StreamTurn(messages, [], ct);
+        var answer = new StringBuilder();
+        await foreach (var piece in pieces)
+            if (piece.Text is { } t) { answer.Append(t); await emit(new { type = "delta", text = t }); }
+        return new ChatTurnResult(answer.ToString(), provider, []);
     }
 
     // Results are data: bounded, and marked so the model can tell them apart from the person.
@@ -97,8 +146,22 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
     private readonly object _gate = new();
     private (string Token, IReadOnlyList<FixItFix> Fixes)? _diagnosis;
 
+    // Every action the provider may have (GET /actions lists them all).
     public IReadOnlyList<ToolSpec> ToolsFor(string provider) =>
         NexusActions.All.Where(a => Offered(a, provider)).Select(a => a.Tool).ToArray();
+
+    public IReadOnlyList<ToolSpec> WithFollowOn(IReadOnlyList<ToolSpec> offered, string ran, string provider)
+    {
+        var names = offered.Select(t => t.Name).Concat(ActionSelection.FollowOn[ran]).ToHashSet(StringComparer.Ordinal);
+        return NexusActions.All.Where(a => names.Contains(a.Name) && Offered(a, provider)).Select(a => a.Tool).ToArray();
+    }
+
+    // The ones this question is about (ActionSelection.cs).
+    public IReadOnlyList<ToolSpec> ToolsFor(string provider, string prompt, string? earlier = null)
+    {
+        var names = ActionSelection.NamesFor(prompt, earlier);
+        return NexusActions.All.Where(a => names.Contains(a.Name) && Offered(a, provider)).Select(a => a.Tool).ToArray();
+    }
 
     // Private look-ups stay on this computer.
     private static bool Offered(NexusAction action, string provider) => !(action.Private && provider == ProviderNames.OpenAiCompatible);
@@ -120,19 +183,25 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
 
     public async Task<ActionOutcome> HandleAsync(ModelToolCall call, string provider, CancellationToken ct)
     {
-        if (!NexusActions.ByName.TryGetValue(call.Name, out var action) || !Offered(action, provider))
+        var named = NexusActions.ByName.TryGetValue(call.Name, out var action);
+        if (call.Malformed) return Malformed(named ? action : null);
+        if (!named || !Offered(action!, provider))
             return Rejected(null, $"There is no action called '{NexusActions.Clean(call.Name, 40)}'. Use only the actions you were given.");
         try
         {
-            var args = NexusActions.Validate(action, call.Arguments);
-            return action.Safety == ActionSafety.Read
+            var args = NexusActions.Validate(action!, call.Arguments);
+            return action!.Safety == ActionSafety.Read
                 ? new ActionOutcome(action, "done", await ReadAsync(action, args, ct), null)
                 : new ActionOutcome(action, "offered", null, await OfferAsync(action, args, ct));
         }
-        catch (ActionRejectedException ex) { return Rejected(action, ex.Message); }
+        catch (ActionRejectedException ex) { return ex.Malformed ? Malformed(action) : Rejected(action, ex.Message); }
     }
 
     private static ActionOutcome Rejected(NexusAction? action, string why) => new(action, "rejected", new { error = why }, null);
+
+    public static ActionOutcome Malformed(NexusAction? action) => new(action, "rejected",
+        new { error = "That action call was malformed (its arguments were not a valid JSON object). " +
+                      "Call it again with a JSON object of the listed arguments, or answer in words." }, null, Malformed: true);
 
     // ---- read ----
     private async Task<object> ReadAsync(NexusAction action, JsonObject args, CancellationToken ct)
@@ -312,7 +381,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             case "make_image":
             {
                 var description = Str(args, "description");
-                return pending.Add(action, args, $"Make a picture of “{NexusActions.Clean(description, 80)}”", Perform("images.make", ("prompt", description)));
+                return pending.Add(action, args, "Make a picture", Perform("images.make", ("prompt", description)), detail: description);
             }
             case "clean_up_pictures":
             {
@@ -328,8 +397,8 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             {
                 var folder = ProjectFolder(Str(args, "folder"));
                 var task = Str(args, "task");
-                return pending.Add(action, args, $"Ask Code to work in {folder}: “{NexusActions.Clean(task, 80)}”",
-                    Perform("code.start", ("folder", folder), ("task", task)));
+                return pending.Add(action, args, $"Ask Code to work in {folder}",
+                    Perform("code.start", ("folder", folder), ("task", task)), detail: task);
             }
             case "remember_workspace":
             {
@@ -355,7 +424,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             case "open_fix_it":
             {
                 var problem = Str(args, "problem");
-                return pending.Add(action, args, $"Open Fix it to check “{NexusActions.Clean(problem, 80)}”", Perform("fixit.open", ("problem", problem)));
+                return pending.Add(action, args, "Open Fix it to check", Perform("fixit.open", ("problem", problem)), detail: problem);
             }
             case "apply_fix":
             {
@@ -506,7 +575,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             var op = perform["op"]!.GetValue<string>();
             if (op is "app.open" or "flathub.install" or "flathub.remove" or "apt.install")
                 await Journal(JournalKinds.App, action, ct);
-            return new ConfirmResult("perform", action.Summary, perform);
+            return new ConfirmResult("perform", action.Line, perform);
         }
         if (action.Rule is { } rule)
         {
@@ -536,7 +605,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
 
     private Task Journal(string kind, PendingAction action, CancellationToken ct, string? reference = null) =>
         journal.AppendAsync(new JournalRecord(kind, "nexus",
-            NexusActions.Clean("Nexus, with your OK: " + action.Summary, ActivityJournal.MaxSummaryLength),
+            NexusActions.Clean("Nexus, with your OK: " + action.Line, ActivityJournal.MaxSummaryLength),
             Ref: reference ?? "action:" + action.Action.Name), ct);
 
     // As /guardian/submit: Core forwards the typed plan; the broker decides.
@@ -562,37 +631,168 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
     }
 }
 
+
+// An action the person confirmed, kept for one follow-up turn (POST /actions/{id}/followup).
+public sealed record CompletedAction(PendingAction Action, string Status, string Message, DateTimeOffset Expires);
+
+// In memory, like PendingActions: 15 minutes, used once, at most 32.
+public sealed class CompletedActions(TimeProvider time)
+{
+    private readonly ConcurrentDictionary<string, CompletedAction> _items = new(StringComparer.Ordinal);
+
+    public void Add(PendingAction action, ConfirmResult result)
+    {
+        var now = time.GetUtcNow();
+        foreach (var old in _items.Values.Where(x => x.Expires <= now)) _items.TryRemove(old.Action.Id, out _);
+        while (_items.Count >= PendingActions.MaxPending && _items.Values.MinBy(x => x.Expires) is { } oldest)
+            _items.TryRemove(oldest.Action.Id, out _);
+        _items[action.Id] = new CompletedAction(action, result.Status, NexusActions.Clean(result.Message, 300), now + PendingActions.Lifetime);
+    }
+
+    public CompletedAction? Take(string id) =>
+        _items.TryRemove(id, out var item) && item.Expires > time.GetUtcNow() ? item : null;
+}
+
+// Desktop actions confirmed from the command line (`nexus actions confirm`):
+// only the shell can open an app or change a desktop setting, so Core hands
+// the instruction over and the shell collects it (POST /actions/desktop/collect,
+// every few seconds). An instruction is collected once, and one not collected
+// within a minute is dropped, so nothing happens long after the person asked.
+// If the shell has not collected lately (no desktop running), the command line
+// is told so and the offer stays waiting.
+public sealed class DesktopHandoff(TimeProvider time)
+{
+    public const int MaxItems = 32;
+    public static readonly TimeSpan Fresh = TimeSpan.FromMinutes(1);
+    public static readonly TimeSpan ShellSeen = TimeSpan.FromSeconds(15);
+    public sealed record Item(string Id, string Action, string Summary, JsonObject Perform, DateTimeOffset At);
+    private readonly object _gate = new();
+    private readonly List<Item> _items = [];
+    private DateTimeOffset _lastCollect = DateTimeOffset.MinValue;
+
+    public bool ShellListening { get { lock (_gate) return time.GetUtcNow() - _lastCollect <= ShellSeen; } }
+
+    public void Add(PendingAction action, JsonObject perform)
+    {
+        lock (_gate)
+        {
+            if (_items.Count >= MaxItems) _items.RemoveAt(0);
+            _items.Add(new Item(action.Id, action.Action.Name, action.Line, perform, time.GetUtcNow()));
+        }
+    }
+
+    public IReadOnlyList<Item> Collect()
+    {
+        lock (_gate)
+        {
+            var now = time.GetUtcNow();
+            _lastCollect = now;
+            var fresh = _items.Where(x => now - x.At <= Fresh).ToArray();
+            _items.Clear();
+            return fresh;
+        }
+    }
+}
+
+public sealed record FollowUpRequest(bool? Ok, string? Message);
+
 public static class NexusActionEndpoints
 {
     public static IServiceCollection AddNexusActions(this IServiceCollection services)
     {
         services.AddSingleton<PendingActions>();
+        services.AddSingleton<CompletedActions>();
+        services.AddSingleton<DesktopHandoff>();
         services.AddSingleton<InstalledApps>();
         services.AddSingleton<ActionRunner>();
         services.AddSingleton<NexusChat>();
         return services;
     }
 
-    // GET /actions: the registry. GET /actions/{id}: one waiting action.
+    // GET /actions: the registry. GET /actions/pending: the offers waiting.
+    // GET /actions/{id}: one waiting action.
     // POST /actions/{id}/confirm runs it (the person's "Do it"); /decline drops it.
+    //   ?from=terminal (`nexus actions confirm`): a desktop action is handed to
+    //   the shell (DesktopHandoff) instead of returned, status "handed".
+    // POST /actions/{id}/followup {ok?, message?}: after a confirm, one short
+    //   streamed turn in which Nexus says what happened (NexusChat.FollowUpAsync).
+    // POST /actions/desktop/collect: the shell takes the handed-over instructions.
     public static void MapNexusActions(this WebApplication app)
     {
         app.MapGet("/actions", () => Results.Ok(NexusActions.All.Select(a => new
         {
             name = a.Name, safety = a.SafetyName, description = a.Description, parameters = a.Tool.Parameters, @private = a.Private
         })));
+        app.MapGet("/actions/pending", (PendingActions pending) =>
+            Results.Ok(pending.Waiting().Select(a => new { a.Id, action = a.Action.Name, safety = a.Action.SafetyName,
+                summary = a.Summary, line = a.Line, detail = a.Detail, expires = a.Expires })));
         app.MapGet("/actions/{id}", (string id, PendingActions pending) =>
             PendingActions.IsValidId(id) && pending.Get(id) is { } action ? Results.Ok(action.Event()) : Gone());
-        app.MapPost("/actions/{id}/confirm", async (string id, PendingActions pending, ActionRunner runner, CancellationToken ct) =>
+        app.MapPost("/actions/{id}/confirm", async (string id, string? from, PendingActions pending, CompletedActions completed,
+            DesktopHandoff handoff, ActionRunner runner, CancellationToken ct) =>
         {
-            if (!PendingActions.IsValidId(id) || pending.Take(id) is not { } action) return Gone();
+            if (!PendingActions.IsValidId(id)) return Gone();
+            var terminal = from == "terminal";
+            // From a terminal, a desktop action needs a desktop to do it; without one the offer keeps waiting.
+            if (terminal && pending.Get(id) is { Perform: not null, Plan: null } && !handoff.ShellListening)
+                return Results.Conflict(new { error = "Only the desktop can do this, and it is not running. Do it from Nexus (Super+Space) instead." });
+            if (pending.Take(id) is not { } action) return Gone();
             var result = await runner.ConfirmAsync(action, ct);
+            if (terminal && result is { Status: "perform", Perform: { } perform })
+            {
+                handoff.Add(action, perform);
+                result = result with { Status = "handed", Message = "Handed to the desktop: " + action.Line };
+            }
+            completed.Add(action, result);
             return Results.Ok(new { id, action = action.Action.Name, status = result.Status, message = result.Message,
                                     perform = result.Perform, detail = result.Detail });
         }).RequireRateLimiting("journal");
         app.MapPost("/actions/{id}/decline", (string id, PendingActions pending) =>
             PendingActions.IsValidId(id) && pending.Take(id) is not null ? Results.Ok(new { id, declined = true }) : Gone())
             .RequireRateLimiting("journal");
+        app.MapPost("/actions/desktop/collect", (DesktopHandoff handoff) =>
+            Results.Ok(new { items = handoff.Collect().Select(x => new { id = x.Id, action = x.Action, summary = x.Summary, perform = x.Perform }) }));
+        app.MapPost("/actions/{id}/followup", async (string id, FollowUpRequest? request, HttpContext http, CompletedActions completed,
+            NexusChat chat, ConversationStore history, AssistantContextBuilder assistant, InferenceActivity activity,
+            InferenceConcurrencyGate concurrency, CancellationToken ct) =>
+        {
+            if (request?.Message is { Length: > 1000 }) return Results.BadRequest(new { error = "message must be at most 1000 characters." });
+            if (!PendingActions.IsValidId(id) || completed.Take(id) is not { } done)
+                return Results.NotFound(new { error = "There is nothing to follow up for that action." });
+            using var slot = await concurrency.EnterAsync(ct);
+            if (slot is null) return Results.Problem("Nexus is still busy with an earlier request; it will take this one as soon as that finishes.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            var prompt = NexusChat.FollowUpPrompt(done, request?.Ok, request?.Message);
+            var started = false;
+            async Task WriteEvent(object value)
+            {
+                if (!started)
+                {
+                    http.Response.ContentType = "application/x-ndjson";
+                    http.Response.Headers.CacheControl = "no-store";
+                    started = true;
+                }
+                await http.Response.WriteAsync(JsonSerializer.Serialize(value) + "\n", ct);
+                await http.Response.Body.FlushAsync(ct);
+            }
+            activity.BeginRequest();
+            try
+            {
+                var context = await assistant.BuildAsync(prompt, ct);
+                var turn = await chat.FollowUpAsync(prompt, context, WriteEvent, ct);
+                // History keeps it short: what was done, and what Nexus said.
+                await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, turn.Provider,
+                    NexusActions.Clean("(Do it: " + done.Action.Line + ")", 300), turn.Answer), ct);
+                await WriteEvent(new { type = "done", provider = turn.Provider });
+                return Results.Empty;
+            }
+            catch (ProviderException ex)
+            {
+                if (!started) return Results.Problem(ex.Message, statusCode: ex.StatusCode);
+                await WriteEvent(new { type = "error", message = ex.Message });
+                return Results.Empty;
+            }
+            finally { activity.EndRequest(); }
+        }).RequireRateLimiting("ai");
     }
 
     private static IResult Gone() =>

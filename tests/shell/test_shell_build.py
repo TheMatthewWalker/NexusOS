@@ -442,6 +442,24 @@ class ShellBuild(unittest.TestCase):
         cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
         self.assertIn('"/actions"]', cli)
 
+    def test_action_cards_show_the_whole_text_and_follow_up(self):
+        """Cards show an action's full text (scrolling, says if cut); after Do it Nexus says what happened."""
+        cards = (self.out / "ActionCards.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        bridge = (self.out / "CoreBridge.qml").read_text()
+        cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
+        self.assertIn("text: modelData.detail", cards)
+        self.assertIn("height: Math.min(detailText.implicitHeight, 160)", cards)
+        self.assertIn('"Shortened here: showing the first "', cards)
+        self.assertNotIn("Clean(", cards)
+        self.assertIn("cards.finished(cardId, ok, message)", cards)
+        self.assertIn("bridge.followUp(cardId, ok, message)", shell)
+        self.assertIn('send("followup"', bridge)
+        self.assertIn('"followup" => $"/actions/{Uri.EscapeDataString(Arg("action"))}/followup"', cli)
+        # Desktop actions confirmed in a terminal are collected from Core and done here, once.
+        self.assertIn('"/actions/desktop/collect"', cards)
+        self.assertIn("const said = perform(item.perform)", cards)
+
     def test_every_desktop_instruction_core_sends_is_handled(self):
         """Each Perform("op") in NexusChat.cs has a case in ActionCards.perform, so no "Do it" falls through."""
         chat = (ROOT / "src/NexusOS.Core/NexusChat.cs").read_text()

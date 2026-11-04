@@ -2,6 +2,7 @@
 """Minimal stand-in for llama-server used by Core process-lifecycle tests."""
 import argparse
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 parser = argparse.ArgumentParser()
@@ -10,6 +11,9 @@ parser.add_argument("--host", required=True)
 parser.add_argument("--port", type=int, required=True)
 parser.add_argument("--ctx-size", type=int, required=True)
 parser.add_argument("--n-gpu-layers", type=int, required=True)
+# FAKE_LLAMA_OLD=1 stands in for a llama-server too old to know --jinja: argparse exits on it.
+if os.environ.get("FAKE_LLAMA_OLD") != "1":
+    parser.add_argument("--jinja", action="store_true")
 args = parser.parse_args()
 if args.host != "127.0.0.1":
     raise SystemExit("refusing non-loopback bind")
@@ -46,8 +50,26 @@ class Handler(BaseHTTPRequestHandler):
             data += self.rfile.read(size)
             self.rfile.read(2)
 
+    def send_body(self, status, body, kind):
+        self.send_response(status)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_POST(self):
         request = json.loads(self.body())
+        jinja = getattr(args, "jinja", False)
+        # As llama-server: tools need --jinja, otherwise the request is refused.
+        if request.get("tools") and not jinja:
+            self.send_body(500, b'{"error":{"code":500,"message":"tools param requires --jinja flag"}}', "application/json")
+            return
+        if request.get("stream"):
+            said = f"jinja={str(jinja).lower()} tools={len(request.get('tools') or [])}"
+            events = [{"choices": [{"delta": {"content": said}}]}, {"choices": [{"delta": {}, "finish_reason": "stop"}]}]
+            body = "".join(f"data: {json.dumps(e)}\n\n" for e in events) + "data: [DONE]\n\n"
+            self.send_body(200, body.encode(), "text/event-stream")
+            return
         text = request["messages"][0]["content"]
         self.reply({"choices": [{"message": {"content": f"managed ctx={args.ctx_size} ngl={args.n_gpu_layers}: {text}"}}]})
 

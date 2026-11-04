@@ -20,6 +20,8 @@ NexusWindow {
     property var theme
     property var bridge
     property var desktop
+    property var voice           // Voice.qml and Describe.qml, for the Accessibility page
+    property var describer
     property bool reduced: false
     property var cardHost: null     // the shell's ActionCards, for "Do it" cards in the ask box
     signal askNexus(string text)
@@ -89,6 +91,9 @@ NexusWindow {
         ["accessibility", "reader", "Screen reader", "screen reader orca blind accessibility read aloud"],
         ["accessibility", "pointer", "Pointer size", "pointer cursor mouse size bigger"],
         ["accessibility", "motion", "Less motion", "reduce motion animations dizzy accessibility"],
+        ["accessibility", "describe", "Describe this", "describe screen picture image vision blind what is on screen"],
+        ["accessibility", "voice", "Voice control", "voice speech talk microphone dictate push to talk"],
+        ["accessibility", "spoken", "Spoken replies", "read aloud speak text to speech voice replies"],
         ["health", "", "Health", "health report problems disk smart updates check status"],
         ["about", "name", "Computer name", "about computer name hostname version"],
         ["about", "storage", "Storage", "storage disk space full free files"],

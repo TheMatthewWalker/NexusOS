@@ -617,6 +617,46 @@ class ShellBuild(unittest.TestCase):
         for op in re.findall(r'Perform\("([a-z.]+)"', (ROOT / "src/NexusOS.Core/NexusChat.cs").read_text()) + ["desktop.set", "volume.set"]:
             self.assertIn(f'case "{op}":', cards, op)
 
+    def test_describe_this_and_voice_stay_local_and_listen_only_on_request(self):
+        """Vision.cs/Voice.cs with Describe.qml/Voice.qml: pictures and the microphone only when asked, all local."""
+        voice = (self.out / "Voice.qml").read_text()
+        describe = (self.out / "Describe.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        page = (self.out / "settings/AccessibilityPage.qml").read_text()
+        explain = (self.out / "Explain.qml").read_text()
+        cards = (self.out / "ActionCards.qml").read_text()
+        nix = (ROOT / "nix/modules/desktop.nix").read_text()
+        cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
+        # Push-to-talk: Super+V held (press/release), the recording made only in press(), a visible indicator.
+        self.assertIn("bind = SUPER, V, global, nexus:talk", nix)
+        self.assertIn('name: "talk"; onPressed: voiceCtl.press(); onReleased: voiceCtl.release()', shell)
+        self.assertEqual(voice.count("recorder.running = true"), 1)
+        self.assertIn('visible: voice.state_ !== "idle"', voice)                # the bar shows whenever the mic is open
+        self.assertIn('WlrLayershell.namespace: "nexus-microphone"', voice)
+        self.assertIn("interval: 30000", voice)                                 # a recording stops by itself
+        self.assertIn('bridge.api("POST", "/voice/transcribe", { audio: "voice.wav" })', voice)
+        self.assertIn('onHeard: text => { root.open(); input.text = text; root.ask(text) }', shell)
+        self.assertIn('icons/mic.svg', shell)
+        self.assertIn("voiceCtl.speak(root.reply)", shell)
+        self.assertIn("if (!spokenReplies", voice)                               # spoken replies only when turned on
+        # Describe this: grim only after the person's request, then Core (local vision model only).
+        self.assertIn('bridge.api("POST", "/vision/describe"', describe)
+        self.assertNotIn("cloud", describe.lower().replace("never goes to a cloud model", ""))
+        self.assertEqual(describe.count("capture.running = true"), 1)
+        self.assertIn('case "describe.screen":', cards)
+        self.assertIn("describer.describeFile(", explain)
+        self.assertIn("---- describe the picture (Describe.qml) ----", explain)
+        # Settings, Accessibility: real switches; the old placeholder is gone.
+        self.assertNotIn("Coming later", page)
+        for label in ['label: "Describe this"', 'label: "Voice control"', 'label: "Spoken replies"']:
+            self.assertIn(label, page)
+        self.assertIn('page.voice.setChoice("pushToTalk"', page)
+        self.assertIn('page.voice.setChoice("spokenReplies"', page)
+        self.assertIn('"/vision", "/voice"', cli)
+        guide = (ROOT / "src/NexusOS.Core/assistant/nexus-guide.md").read_text()
+        self.assertIn("Super+V", guide)
+        self.assertIn("describe_screen", guide)
+
     def run_node_test(self, name):
         if not shutil.which("node"):
             self.skipTest("node not installed")

@@ -12,8 +12,9 @@ import "settings"
 // local model explains it in a small card. Privacy:
 //  - nothing is read until the person has picked a window or area: the
 //    selection is read only after slurp returns, and not at all on Esc;
-//  - no screenshot is taken: pictures need the vision model, which is not
-//    installed yet, so with no text the card says so instead of guessing;
+//  - no screenshot is taken unless, with no text selected, the person clicks
+//    "Describe the picture": then only that area is taken, described by the
+//    local vision model (Describe.qml, Vision.cs) and deleted;
 //  - the answer comes from /explain/stream: a read-only answer, with no
 //    actions offered to the model and nothing saved to history. "Keep in
 //    history" saves it, and so does Tell me more (the chat continues from it),
@@ -123,6 +124,7 @@ PanelWindow {
         selected = (text || "").trim().slice(0, 4000);
         answer = ""; provider = ""; error = ""; kept = false;
         place(region || null);
+        lastRegion = region || null; pictureDescribed = false;
         visible = true;
         if (!selected) { state_ = "notext"; return }
         ask("Explain this in plain words, briefly: what it means and what to do about it, if anything. " +
@@ -153,6 +155,7 @@ PanelWindow {
     function close() {
         visible = false; chatId = -1; keepId = -1; state_ = "idle";
         selected = ""; answer = ""; prompt = ""; kept = false;
+        lastRegion = null; pictureDescribed = false;
     }
     Connections {
         target: card.bridge
@@ -168,6 +171,32 @@ PanelWindow {
             else if (id === card.keepId) { card.keepId = -1; card.state_ = "error"; card.error = "it could not be kept: " + message }
         }
     }
+
+    // ---- describe the picture (Describe.qml) ----
+    // With no text selected, the area's picture can be described by the local
+    // vision model, only when the person clicks "Describe the picture". Core
+    // reads and deletes the picture; it never goes to a cloud model.
+    property var describer: null
+    property bool pictureDescribed: false
+    // The window or area the person chose; the picture of it is taken only on "Describe the picture".
+    property var lastRegion: null
+    readonly property bool canDescribe: !!card.lastRegion && !!card.describer && card.describer.ready
+    function describePicture() {
+        const r = lastRegion;
+        state_ = "thinking"; answer = ""; error = "";
+        visible = false;      // out of the picture
+        describer.describeRegion(r.x + "," + r.y + " " + r.w + "x" + r.h, "", windowTitle, "explain");
+    }
+    Connections {
+        target: card.describer
+        function onDescribed(tag, text) {
+            if (tag !== "explain") return;
+            card.pictureDescribed = true; card.visible = true;
+            card.answer = text; card.provider = "local-vision"; card.state_ = "answer";
+        }
+        function onFailed(tag, message) { if (tag === "explain") { card.visible = true; card.state_ = "error"; card.error = message } }
+    }
+    // ---- end of describe the picture ----
 
     IpcHandler {
         target: "explain"
@@ -269,7 +298,9 @@ PanelWindow {
                 width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; font.pixelSize: 14; lineHeight: 1.3
                 color: card.state_ === "error" ? card.theme.error : card.theme.ink
                 text: card.state_ === "error" ? "Nexus could not explain this: " + card.error
-                    : "Nexus can only read text for now: describing a picture of the screen needs the vision model, which is not installed yet. " +
+                    : card.canDescribe ? "No text was selected. Nexus can describe the picture of the area with the local vision model, on this computer, " +
+                      "or explain words you select (highlight them, then press Super+? again)."
+                    : "Nexus can only read text for now:describing a picture of the screen needs the vision model, which is not installed yet. " +
                       "Select the words you want explained (highlight them), then press Super+? again."
             }
             Row {
@@ -279,6 +310,8 @@ PanelWindow {
                          onClicked: card.more() }
                 Button { theme: card.theme; visible: card.state_ === "answer"; enabled: !card.kept && card.keepId < 0
                          label: card.kept ? "Kept in history" : "Keep in history"; onClicked: card.keep(false) }
+                Button { theme: card.theme; visible: card.state_ === "notext" && card.canDescribe; label: "Describe the picture"; primary: true
+                         onClicked: card.describePicture() }
                 Button { theme: card.theme; visible: card.state_ === "notext" && card.appName !== ""; label: "What is " + card.appName + "?"
                          onClicked: card.explainApp() }
                 Button { theme: card.theme; visible: card.state_ === "answer" && card.looksLikeError; label: "Fix it"; primary: true
@@ -290,9 +323,10 @@ PanelWindow {
                 text: (card.selected ? "Read as text: " + card.lineCount + (card.lineCount === 1 ? " line" : " lines") + " you selected"
                                      : "Read: the window title only")
                       + (card.appName ? ", from " + card.appName : card.windowTitle ? ", from “" + card.windowTitle + "”" : "") + ". "
-                      + "No screenshot is taken. "
+                      + (card.pictureDescribed ? "A picture of the area was described by the local vision model on this computer, then deleted. "
+                         : "No screenshot is taken. ")
                       + (card.kept ? "Kept in your Nexus history. " : "Not saved to history unless you choose. ")
-                      + (card.provider ? (card.provider === "local" || card.provider === "llama-cpp" ? "Explained by the local model on this computer." : "Explained by the cloud model you turned on.") : "")
+                      + (card.provider ? (card.provider === "local" || card.provider === "llama-cpp" || card.provider === "local-vision" ? "Explained by the local model on this computer." : "Explained by the cloud model you turned on.") : "")
             }
         }
     }

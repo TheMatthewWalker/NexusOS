@@ -417,6 +417,15 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 var limit = $"{days} days" + (gb is { } n ? $", up to {n:0.#} GB" : "");
                 return pending.Add(action, args, changed ? $"Keep pictures for {limit}, and remove older ones now" : $"Remove pictures older than {limit}");
             }
+            case "describe_screen":
+            {
+                if (services.GetRequiredService<VisionDescriber>().Model is null)
+                    throw new ActionRejectedException("Describing the screen needs the local vision model, which is turned off on this computer.");
+                var target = args["target"]?.GetValue<string>() ?? "window";
+                var what = target switch { "area" => "a window or area you point at", "screen" => "the whole screen", _ => "the focused window" };
+                return pending.Add(action, args, $"Take a picture of {what} and describe it with the local vision model (it stays on this computer)",
+                    Perform("describe.screen", ("target", target), ("question", args["question"]?.GetValue<string>() ?? "")));
+            }
             case "start_coding_task":
             {
                 var folder = ProjectFolder(Str(args, "folder"));

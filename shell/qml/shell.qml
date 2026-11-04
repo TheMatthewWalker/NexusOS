@@ -156,6 +156,7 @@ ShellRoot {
             // With the answer done the model is free: let it pick the apps,
             // falling back to the rules (and saying so) if it cannot.
             root.suggestId = bridge.suggest(root.lastPrompt, true);
+            voiceCtl.speak(root.reply);         // spoken replies, when turned on (Settings, Accessibility)
         }
         onUnloaded: (id, freed) => {
             if (id !== root.unloadId) return;
@@ -181,9 +182,25 @@ ShellRoot {
     AppDirectory { id: apps }
     DesktopSettings { id: desktop; gameMode: root.gameMode; bridge: bridge }
     RuleRunner { bridge: bridge; desktop: desktop; wallpaper: wallpaper; apps: apps; wifi: settings.wifi }
+    // Voice control and Describe this, on this computer (Voice.qml, Describe.qml).
+    Voice { id: voiceCtl; theme: root.dark; bridge: bridge
+            onHeard: text => { root.open(); input.text = text; root.ask(text) } }
+    Describe { id: describer; bridge: bridge }
+    Connections {
+        target: describer
+        function onDescribed(tag, text) { if (tag === "nexus") root.showDescription(text) }
+        function onFailed(tag, message) { if (tag === "nexus") { root.open(); root.reply = ""; root.error = message } }
+    }
+    // A description from the local vision model, shown (and read out) as Nexus's answer.
+    function showDescription(text) {
+        open();
+        error = ""; toolNote = ""; mode = "idle"; reply = text; provider = "local vision model";
+        voiceCtl.speak(text);
+    }
     Settings {
         id: settings
         theme: root.dark; bridge: bridge; desktop: desktop; reduced: root.reduced; cardHost: actionCards
+        voice: voiceCtl; describer: describer
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
         onFixIt: problem => fixItWin.open(problem)
         onAppChange: perform => appsWin.perform(perform)
@@ -197,7 +214,7 @@ ShellRoot {
     FirstRun { id: firstRun; theme: root.dark; bridge: bridge; desktop: desktop; onMoveIn: moveInWin.open()
                onProposeSystem: plan => guardianWin.openPlan(plan, "user") }
     MoveIn { id: moveInWin; theme: root.dark }
-    Explain { id: explainCard; theme: root.dark; bridge: bridge; onFixIt: problem => fixItWin.open(problem)
+    Explain { id: explainCard; theme: root.dark; bridge: bridge; describer: describer; onFixIt: problem => fixItWin.open(problem)
               onTellMeMore: { root.open(); input.text = "Tell me more about that."; root.ask(input.text) } }
     Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }
     Images { id: imagesWin; theme: root.dark; bridge: bridge; onSwitchToCode: codeWin.open("")
@@ -240,6 +257,8 @@ ShellRoot {
     GlobalShortcut { appid: "nexus"; name: "overview"; onPressed: overview.open ? overview.hide() : overview.show() }
     // Super+? (bind = SUPER SHIFT, slash, global, nexus:explain): point at something to have it explained.
     GlobalShortcut { appid: "nexus"; name: "explain"; onPressed: explainCard.start() }
+    // Super+V (bind = SUPER, V, global, nexus:talk): push-to-talk, the microphone open only while it is held.
+    GlobalShortcut { appid: "nexus"; name: "talk"; onPressed: voiceCtl.press(); onReleased: voiceCtl.release() }
     IpcHandler {
         target: "nexus"
         function toggle(): void { root.expanded ? root.collapse() : root.open() }
@@ -538,7 +557,7 @@ ShellRoot {
                             source: "icons/spark.svg"; sourceSize: Qt.size(44, 44) }
                     TextInput {
                         id: input
-                        x: 58; width: parent.width - 130; anchors.verticalCenter: parent.verticalCenter
+                        x: 58; width: parent.width - 130 - root.tk.chat.sendDiameter - 8; anchors.verticalCenter: parent.verticalCenter
                         font.pixelSize: 14; color: root.dark.ink; clip: true
                         readOnly: !bridge.online
                         focus: root.expanded
@@ -550,10 +569,25 @@ ShellRoot {
                         onTextEdited: { root.mode = text ? "typing" : "idle"; debounce.restart() }
                         onAccepted: if (text.trim()) root.ask(text.trim())
                         activeFocusOnTab: true
-                        Keys.onEscapePressed: root.collapse()
+                        Keys.onEscapePressed: { voiceCtl.stopSpeaking(); root.collapse() }
                         Accessible.name: "Ask Nexus AI"
                     }
                     MouseArea { anchors.fill: input; onClicked: input.forceActiveFocus(); cursorShape: Qt.IBeamCursor }
+                    // Push-to-talk: hold to speak, or click once to start and again to send (Voice.qml).
+                    Rectangle {
+                        visible: voiceCtl.pushToTalk
+                        width: root.tk.chat.sendDiameter; height: width; radius: width / 2
+                        anchors.right: parent.right; anchors.rightMargin: 18 + root.tk.chat.sendDiameter; anchors.verticalCenter: parent.verticalCenter
+                        color: voiceCtl.listening ? "#D93A5B" : root.dark.chip
+                        border.color: voiceCtl.listening ? "#FF5C7A" : root.dark.glassBorder; border.width: 1
+                        Image { anchors.centerIn: parent; width: 20; height: 20; source: "icons/mic.svg"; sourceSize: Qt.size(40, 40) }
+                        TapHandler {
+                            enabled: bridge.online
+                            onPressedChanged: pressed ? voiceCtl.press() : voiceCtl.release()
+                        }
+                        Accessible.role: Accessible.Button
+                        Accessible.name: voiceCtl.listening ? "Microphone on: press to send" : "Speak to Nexus (hold, or press Super+V)"
+                    }
                     Rectangle {
                         width: root.tk.chat.sendDiameter; height: width; radius: width / 2
                         anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
@@ -616,7 +650,7 @@ ShellRoot {
                             width: parent.width
                             theme: root.dark; bridge: bridge; apps: apps; settings: settings; desktop: desktop
                             appsWin: appsWin; imagesWin: imagesWin; codeWin: codeWin; fixItWin: fixItWin
-                            overview: overview; moveInWin: moveInWin; firstRun: firstRun
+                            overview: overview; moveInWin: moveInWin; firstRun: firstRun; describer: describer
                             onOpened: root.collapse()
                             onFinished: (cardId, ok, message) => { root.followText = ""; root.followId = bridge.followUp(cardId, ok, message) }
                             onOpenRole: role => root.openApp(role)

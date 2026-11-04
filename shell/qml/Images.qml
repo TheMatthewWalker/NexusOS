@@ -8,7 +8,7 @@ import "settings"
 // it on this computer's GPU with the local image model (ImageStudio.cs).
 // Results go to ~/Pictures/Nexus; nothing is uploaded. Opened from Studio,
 // Super+G, or `nexus-shell-ipc call images open`.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     property var bridge

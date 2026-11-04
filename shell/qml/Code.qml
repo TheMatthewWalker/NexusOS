@@ -13,7 +13,7 @@ import "settings"
 // it in a sandbox. A task from Nexus's chat is filled in, not sent.
 // Opened from the Nexus orbit (the studio role), Super+C, or
 // `nexus-shell-ipc call code open [folder]`.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     property var bridge

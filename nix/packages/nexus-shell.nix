@@ -34,6 +34,9 @@ stdenvNoCC.mkDerivation {
     # runtime dir holds only their own shell, so the display filter is not needed.
     makeWrapper ${quickshell}/bin/quickshell $out/bin/nexus-shell-ipc \
       --add-flags "ipc -p $out/share/nexus-shell/shell.qml --any-display"
+    # The installer's live session (live.qml): Wi-Fi and Install, nothing else.
+    makeWrapper ${quickshell}/bin/quickshell $out/bin/nexus-live-shell \
+      --add-flags "-p $out/share/nexus-shell/live.qml"
     # The login screen (greeter.qml), run by greetd inside cage.
     makeWrapper ${quickshell}/bin/quickshell $out/bin/nexus-greeter \
       --add-flags "-p $out/share/nexus-shell/greeter.qml"

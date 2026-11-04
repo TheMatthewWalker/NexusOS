@@ -222,8 +222,9 @@ in
         RuntimeDirectory = "nexus-guardian-builder";
         RuntimeDirectoryMode = "0750";
         ReadWritePaths = [ "${builderDir}/work" ];
-        # Evaluating a whole NixOS system needs room.
-        MemoryMax = "4G";
+        # Evaluating a whole NixOS desktop (and its trial-boot entry) can take
+        # more than 4 GB; a fixed cap made the builder disappear mid-check.
+        MemoryMax = "75%";
         TasksMax = 64;
       };
     };

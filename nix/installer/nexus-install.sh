@@ -49,8 +49,15 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Everything the installer prints also goes to a log, so a failure can be
+# reported in full; the installed system keeps a copy in /var/log.
+log=/tmp/nexus-install.log
+exec > >(tee -a "$log") 2>&1
+echo "nexus-install started $(date -Is)" >> "$log"
+trap 'printf "\nnexus-install stopped: \"%s\" failed (line %s).\nThe full log is in %s\n" "$BASH_COMMAND" "$LINENO" "$log" >&2' ERR
+
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
-fail() { printf '\nnexus-install: %s\n' "$*" >&2; exit 1; }
+fail() { printf '\nnexus-install: %s\nThe full log is in %s\n' "$*" "$log" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || fail "run me as root: sudo nexus-install"
 [ -d /sys/firmware/efi ] || fail "this computer booted without UEFI. NexusOS needs UEFI: turn off legacy/CSM boot in the firmware settings and boot the installer again."
@@ -327,6 +334,22 @@ if ! curl -sfI --max-time 8 https://cache.nixos.org/nix-cache-info > /dev/null 2
 fi
 # Lock first: locking inside nixos-install would change the flake mid-build.
 nix --extra-experimental-features "nix-command flakes" flake lock "path:/mnt/etc/nixos" "${offline[@]}"
+# Offline, only small files specific to this computer may need building (its
+# boot files and settings). Anything bigger means a package is missing from
+# the stick: say which, rather than spend hours trying to compile it.
+if [ "${#offline[@]}" -gt 0 ]; then
+  plan="$(nix --extra-experimental-features "nix-command flakes" build --dry-run "${offline[@]}" \
+    "path:/mnt/etc/nixos#nixosConfigurations.nexus.config.system.build.toplevel" 2>&1 || true)"
+  heavy="$(sed -n '/will be built/,/will be fetched/p' <<<"$plan" | grep -oE '/nix/store/[a-z0-9]{32}-[^ ]+\.drv' \
+    | sed -E 's|/nix/store/[a-z0-9]{32}-||; s|\.drv$||' \
+    | grep -E '^(stage0|hex0|bootstrap|gcc|binutils|glibc-2|xgcc|bash-5|python3-3|perl-5\.[0-9.]+$|rustc|cargo|llvm|clang)' | sort -u | head -20 || true)"
+  if [ -n "$heavy" ]; then
+    printf '%s\n' "$plan" >> "$log"
+    fail "this computer's system needs packages the USB stick does not carry, and there is no internet to fetch them:
+  ${heavy//$'\n'/$'\n'  }
+Connect to the internet (Wi-Fi in the system panel) and try again, or report this list."
+  fi
+fi
 nixos-install --root /mnt --flake "path:/mnt/etc/nixos#nexus" --no-root-passwd --no-channel-copy "${offline[@]}"
 
 # The local model, if the image carries the one chosen above: first boot
@@ -346,6 +369,7 @@ fi
 say "Setting your password"
 printf '%s:%s\n' "$user" "$password" | nixos-enter --root /mnt -c 'chpasswd'
 
+mkdir -p /mnt/var/log && cp "$log" /mnt/var/log/nexus-install.log
 sync
 say "NexusOS is installed"
 echo "Remove the installer USB stick, then restart the computer."

@@ -114,6 +114,11 @@ public static class NexusActions
             [new("sentence", "string", "The automation in one sentence.", MaxLength: RuleParser.MaxSentenceLength)]),
         new("make_image", ActionSafety.Personal, "Make a picture from a description with the local image model (opens Images).",
             [new("description", "string", "What the picture shows.", MaxLength: 500)]),
+        new("describe_screen", ActionSafety.Personal,
+            "Describe what is on screen with the local vision model: the focused window, an area the person points at, or the whole " +
+            "screen. The picture is taken only when they click, and never leaves the computer.",
+            [new("target", "string", "What to describe (default window).", Required: false, Choices: ["window", "area", "screen"]),
+             new("question", "string", "Optional: what to look for, for example 'what does the error say?'.", Required: false, MaxLength: 300)]),
         new("start_coding_task", ActionSafety.Personal,
             "Open Code, the coding agent, on a project folder in the home folder, with a task filled in for the person to send.",
             [new("folder", "string", "The project folder, for example ~/projects/app.", MaxLength: 200),

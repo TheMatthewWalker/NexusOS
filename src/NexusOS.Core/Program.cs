@@ -65,6 +65,9 @@ builder.Services.AddSingleton<InferenceTokenSettings>();
 builder.Services.AddSingleton<AssistantContextBuilder>();
 builder.Services.AddSingleton<CodingAgent>();
 builder.Services.AddSingleton<ImageStudio>();
+// Describe this and voice control, on this computer only (Vision.cs, Voice.cs).
+builder.Services.AddSingleton<VisionDescriber>();
+builder.Services.AddSingleton<VoiceControl>();
 // Automations in plain words: rule store, engine, parser and timer (RuleEndpoints.cs).
 builder.Services.AddRules();
 builder.Services.AddHostedService<IdleModelEvictionService>();
@@ -371,8 +374,11 @@ app.MapGet("/inference/status", async (ModelRouter router, CancellationToken ct)
     return Results.Ok(new { backend = provider.Name, model = provider.Model, available = await provider.IsAvailableAsync(ct),
                             unloadSupported = provider.SupportsUnload });
 });
-app.MapPost("/inference/unload", async (ModelRouter router, CancellationToken ct) =>
+app.MapPost("/inference/unload", async (ModelRouter router, VisionDescriber vision, VoiceControl voice, CancellationToken ct) =>
 {
+    // Game mode frees everything: the vision model and any speech work too, whatever answers the chat.
+    voice.Stop();
+    await vision.UnloadAsync(ct);
     try { await router.Current.UnloadAsync(ct); return Results.Ok(new { unloadRequested = true }); }
     catch (ProviderException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
     catch (HttpRequestException) { return Results.Problem("Local inference backend unavailable", statusCode: 502); }
@@ -391,6 +397,8 @@ app.MapNexusSearch();
 app.MapWorkspaces();
 app.MapCoding();
 app.MapImages();
+app.MapVision();
+app.MapVoice();
 app.MapNexusActions();
 app.Run();
 

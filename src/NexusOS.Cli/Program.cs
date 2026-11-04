@@ -574,7 +574,7 @@ static class BridgeApi
     private static readonly string[] Prefixes =
         ["/journal", "/fixit", "/health/report", "/search", "/rules", "/events", "/guardian/propose", "/guardian/preview",
          "/guardian/proposals", "/guardian/review", "/guardian/stage",
-         "/try/keep", "/settings/plan", "/workspaces", "/history", "/system", "/actions"];
+         "/try/keep", "/settings/plan", "/workspaces", "/history", "/system", "/vision", "/voice", "/actions"];
 
     public static bool Allowed(string method, string path) =>
         method is "GET" or "POST" or "DELETE" && path.StartsWith('/') && !path.Contains("..") &&

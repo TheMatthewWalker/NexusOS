@@ -311,6 +311,15 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 var description = Str(args, "description");
                 return pending.Add(action, args, $"Make a picture of “{NexusActions.Clean(description, 80)}”", Perform("images.make", ("prompt", description)));
             }
+            case "describe_screen":
+            {
+                if (services.GetRequiredService<VisionDescriber>().Model is null)
+                    throw new ActionRejectedException("Describing the screen needs the local vision model, which is turned off on this computer.");
+                var target = args["target"]?.GetValue<string>() ?? "window";
+                var what = target switch { "area" => "a window or area you point at", "screen" => "the whole screen", _ => "the focused window" };
+                return pending.Add(action, args, $"Take a picture of {what} and describe it with the local vision model (it stays on this computer)",
+                    Perform("describe.screen", ("target", target), ("question", args["question"]?.GetValue<string>() ?? "")));
+            }
             case "start_coding_task":
             {
                 var folder = ProjectFolder(Str(args, "folder"));

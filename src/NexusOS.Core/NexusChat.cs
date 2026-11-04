@@ -114,6 +114,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
         "get_today_summary" => "Reading today's activity",
         "get_settings" => "Looking at your settings",
         "get_system_updates" => "Looking for security updates",
+        "get_picture_usage" => "Looking at your pictures",
         _ => "Working"
     };
 
@@ -209,6 +210,8 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             }
             case "get_system_updates":
                 return await services.GetRequiredService<GuardianProposals>().UpdatesAsync(ct);
+            case "get_picture_usage":
+                return services.GetRequiredService<ImageStudio>().Usage();
             default: // get_settings
             {
                 var router = services.GetRequiredService<ModelRouter>();
@@ -310,6 +313,16 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             {
                 var description = Str(args, "description");
                 return pending.Add(action, args, $"Make a picture of “{NexusActions.Clean(description, 80)}”", Perform("images.make", ("prompt", description)));
+            }
+            case "clean_up_pictures":
+            {
+                var images = services.GetRequiredService<ImageStudio>();
+                var current = images.Settings();
+                var days = args["keep_days"]?.GetValue<int>() ?? current.KeepDays;
+                double? gb = args["keep_gb"] is { } g ? (g.GetValue<int>() == 0 ? null : g.GetValue<int>()) : current.KeepGb;
+                var changed = days != current.KeepDays || gb != current.KeepGb;
+                var limit = $"{days} days" + (gb is { } n ? $", up to {n:0.#} GB" : "");
+                return pending.Add(action, args, changed ? $"Keep pictures for {limit}, and remove older ones now" : $"Remove pictures older than {limit}");
             }
             case "start_coding_task":
             {
@@ -474,6 +487,18 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             if (requested) await Journal(JournalKinds.System, action, ct);
             return new ConfirmResult(requested ? "done" : "failed",
                 requested ? "Checking for updates. If there are any, Guardian builds and tests them, then asks for your approval." : message);
+        }
+        if (action.Action.Name == "clean_up_pictures")
+        {
+            var images = services.GetRequiredService<ImageStudio>();
+            var current = images.Settings();
+            double? gb = action.Args["keep_gb"] is { } g ? (g.GetValue<int>() == 0 ? null : g.GetValue<int>()) : current.KeepGb;
+            try { images.SaveSettings(action.Args["keep_days"]?.GetValue<int>() ?? current.KeepDays, gb); }
+            catch (Exception ex) when (ex is ImageException or IOException or UnauthorizedAccessException)
+            { return new ConfirmResult("failed", "The setting could not be saved: " + ex.Message); }
+            var result = await images.CleanupAsync(ct);
+            return new ConfirmResult("done", result.Removed == 0 ? "Nothing to remove: every picture is within the limit."
+                : $"Removed {result.Removed} picture{(result.Removed == 1 ? "" : "s")} ({result.FreedBytes / 1e6:0.#} MB).", Detail: result);
         }
         if (action.Perform is { } perform)
         {

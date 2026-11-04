@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import time
 import unittest
 
 from support import BASELINE, CHANGES, DRV, TOPLEVEL, TRIAL, BrokerFixture
@@ -211,11 +212,15 @@ class LocalBuilderTests(unittest.TestCase):
         # The broker trusts this computer's builder, as nexus-guardian-keys arranges at boot.
         self.fx.broker.trusted_keys = load_trusted_keys(self.dir / "trusted-keys", owner=os.geteuid())
 
-    def builder(self, runner, observer=None):
+    now = int(time.time())
+
+    def builder(self, runner, observer=None, free=50 * 1024 ** 3, keep_results=5):
+        self.free = free
         return LocalBuilder(self.dir, load_private_key(self.dir, owner=os.geteuid()), {self.fx.uid},
                             "path:/etc/nixos#nixosConfigurations.lab", required_units=["nexus-guardian.service"],
                             observer=observer or self.fx.observer, runner=runner, owner=os.geteuid(),
-                            start_worker=False)
+                            start_worker=False, free=lambda: self.free, clock=lambda: self.now,
+                            keep_results=keep_results)
 
     def test_builds_tests_and_signs_what_the_broker_accepts(self):
         runner = NixRunner()
@@ -286,6 +291,89 @@ class LocalBuilderTests(unittest.TestCase):
         restarted = self.builder(NixRunner())
         self.assertEqual("failed", restarted.status(self.fx.uid, {"candidateId": candidate_id})["state"])
         self.assertEqual("queued", restarted.build(self.fx.uid, {"changes": CHANGES})["job"]["state"])
+
+
+    # --- disk space and what the builder keeps ---
+
+    def test_a_build_is_refused_without_enough_free_space(self):
+        builder = self.builder(NixRunner(), free=3 * 1024 ** 3)
+        with self.assertRaisesRegex(Denied, r"Not enough free disk space to check this change: 3.0 GiB free, 10.0 GiB needed"):
+            builder.build(self.fx.uid, {"changes": CHANGES})
+        self.assertEqual({}, builder.jobs)
+
+    def test_space_gone_while_queued_fails_the_job_before_any_nix_command(self):
+        runner = NixRunner()
+        builder = self.builder(runner)
+        candidate_id = builder.build(self.fx.uid, {"changes": CHANGES})["candidate"]["candidateId"]
+        self.free = 1024 ** 3
+        builder.run_job(candidate_id)
+        job = builder.status(self.fx.uid, {"candidateId": candidate_id})
+        self.assertEqual(("failed", "fail"), (job["state"], job["checks"]["evaluate"]))
+        self.assertIn("Not enough free disk space", job["message"])
+        self.assertEqual([], runner.commands)
+
+    def _check(self, builder, enabled, option="services.printing.enable"):
+        candidate_id = builder.build(self.fx.uid, {"changes": [{"option": option, "enabled": enabled}]})["candidate"]["candidateId"]
+        builder.run_job(candidate_id)
+        return candidate_id
+
+    def test_only_the_newest_finished_results_are_kept(self):
+        builder = self.builder(NixRunner(), keep_results=2)
+        made = []
+        for option, enabled in [("services.printing.enable", True), ("services.printing.enable", False),
+                                ("services.flatpak.enable", True)]:
+            self.now += 60
+            made.append(self._check(builder, enabled, option))
+            # A real build leaves the system's out-link (a GC root) in the result folder.
+            (builder.results / made[-1] / "toplevel").symlink_to("/nix/store/" + "2" * 32 + "-x")
+            builder._prune()
+        self.assertEqual(set(made[1:]), set(builder.jobs))
+        self.assertFalse((builder.results / made[0]).exists())
+        self.assertFalse((builder.jobs_dir / f"{made[0]}.json").exists())
+        with self.assertRaises(Denied):
+            builder.status(self.fx.uid, {"candidateId": made[0]})
+        # Kept results survive a restart; beyond the newest ones they are let go then too.
+        restarted = self.builder(NixRunner(), keep_results=1)
+        self.assertEqual({made[2]}, set(restarted.jobs))
+        self.assertTrue((restarted.results / made[2] / "toplevel").is_symlink())
+
+    def test_jobs_still_waiting_are_never_pruned(self):
+        builder = self.builder(NixRunner(), keep_results=1)
+        done = self._check(builder, True)
+        self.now += 60
+        waiting = builder.build(self.fx.uid, {"changes": [{"option": "services.flatpak.enable", "enabled": True}]})["candidate"]["candidateId"]
+        builder._prune()
+        self.assertEqual({done, waiting}, set(builder.jobs))
+
+    def test_results_older_than_two_weeks_are_let_go(self):
+        builder = self.builder(NixRunner())
+        old = self._check(builder, True)
+        self.now += 15 * 24 * 3600
+        builder._prune()
+        self.assertNotIn(old, builder.jobs)
+        self.assertFalse((builder.results / old).exists())
+
+    def test_leftovers_in_the_work_directory_are_cleaned_at_start(self):
+        builder = self.builder(NixRunner())
+        kept = self._check(builder, True)
+        (builder.results / kept / "flake").mkdir()
+        (builder.results / kept / "flake" / "flake.nix").write_text("{}")
+        stray = builder.results / ("f" * 24)
+        stray.mkdir()
+        (stray / "toplevel").symlink_to("/nix/store/" + "3" * 32 + "-y")
+        (builder.jobs_dir / "half.new").write_text("{")
+        outside = Path(self.fx.dir) / "outside"
+        outside.mkdir()
+        (outside / "keep").write_text("x")
+        (builder.results / ("e" * 24)).symlink_to(outside)
+        restarted = self.builder(NixRunner())
+        self.assertIn(kept, restarted.jobs)
+        self.assertTrue((restarted.results / kept / "candidate.nix").exists())
+        self.assertFalse((restarted.results / kept / "flake").exists())
+        self.assertFalse(stray.exists())
+        self.assertFalse((restarted.jobs_dir / "half.new").exists())
+        self.assertFalse((restarted.results / ("e" * 24)).is_symlink())
+        self.assertTrue((outside / "keep").exists())     # a link is removed, never followed
 
 
 class StageServiceTests(unittest.TestCase):

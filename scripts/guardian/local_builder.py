@@ -58,7 +58,13 @@ from system_update import UpdateError
 BUILD_FILE = Path(__file__).resolve().with_name("candidate-build.nix")
 BUILDER_NAME = "this-computer"
 MAX_QUEUED = 4
+# Each checked system's result folder holds GC roots (the built system and its
+# test machine), so old results are let go: after KEEP_SECONDS, and beyond the
+# newest KEEP_RESULTS finished ones. A build is refused when the store has less
+# than MIN_FREE_BYTES free (a NixOS system and its test machine are several GB).
 KEEP_SECONDS = 14 * 24 * 3600
+KEEP_RESULTS = 5
+MIN_FREE_BYTES = system_update.MIN_FREE_BYTES
 UNIT = re.compile(r"[A-Za-z0-9@._:-]{1,128}\Z")
 NIX = ["nix", "--extra-experimental-features", "nix-command flakes"]
 FINAL = ("passed", "failed")
@@ -125,7 +131,7 @@ class LocalBuilder:
                  observer=inspect, runner=run_command, clock=time.time, owner=0, build_file=BUILD_FILE,
                  vm_timeout=1800, start_worker=True, updates_dir=system_update.UPDATES_DIR,
                  host_flake_dir=system_update.HOST_FLAKE_DIR, free=system_update.free_bytes,
-                 min_free=system_update.MIN_FREE_BYTES):
+                 min_free=MIN_FREE_BYTES, keep_results=KEEP_RESULTS):
         self.dir = Path(directory)
         self.work = self.dir / "work"
         protected_directory(self.work, owner)
@@ -146,10 +152,13 @@ class LocalBuilder:
         self.owner = owner
         self.updates_dir, self.host_flake_dir = Path(updates_dir), Path(host_flake_dir)
         self.free, self.min_free = free, min_free
+        self.keep_results = max(1, int(keep_results))
         self.lock = threading.Lock()
         self.queue = queue.Queue()
         self.jobs = {}
         self._load()
+        self._clean_work()
+        self._prune()
         if start_worker:
             threading.Thread(target=self._worker, daemon=True).start()
 
@@ -173,11 +182,41 @@ class LocalBuilder:
 
     def _forget(self, candidate_id):
         (self.jobs_dir / f"{candidate_id}.json").unlink(missing_ok=True)
-        folder = self.results / candidate_id
-        if folder.is_dir():
-            for item in folder.iterdir():
-                item.unlink()
-            folder.rmdir()
+        remove_tree(self.results / candidate_id)
+
+    def _prune(self):
+        """Let go of finished results beyond the newest keep_results (and any past KEEP_SECONDS).
+
+        Jobs still queued or running are never touched. Removing a result folder
+        removes its GC roots, so the next garbage collection frees the space."""
+        with self.lock:
+            now = self.clock()
+            finished = sorted((job for job in self.jobs.values() if job["state"] in FINAL),
+                              key=lambda job: job.get("updatedAt", 0), reverse=True)
+            for index, job in enumerate(finished):
+                if index >= self.keep_results or now - job.get("updatedAt", 0) > KEEP_SECONDS:
+                    self.jobs.pop(job["candidateId"], None)
+                    self._forget(job["candidateId"])
+
+    def _clean_work(self):
+        """Remove what an interrupted run left in the work directory: result folders
+        with no job, half-written job files, and copies of the host's flake."""
+        for path in self.jobs_dir.iterdir():
+            if path.suffix != ".json" or path.is_symlink() or not path.is_file():
+                remove_tree(path)
+        for path in self.results.iterdir():
+            if path.name not in self.jobs:
+                remove_tree(path)
+            elif path.is_dir() and not path.is_symlink():
+                remove_tree(path / "flake")
+
+    def require_space(self):
+        """Denied when the store has too little room to build and test a system."""
+        free = self.free()
+        if free < self.min_free:
+            raise Denied(f"Not enough free disk space to check this change: {system_update.gib(free)} free, "
+                         f"{system_update.gib(self.min_free)} needed. Free some space (Settings, Health shows what "
+                         "takes room), then try again.")
 
     def _save(self, job):
         job["updatedAt"] = int(self.clock())
@@ -211,6 +250,8 @@ class LocalBuilder:
         observation = self.observer()
         if observation.get("verified") is not True:
             raise Denied("Running system could not be verified")
+        if "changes" in payload:
+            self.require_space()
         update = None
         try:
             if "update" in payload:
@@ -333,6 +374,7 @@ class LocalBuilder:
     def _worker(self):
         while True:
             self.run_job(self.queue.get())
+            self._prune()
 
     def _update(self, job, **fields):
         with self.lock:
@@ -374,6 +416,13 @@ class LocalBuilder:
         observation = self.observer()
         if observation.get("generationStorePath") != candidate["baseline"]:
             return fail("evaluate", "This computer changed since the change was proposed. Propose it again.", "baseline changed")
+
+        # Space may have gone while the job waited in the queue.
+        if update is None:
+            try:
+                self.require_space()
+            except Denied as error:
+                return fail("evaluate", str(error), "not enough free space")
 
         # The copy and its lock are made here, from /etc/nixos and the root-owned
         # update directory (never from a path anyone else names), checked against the lock's hash.
@@ -427,6 +476,15 @@ class LocalBuilder:
                      message="Built and tested on this computer.")
 
 
+def remove_tree(path):
+    """Remove a file, link or folder without following links out of it."""
+    path = Path(path)
+    if path.is_symlink() or path.is_file():
+        path.unlink(missing_ok=True)
+    elif path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+
+
 def clean_before(before, options, packages):
     """Today's values from the evaluation, limited to the changed names and to booleans (or null)."""
     def pick(section, names):
@@ -452,6 +510,8 @@ def main():
     parser.add_argument("--socket", default="/run/nexus-guardian-builder/build.sock")
     parser.add_argument("--require-unit", action="append", default=[])
     parser.add_argument("--vm-timeout", type=int, default=1800)
+    parser.add_argument("--min-free-gib", type=int, default=MIN_FREE_BYTES // 1024 ** 3)
+    parser.add_argument("--keep-results", type=int, default=KEEP_RESULTS)
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error("Root UID required")
@@ -460,7 +520,8 @@ def main():
         return
     config = load_config(args.config)
     builder = LocalBuilder(args.dir, load_private_key(args.dir), resolve_uids(config["allowedUsers"]),
-                           config["hostConfig"], required_units=args.require_unit, vm_timeout=args.vm_timeout)
+                           config["hostConfig"], required_units=args.require_unit, vm_timeout=args.vm_timeout,
+                           min_free=args.min_free_gib * 1024 ** 3, keep_results=args.keep_results)
     serve(builder, args.socket, group=grp.getgrnam(config["socketGroup"]).gr_gid)
 
 

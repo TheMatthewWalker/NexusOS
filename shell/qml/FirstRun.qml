@@ -18,7 +18,7 @@ import "lib/firstrun.mjs" as F
 // Only bundle items can appear: free text picks bundles, never packages.
 // Shown once (marker ~/.config/nexusos/first-run-done) when the desktop sets
 // NEXUS_FIRST_RUN=1; reopened from Settings, About, or `nexus-shell-ipc call firstrun open`.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     property var bridge

@@ -80,7 +80,8 @@ public sealed class VoiceControl : IDisposable
             if (!info.Exists || info.LinkTarget is not null) throw new CaptureException("That recording is not in the capture folder.", 404);
             if (info.Length > MaxRecordingBytes) throw new CaptureException("The recording is too long. Hold the key for under a minute.");
             if (!IsWav(path)) throw new CaptureException("The recording is not a WAV file.");
-            if (!await _listen.WaitAsync(TimeSpan.Zero, ct)) throw new CaptureException("Still turning the last recording into text.", 429);
+            // One recording at a time; a second one waits its turn.
+            await _listen.WaitAsync(ct);
             try
             {
                 var (code, output, error) = await RunAsync(WhisperBin!,

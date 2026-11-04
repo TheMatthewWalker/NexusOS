@@ -196,8 +196,13 @@ public static class VisionEndpoints
     {
         app.MapGet("/vision/status", async (VisionDescriber vision, CancellationToken ct) => Results.Ok(await vision.StatusAsync(ct)));
         app.MapPost("/vision/describe", async (VisionDescriber.Request request, VisionDescriber vision, InferenceActivity activity,
-            CancellationToken ct) =>
+            InferenceConcurrencyGate concurrency, CancellationToken ct) =>
         {
+            // The person asked: it waits its turn behind a chat answer, as a question does.
+            using var slot = await concurrency.EnterAsync(ct);
+            if (slot is null)
+                return Results.Problem("Nexus is still busy with an earlier request; it will take this one as soon as that finishes.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
             activity.BeginRequest();
             try { return Results.Ok(await vision.DescribeAsync(request, ct)); }
             catch (CaptureException ex) { return Results.Problem(ex.Message, statusCode: ex.Status); }

@@ -55,6 +55,16 @@ in
         else if cfg.memoryGiB >= 8 then "qwen3:4b"
         else "qwen3:1.7b";
     };
+    visionModel = lib.mkOption {
+      type = lib.types.str;
+      readOnly = true;
+      description = "The local vision model for Describe this (nexusos.vision.model follows it).";
+      default =
+        if aiGpu then "qwen2.5vl:7b"
+        # About 3 GB; on the processor of a 16 GB laptop it describes a window in well under a minute.
+        else if cfg.memoryGiB >= 12 then "qwen2.5vl:3b"
+        else "moondream";
+    };
   };
 
   config = {
@@ -77,5 +87,10 @@ in
     # Pictures take about 8 GB of memory and a 7 GB download; without a GPU
     # for AI they need a computer with memory to spare.
     nexusos.imageModel.enable = lib.mkDefault (aiGpu || cfg.memoryGiB >= 16);
+
+    # Describe this: the vision model's size follows the computer; with less
+    # than 8 GB of memory it would crowd out the chat model, so it is off.
+    nexusos.vision.model = lib.mkDefault cfg.visionModel;
+    nexusos.vision.enable = lib.mkDefault (aiGpu || cfg.memoryGiB >= 8);
   };
 }

@@ -3,14 +3,21 @@ import Quickshell
 import Quickshell.Io
 
 // Settings, Accessibility (feature 6): bigger text and pointer, high
-// contrast, less motion, and the Orca screen reader. Every control in the
-// desktop is labelled for screen readers. "Describe this" (the local vision
-// model) and voice control are not here yet, and the page says so.
+// contrast, less motion, the Orca screen reader, Describe this (the local
+// vision model describes a window, an area or the screen: Describe.qml) and
+// voice control (push-to-talk and spoken replies: Voice.qml). Every control
+// in the desktop is labelled for screen readers. Each says plainly when its
+// model is still downloading or turned off.
 Column {
     id: page
     property var theme
     property var host
     readonly property var desktop: host.desktop
+    readonly property var voice: host.voice
+    readonly property var describer: host.describer
+    Component.onCompleted: { if (voice) voice.refresh(); if (describer) describer.refresh() }
+    // Settings steps aside so the picture shows what the person meant, not this page.
+    function describe(target) { page.host.visible = false; page.describer.describe(target, "", "nexus") }
     width: parent ? parent.width : 600
     spacing: 10
 
@@ -61,7 +68,36 @@ Column {
                  onToggled: { if (orca.running) orca.running = false; else orca.running = true } }
     }
     SettingRow {
-        theme: page.theme; label: "Describe this, and voice control"
-        detail: "Coming later: describing pictures and the screen with a local vision model, and controlling the desktop by voice."
+        theme: page.theme; label: "Describe this"; highlighted: page.host.highlight === "describe"
+        detail: !page.describer || !page.describer.enabled ? "Describing pictures is turned off on this computer (it needs more memory)."
+              : !page.describer.ready ? "The local vision model (" + page.describer.model + ") downloads once this computer is online."
+              : page.describer.busy ? "Describing…"
+              : "The local vision model describes a window, an area or the whole screen; the answer shows in Nexus. "
+                + "The picture is taken only when you choose, stays on this computer and is deleted. Nexus can do this too."
+        Row {
+            spacing: 8
+            Button { theme: page.theme; label: "A window or area"; enabled: !!page.describer && page.describer.ready && !page.describer.busy
+                     onClicked: page.describe("area")
+                     Accessible.name: "Describe a window or area: click a window or drag over an area" }
+            Button { theme: page.theme; label: "The whole screen"; enabled: !!page.describer && page.describer.ready && !page.describer.busy
+                     onClicked: page.describe("screen") }
+        }
+    }
+    SettingRow {
+        theme: page.theme; label: "Voice control"; highlighted: page.host.highlight === "voice"
+        detail: !page.voice ? "" : page.voice.listenDownloading ? "The speech model is still downloading."
+              : !page.voice.listenReady ? "Speech to text is not ready yet: its model downloads once this computer is online."
+              : "Hold Super+V (or the microphone in Nexus) and speak; let go to ask. The microphone is open only while you hold it, "
+                + "and a red bar shows it. Your words are turned into text on this computer."
+        Switch { theme: page.theme; name: "Voice control"; checked: !!page.voice && page.voice.pushToTalk
+                 onToggled: page.voice.setChoice("pushToTalk", !page.voice.pushToTalk) }
+    }
+    SettingRow {
+        theme: page.theme; label: "Spoken replies"; highlighted: page.host.highlight === "spoken"
+        detail: !page.voice ? "" : page.voice.speakDownloading ? "The voice is still downloading."
+              : !page.voice.speakReady ? "The voice downloads once this computer is online."
+              : "Nexus reads its answers aloud with a local voice. Super+V or Esc stops it."
+        Switch { theme: page.theme; name: "Spoken replies"; checked: !!page.voice && page.voice.spokenReplies
+                 onToggled: page.voice.setChoice("spokenReplies", !page.voice.spokenReplies) }
     }
 }

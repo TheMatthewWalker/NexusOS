@@ -132,7 +132,7 @@ PanelWindow {
     function close() {
         visible = false; chatId = -1; state_ = "idle";
         Quickshell.execDetached(["rm", "-f", shot]);
-        pictureTaken = false;
+        pictureTaken = false; pictureDescribed = false;
     }
     Connections {
         target: card.bridge
@@ -140,6 +140,28 @@ PanelWindow {
         function onDone(id, provider) { if (id === card.chatId) { card.state_ = "answer"; card.provider = provider } }
         function onFailed(id, message) { if (id === card.chatId) { card.state_ = "error"; card.error = message } }
     }
+
+    // ---- describe the picture (Describe.qml) ----
+    // With no text selected, the area's picture can be described by the local
+    // vision model, only when the person clicks "Describe the picture". Core
+    // reads and deletes the picture; it never goes to a cloud model.
+    property var describer: null
+    property bool pictureDescribed: false
+    readonly property bool canDescribe: card.pictureTaken && !!card.describer && card.describer.ready
+    function describePicture() {
+        state_ = "thinking"; answer = ""; error = "";
+        describer.describeFile(shot.split("/").pop(), "", windowTitle, "explain");
+    }
+    Connections {
+        target: card.describer
+        function onDescribed(tag, text) {
+            if (tag !== "explain") return;
+            card.pictureDescribed = true; card.pictureTaken = false;
+            card.answer = text; card.provider = "local-vision"; card.state_ = "answer";
+        }
+        function onFailed(tag, message) { if (tag === "explain") { card.state_ = "error"; card.error = message } }
+    }
+    // ---- end of describe the picture ----
 
     IpcHandler {
         target: "explain"
@@ -240,7 +262,9 @@ PanelWindow {
                 width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; font.pixelSize: 14; lineHeight: 1.3
                 color: card.state_ === "error" ? card.theme.error : card.theme.ink
                 text: card.state_ === "error" ? "Nexus could not explain this: " + card.error
-                    : "Nexus can only read text for now: describing a picture of the screen needs the vision model, which is not installed yet. " +
+                    : card.canDescribe ? "No text was selected. Nexus can describe the picture of the area with the local vision model, on this computer, " +
+                      "or explain words you select (highlight them, then press Super+? again)."
+                    : "Nexus can only read text for now:describing a picture of the screen needs the vision model, which is not installed yet. " +
                       "Select the words you want explained (highlight them), then press Super+? again."
             }
             Row {
@@ -248,6 +272,8 @@ PanelWindow {
                 visible: card.state_ !== "thinking"
                 Button { theme: card.theme; visible: card.state_ === "answer"; label: "Tell me more"
                          onClicked: { card.tellMeMore(); card.close() } }
+                Button { theme: card.theme; visible: card.state_ === "notext" && card.canDescribe; label: "Describe the picture"; primary: true
+                         onClicked: card.describePicture() }
                 Button { theme: card.theme; visible: card.state_ === "notext" && card.appName !== ""; label: "What is " + card.appName + "?"
                          onClicked: card.explainApp() }
                 Button { theme: card.theme; visible: card.state_ === "answer" && card.looksLikeError; label: "Fix it"; primary: true
@@ -259,8 +285,9 @@ PanelWindow {
                 text: (card.selected ? "Read as text: " + card.lineCount + (card.lineCount === 1 ? " line" : " lines") + " you selected"
                                      : "Read: the window title only")
                       + (card.appName ? ", from " + card.appName : card.windowTitle ? ", from “" + card.windowTitle + "”" : "") + ". "
-                      + (card.pictureTaken ? "The picture of the area is not read or sent, and is deleted when you close this. " : "No screenshot is read. ")
-                      + (card.provider ? (card.provider === "local" || card.provider === "llama-cpp" ? "Explained by the local model on this computer." : "Explained by the cloud model you turned on.") : "")
+                      + (card.pictureDescribed ? "The picture was described by the local vision model on this computer, then deleted. "
+                         : card.pictureTaken ? "The picture of the area is not read or sent, and is deleted when you close this. " : "No screenshot is read. ")
+                      + (card.provider ? (card.provider === "local" || card.provider === "llama-cpp" || card.provider === "local-vision" ?"Explained by the local model on this computer." : "Explained by the cloud model you turned on.") : "")
             }
         }
     }

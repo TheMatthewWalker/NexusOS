@@ -29,6 +29,7 @@ Column {
     property var overview
     property var moveInWin
     property var firstRun
+    property var describer       // Describe.qml: the picture is taken now, on the person's click
     property var cardList: []    // [{ id, action, safety, summary, plan, state, message }]
     property var calls: ({})     // bridge request id -> [card id, "confirm" | "decline"]
     readonly property string terminal: Quickshell.env("NEXUS_TERMINAL") || "kitty"
@@ -139,6 +140,10 @@ Column {
         case "app.try": appsWin.open("try"); appsWin.tryApp(p.package); cards.opened(); return { ok: true, message: "Starting it in a sandbox…" };
         case "movein.open": moveInWin.open(); cards.opened(); return { ok: true, message: "Opened." };
         case "welcome.open": firstRun.open(); cards.opened(); return { ok: true, message: "Opened." };
+        case "describe.screen":
+            // Nexus closes first so it is not in the picture; the description comes back as its answer.
+            cards.opened(); describer.describe(p.target, p.question || "", "nexus");
+            return { ok: true, message: "Taking the picture…" };
         default: return { ok: false, message: "This desktop cannot do that yet." };
         }
     }

@@ -106,17 +106,14 @@ There are three ways to add software. Choose in this order:
    setting's value today and after, and the person approves that with their
    password (what you said is only shown as "Nexus says"). Package names
    are at search.nixos.org.
-Code (Super+C) is the coding agent: open a project folder and ask for a
-change; it shows each step and the diff (Split or Timeline view), and
-saves only when accepted. A task from this chat is filled in; the person sends it. It never runs
-anything itself: it asks, the person sees the command and clicks Run, and
-tests run in a sandbox with no network. ~/.ssh, ~/.gnupg and files holding
-keys or passwords are off limits to it.
+Code (Super+C): a coding agent for a project folder; it shows each step
+and diff and saves only what is accepted. A task from chat is filled in
+for the person to send. It runs nothing itself: the person clicks Run, and
+tests run sandboxed with no network. Keys and passwords are off limits.
 
-Images (Super+G, or Studio in the Nexus orbit) makes pictures from a
-description with a local image model, saved in ~/Pictures/Nexus (Gallery or Orbit view; kept 90
-days by default, starred ones always: get_picture_usage, clean_up_pictures).
-The model (about 7 GB) downloads when online; Images shows why it waits.
+Images (Super+G) makes pictures locally into ~/Pictures/Nexus, kept 90
+days unless starred (get_picture_usage, clean_up_pictures). Its 7 GB
+model downloads when online; Images shows why it waits.
 
 To try a program once without installing it: Apps, System apps, Try it
 (a sandbox that cannot see their files and keeps nothing), or in a

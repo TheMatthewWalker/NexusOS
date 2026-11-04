@@ -48,12 +48,16 @@ public sealed record NexusAction(string Name, ActionSafety Safety, string Descri
         schema["type"] = p.Type == "value" ? new[] { "string", "number", "boolean" } : p.Type;
         if (p.Choices is not null) schema["enum"] = p.Choices;
         if (p.Type == "integer") { schema["minimum"] = p.Min; schema["maximum"] = p.Max; }
-        if (p.Type == "string" && p.Choices is null) schema["maxLength"] = p.MaxLength;
+        // No maxLength or pattern on the wire: they cost tokens and Validate enforces them anyway.
         return schema;
     }
 }
 
-public sealed class ActionRejectedException(string message) : Exception(message);
+// Malformed: the arguments could not be read at all (not JSON, not text), as opposed to refused.
+public sealed class ActionRejectedException(string message, bool malformed = false) : Exception(message)
+{
+    public bool Malformed { get; } = malformed;
+}
 
 public static class NexusActions
 {
@@ -64,89 +68,74 @@ public static class NexusActions
         ["volume", "night_light", "scale", "windows", "blur", "animations", "high_contrast"];
     public static readonly string[] Roles = ["files", "browser", "terminal", "settings", "studio"];
 
+    // Descriptions are kept short: they go to the model with every question
+    // that is offered the action (ActionSelection.cs), so each word costs time.
     public static readonly NexusAction[] All =
     [
         // ---- read: run at once ----
-        new("get_system_state", ActionSafety.Read,
-            "What this computer is: system, processor, memory, the AI model answering, and the date and time.", []),
-        new("get_health_report", ActionSafety.Read,
-            "A health check from safe, read-only checks: disk space, updates, network, sound, battery and problems found.", []),
-        new("diagnose_problem", ActionSafety.Read,
-            "Run Fix it's safe, read-only checks for a problem the person describes. Returns the likely cause and the fixes on offer.",
-            [new("problem", "string", "The problem in the person's words, for example 'no sound'.", MaxLength: 300)]),
-        new("search_files", ActionSafety.Read,
-            "Search the person's own files (the folders they chose for search) by words or meaning.",
+        new("get_system_state", ActionSafety.Read, "This computer: system, processor, memory, AI model, date and time.", []),
+        new("get_health_report", ActionSafety.Read, "Health check: disk, updates, network, sound, battery, problems.", []),
+        new("diagnose_problem", ActionSafety.Read, "Run Fix it's read-only checks for a problem; returns the cause and fixes.",
+            [new("problem", "string", "In the person's words, e.g. 'no sound'.", MaxLength: 300)]),
+        new("search_files", ActionSafety.Read, "Search the person's own files by words or meaning.",
             [new("query", "string", "What to look for.", MaxLength: 200),
-             new("limit", "integer", "How many results, 1 to 10.", Required: false, Min: 1, Max: 10)], Private: true),
-        new("list_installed_apps", ActionSafety.Read, "The apps installed on this computer, with the id to open each.", []),
-        new("list_automations", ActionSafety.Read, "The person's automations, and whether each is on.", []),
-        new("get_today_summary", ActionSafety.Read,
-            "What happened on this computer today, from the activity journal: changes, installs, what left the computer.", [],
+             new("limit", "integer", "How many, 1-10.", Required: false, Min: 1, Max: 10)], Private: true),
+        new("list_installed_apps", ActionSafety.Read, "Installed apps, with the id to open each.", []),
+        new("list_automations", ActionSafety.Read, "The person's automations and whether each is on.", []),
+        new("get_today_summary", ActionSafety.Read, "Today's activity journal: changes, installs, what left the computer.", [],
             Private: true),
-        new("get_settings", ActionSafety.Read,
-            "The person's current desktop settings (windows, blur, animations, scale, night light, high contrast) and the AI model in use.", []),
-        new("get_system_updates", ActionSafety.Read,
-            "Security updates for the system (kernel, Firefox, Chromium...): when Guardian last checked, and whether updates are ready to approve.", []),
+        new("get_settings", ActionSafety.Read, "Current desktop settings and the AI model in use.", []),
+        new("get_system_updates", ActionSafety.Read, "System security updates: last check, and whether any wait for approval.", []),
 
         // ---- personal: offered to the person, run on "Do it" ----
-        new("open_app", ActionSafety.Personal,
-            "Open an app: an id or name from list_installed_apps, or one of files, browser, terminal, settings, studio.",
-            [new("app", "string", "The app's id or name.", MaxLength: 100, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._+-]{0,99}")]),
-        new("open_settings", ActionSafety.Personal, "Open a page of Settings.",
+        new("open_app", ActionSafety.Personal, "Open an app by id or name, or files, browser, terminal, settings, studio.",
+            [new("app", "string", "App id or name.", MaxLength: 100, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._+-]{0,99}")]),
+        new("open_settings", ActionSafety.Personal, "Open a Settings page.",
             [new("page", "string", "The page.", Choices: SettingsPages),
-             new("item", "string", "Optional item to highlight, for example wifi, volume, nightlight, scale, windows.",
+             new("item", "string", "Item to highlight, e.g. wifi, volume, nightlight.",
                  Required: false, MaxLength: 20, Pattern: "[a-z]{1,20}")]),
         new("change_setting", ActionSafety.Personal,
-            "Change one of the person's own settings. volume: 0-100. night_light, blur, animations, high_contrast: on or off. " +
-            "scale: 1, 1.25, 1.5, 1.75 or 2. windows: floating or tiled.",
-            [new("setting", "string", "Which setting.", Choices: PersonalSettings),
-             new("value", "value", "The new value.", MaxLength: 16)]),
-        new("install_app", ActionSafety.Personal,
-            "Install a desktop app from Flathub for this person only (no password). Use the Flathub id, for example com.spotify.Client.",
-            [new("app_id", "string", "The Flathub app id.", MaxLength: 128, Pattern: FlathubId)]),
+            "Change a personal setting. volume 0-100; night_light, blur, animations, high_contrast on/off; " +
+            "scale 1, 1.25, 1.5, 1.75 or 2; windows floating/tiled.",
+            [new("setting", "string", "Which.", Choices: PersonalSettings),
+             new("value", "value", "New value.", MaxLength: 16)]),
+        new("install_app", ActionSafety.Personal, "Install a Flathub desktop app for this person (no password).",
+            [new("app_id", "string", "Flathub id, e.g. com.spotify.Client.", MaxLength: 128, Pattern: FlathubId)]),
         new("remove_app", ActionSafety.Personal, "Remove a Flathub app this person installed.",
-            [new("app_id", "string", "The Flathub app id.", MaxLength: 128, Pattern: FlathubId)]),
-        new("apt_install", ActionSafety.Personal,
-            "Install an Ubuntu package with apt in the Ubuntu container (command-line tools, Ubuntu software). Opens a terminal so the person sees it.",
-            [new("package", "string", "The apt package name, for example htop.", MaxLength: 100, Pattern: @"[a-z0-9][a-z0-9+.-]{0,99}")]),
-        new("create_automation", ActionSafety.Personal,
-            "Create an automation from one sentence, for example 'At 22:00 every day, turn on night light'.",
-            [new("sentence", "string", "The automation in one sentence.", MaxLength: RuleParser.MaxSentenceLength)]),
-        new("make_image", ActionSafety.Personal, "Make a picture from a description with the local image model (opens Images).",
-            [new("description", "string", "What the picture shows.", MaxLength: 500)]),
-        new("start_coding_task", ActionSafety.Personal,
-            "Open Code, the coding agent, on a project folder in the home folder, with a task filled in for the person to send.",
-            [new("folder", "string", "The project folder, for example ~/projects/app.", MaxLength: 200),
-             new("task", "string", "What to change, in plain words.", MaxLength: 1000)]),
-        new("open_fix_it", ActionSafety.Personal, "Open the Fix it window to check a problem and offer fixes.",
-            [new("problem", "string", "The problem in the person's words.", MaxLength: 300)]),
-        new("remember_workspace", ActionSafety.Personal,
-            "Remember the current workspace's open apps under a name, so they can be brought back later.",
-            [new("name", "string", "A short name, for example Dissertation.", MaxLength: 40, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}")]),
-        new("restore_workspace", ActionSafety.Personal, "Bring back a remembered workspace: reopen its apps on it.",
-            [new("name", "string", "The workspace's name.", MaxLength: 40, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}")]),
-        new("try_app", ActionSafety.Personal,
-            "Try a program from nixpkgs without installing it, in a sandbox that keeps nothing (nexus try).",
-            [new("package", "string", "The nixpkgs package name, for example gimp.", MaxLength: 100, Pattern: @"[A-Za-z0-9][A-Za-z0-9._+-]{0,99}")]),
-        new("open_move_in", ActionSafety.Personal, "Open Move in, to copy documents and photos from an old Windows or macOS drive.", []),
-        new("open_welcome", ActionSafety.Personal, "Open the welcome setup, which suggests apps and settings for what the person does.", []),
-        new("check_for_updates", ActionSafety.Personal,
-            "Ask Guardian to check for system security updates now (it also checks weekly). Found updates are built and tested, then shown for approval.", []),
-        new("apply_fix", ActionSafety.Personal, "Apply one personal fix that diagnose_problem offered.",
-            [new("fix_id", "string", "The fix's id from diagnose_problem.", MaxLength: 64, Pattern: @"[a-z0-9][a-z0-9._-]{0,63}")]),
+            [new("app_id", "string", "Flathub id.", MaxLength: 128, Pattern: FlathubId)]),
+        new("apt_install", ActionSafety.Personal, "Install an Ubuntu apt package in the Ubuntu container, in a visible terminal.",
+            [new("package", "string", "apt package, e.g. htop.", MaxLength: 100, Pattern: @"[a-z0-9][a-z0-9+.-]{0,99}")]),
+        new("create_automation", ActionSafety.Personal, "Create an automation from one sentence.",
+            [new("sentence", "string", "e.g. 'At 22:00 every day, turn on night light'.", MaxLength: RuleParser.MaxSentenceLength)]),
+        new("make_image", ActionSafety.Personal, "Make a picture from a description (opens Images).",
+            [new("description", "string", "What it shows.", MaxLength: 500)]),
+        new("start_coding_task", ActionSafety.Personal, "Open Code, the coding agent, on a home-folder project with a task filled in.",
+            [new("folder", "string", "e.g. ~/projects/app.", MaxLength: 200),
+             new("task", "string", "What to change.", MaxLength: 1000)]),
+        new("open_fix_it", ActionSafety.Personal, "Open Fix it to check a problem and offer fixes.",
+            [new("problem", "string", "In the person's words.", MaxLength: 300)]),
+        new("remember_workspace", ActionSafety.Personal, "Remember the current workspace's apps under a name.",
+            [new("name", "string", "Short name.", MaxLength: 40, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}")]),
+        new("restore_workspace", ActionSafety.Personal, "Bring back a remembered workspace.",
+            [new("name", "string", "Its name.", MaxLength: 40, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}")]),
+        new("try_app", ActionSafety.Personal, "Try a nixpkgs program in a sandbox that keeps nothing.",
+            [new("package", "string", "nixpkgs name, e.g. gimp.", MaxLength: 100, Pattern: @"[A-Za-z0-9][A-Za-z0-9._+-]{0,99}")]),
+        new("open_move_in", ActionSafety.Personal, "Open Move in: copy documents and photos from an old Windows or macOS drive.", []),
+        new("open_welcome", ActionSafety.Personal, "Open the welcome setup (apps and settings for what the person does).", []),
+        new("check_for_updates", ActionSafety.Personal, "Ask Guardian to check for security updates now.", []),
+        new("apply_fix", ActionSafety.Personal, "Apply a personal fix diagnose_problem offered.",
+            [new("fix_id", "string", "Fix id.", MaxLength: 64, Pattern: @"[a-z0-9][a-z0-9._-]{0,63}")]),
 
         // ---- system: a Guardian proposal, never run by Core ----
-        new("install_system_software", ActionSafety.System,
-            "Install software for every account (a NixOS package, for example htop). Goes to Guardian for the person to approve.",
-            [new("package", "string", "The nixpkgs package name.", MaxLength: 128)]),
+        new("install_system_software", ActionSafety.System, "Install a NixOS package for every account (Guardian approval).",
+            [new("package", "string", "nixpkgs name.", MaxLength: 128)]),
         new("change_system_option", ActionSafety.System,
-            "Turn a system service or option on or off. Goes to Guardian for the person to review and approve; " +
-            "explain a risky change before offering it. Options: " +
+            "Turn a system option on or off (Guardian approval). " +
             string.Join("; ", GuardianSchema.Options.OrderBy(x => x.Key, StringComparer.Ordinal)
-                .Select(x => x.Key + " (" + x.Value.Summary.TrimEnd('.') +
-                             (x.Value.AlsoSetWhenEnabled is null ? "" : ". " + x.Value.RiskNote?.TrimEnd('.')) + ")")) + ".",
+                .Select(x => x.Key.Split('.')[^2] + ": " + x.Value.Summary.TrimEnd('.'))) +
+            ". openssh is Key-only remote login: explain it first.",
             [new("option", "string", "The option.", Choices: GuardianSchema.Options.Keys.Order(StringComparer.Ordinal).ToArray()),
-             new("enabled", "boolean", "On (true) or off (false).")]),
+             new("enabled", "boolean", "On or off.")]),
     ];
 
     private const string FlathubId = @"[A-Za-z][A-Za-z0-9_-]{0,63}(\.[A-Za-z0-9_-]{1,64}){2,6}";
@@ -167,8 +156,12 @@ public static class NexusActions
             if (node is JsonValue value && value.TryGetValue<string>(out var inner))
                 node = string.IsNullOrWhiteSpace(inner) ? new JsonObject() : JsonNode.Parse(inner, documentOptions: options);
         }
-        catch (JsonException) { throw new ActionRejectedException("The arguments were not a JSON object."); }
-        if (node is not JsonObject given) throw new ActionRejectedException("The arguments were not a JSON object.");
+        // ArgumentException: text that is not valid UTF-16 (a lone surrogate) cannot be parsed at all.
+        catch (Exception ex) when (ex is JsonException or ArgumentException)
+        {
+            throw new ActionRejectedException("The arguments were not a JSON object.", malformed: true);
+        }
+        if (node is not JsonObject given) throw new ActionRejectedException("The arguments were not a JSON object.", malformed: true);
         foreach (var (key, _) in given)
             if (!action.Params.Any(p => p.Name == key))
                 throw new ActionRejectedException($"'{Clean(key, 40)}' is not an argument of {action.Name}.");
@@ -248,13 +241,27 @@ public static class NexusActions
 
 // An action waiting for the person. Perform is the shell's instruction for
 // desktop actions; Rule, FixToken and Plan hold what Core itself will use.
+// Detail is the text the action carries in full (a coding task, a picture's
+// description, a problem), shown whole on the card rather than cut short in
+// the summary; it is still the validated argument, not the model's prose.
 public sealed record PendingAction(string Id, NexusAction Action, JsonObject Args, string Summary, DateTimeOffset Expires,
-    JsonObject? Perform = null, RuleDefinition? Rule = null, string? FixToken = null, GuardianPlan? Plan = null)
+    JsonObject? Perform = null, RuleDefinition? Rule = null, string? FixToken = null, GuardianPlan? Plan = null,
+    string? Detail = null)
 {
+    // The most a card shows; longer text is cut and the card says so.
+    public const int MaxCardDetail = 1000;
+    public const int LineDetail = 80;
+
+    // One line for history, the journal and the command line.
+    public string Line => Detail is null ? Summary : $"{Summary}: “{NexusActions.Clean(Detail, LineDetail)}”";
+
     // actionId repeats id for `nexus bridge`, which tags every event with its own request id.
     public object Event() => new
     {
         type = "action", id = Id, actionId = Id, action = Action.Name, args = Args, safety = Action.SafetyName, summary = Summary,
+        detail = Detail is null ? null : Detail.Length <= MaxCardDetail ? Detail : Detail[..(MaxCardDetail - 1)] + "…",
+        detailTruncated = Detail is { Length: > MaxCardDetail },
+        detailLength = Detail?.Length ?? 0,
         plan = Plan is null ? null : new { id = Plan.Id, description = Plan.Description, changes = Plan.Changes, packages = Plan.Packages,
                                            nixPreview = Plan.NixPreview, risk = Plan.Risk, riskLevel = Plan.RiskLevel }
     };
@@ -271,19 +278,26 @@ public sealed class PendingActions(TimeProvider time)
     public static bool IsValidId(string? id) => id is { Length: 24 } && id.All(ch => ch is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     public PendingAction Add(NexusAction action, JsonObject args, string summary, JsonObject? perform = null,
-        RuleDefinition? rule = null, string? fixToken = null, GuardianPlan? plan = null)
+        RuleDefinition? rule = null, string? fixToken = null, GuardianPlan? plan = null, string? detail = null)
     {
         var now = time.GetUtcNow();
         foreach (var old in _items.Values.Where(x => x.Expires <= now)) _items.TryRemove(old.Id, out _);
         while (_items.Count >= MaxPending && _items.Values.MinBy(x => x.Expires) is { } oldest) _items.TryRemove(oldest.Id, out _);
         var item = new PendingAction(Convert.ToHexString(RandomNumberGenerator.GetBytes(12)).ToLowerInvariant(), action, args,
-            summary, now + Lifetime, perform, rule, fixToken, plan);
+            summary, now + Lifetime, perform, rule, fixToken, plan, detail);
         _items[item.Id] = item;
         return item;
     }
 
     public PendingAction? Get(string id) =>
         _items.TryGetValue(id, out var item) && item.Expires > time.GetUtcNow() ? item : null;
+
+    // Every offer still waiting, oldest first (GET /actions/pending, `nexus actions list`).
+    public IReadOnlyList<PendingAction> Waiting()
+    {
+        var now = time.GetUtcNow();
+        return _items.Values.Where(x => x.Expires > now).OrderBy(x => x.Expires).ToArray();
+    }
 
     // Removes and returns it: an action runs at most once.
     public PendingAction? Take(string id) =>

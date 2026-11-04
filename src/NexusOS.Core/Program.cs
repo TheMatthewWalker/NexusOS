@@ -179,7 +179,7 @@ app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, NexusC
     activity.BeginRequest();
     try
     {
-        var context = await assistant.BuildAsync(request.Prompt, ct, chat.ReservedChars);
+        var context = await assistant.BuildAsync(request.Prompt, ct, chat.ReservedCharsFor(request.Prompt));
         var turn = await chat.RunAsync(request.Prompt, context, WriteEvent, ct);
         await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, turn.Provider, request.Prompt, turn.ForHistory), ct);
         await WriteEvent(new { type = "done", provider = turn.Provider });

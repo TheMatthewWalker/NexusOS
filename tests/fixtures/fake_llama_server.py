@@ -2,6 +2,7 @@
 """Minimal stand-in for llama-server used by Core process-lifecycle tests."""
 import argparse
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 parser = argparse.ArgumentParser()
@@ -10,6 +11,9 @@ parser.add_argument("--host", required=True)
 parser.add_argument("--port", type=int, required=True)
 parser.add_argument("--ctx-size", type=int, required=True)
 parser.add_argument("--n-gpu-layers", type=int, required=True)
+# FAKE_LLAMA_OLD=1 stands in for a llama-server too old to know --jinja: argparse exits on it.
+if os.environ.get("FAKE_LLAMA_OLD") != "1":
+    parser.add_argument("--jinja", action="store_true")
 args = parser.parse_args()
 if args.host != "127.0.0.1":
     raise SystemExit("refusing non-loopback bind")

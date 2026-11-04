@@ -9,7 +9,8 @@ import "settings"
 // Settings (design: "Settings B · Orbital categories", approved with the AI
 // changes window). The categories orbit on the left, the chosen page fills
 // the right, and the box at the top searches every setting; if nothing
-// matches, it offers to ask Nexus instead. Opened from the orbital controls,
+// matches, or the person picks "Ask Nexus", it asks Nexus in place
+// (settings/AskBox.qml, "Settings C · Ask"). Opened from the orbital controls,
 // the top bar, the Nexus orbit, Super+I, or `nexus-shell-ipc call settings open <page>`.
 // Every page reads real state and changes it through the service that owns
 // it (PipeWire, NetworkManager, BlueZ, UPower, Hyprland). System-wide changes
@@ -20,6 +21,7 @@ FloatingWindow {
     property var bridge
     property var desktop
     property bool reduced: false
+    property var cardHost: null     // the shell's ActionCards, for "Do it" cards in the ask box
     signal askNexus(string text)
     signal fixIt(string problem)
     signal openWelcome()
@@ -133,6 +135,8 @@ FloatingWindow {
         function state(): string { return JSON.stringify({ visible: win.visible, page: win.page }) }
         // Types into the search box, as a person would (for tests and previews).
         function search(text: string): string { query.text = text; return JSON.stringify(win.search(text)) }
+        // Asks in the Settings ask box, as if typed there.
+        function ask(text: string): void { win.open(win.page, ""); askBox.show(text) }
         // Wi-Fi for tests: rows with their centres in window coordinates.
         function wifi(): string {
             const rows = win.visible && win.page === "network" && pageLoader.item ? pageLoader.item.ipcRows() : [];
@@ -189,12 +193,12 @@ FloatingWindow {
                 id: query
                 x: 42; width: parent.width - 56; anchors.verticalCenter: parent.verticalCenter
                 color: win.theme.ink; font.pixelSize: 14; clip: true
-                Text { visible: !query.text; text: "Search settings, e.g. night light"; color: win.theme.inkSecondary; font.pixelSize: 14 }
+                Text { visible: !query.text; text: "Search or ask, e.g. make text bigger"; color: win.theme.inkSecondary; font.pixelSize: 14 }
                 Keys.onEscapePressed: text = ""
                 onAccepted: {
                     const r = win.search(text);
                     if (r.length) { win.open(r[0].page, r[0].highlight); text = "" }
-                    else if (text.trim()) { win.askNexus(text.trim()); text = "" }
+                    else if (text.trim()) { askBox.show(text.trim()); text = "" }
                 }
                 Accessible.role: Accessible.EditableText
                 Accessible.name: "Search settings"
@@ -235,7 +239,7 @@ FloatingWindow {
                            text: "Ask Nexus: “" + query.text.trim() + "”"; textFormat: Text.PlainText
                            color: win.theme.focus; font.pixelSize: 13 }
                     HoverHandler { id: ah; cursorShape: Qt.PointingHandCursor }
-                    TapHandler { onTapped: { win.askNexus(query.text.trim()); query.text = "" } }
+                    TapHandler { onTapped: { askBox.show(query.text.trim()); query.text = "" } }
                     Accessible.role: Accessible.Button
                     Accessible.name: "Ask Nexus"
                 }
@@ -357,5 +361,12 @@ FloatingWindow {
                 Connections { target: win; function onVisibleChanged() { pageLoader.reload() } }
             }
         }
+    }
+
+    AskBox {
+        id: askBox
+        z: 5
+        x: 24; y: 90; width: left.width - 32; maxHeight: win.height - 114
+        theme: win.theme; bridge: win.bridge; host: win; cardHost: win.cardHost
     }
 }

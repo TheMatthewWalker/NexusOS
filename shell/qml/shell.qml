@@ -169,7 +169,7 @@ ShellRoot {
     RuleRunner { bridge: bridge; desktop: desktop; wallpaper: wallpaper; apps: apps; wifi: settings.wifi }
     Settings {
         id: settings
-        theme: root.dark; bridge: bridge; desktop: desktop; reduced: root.reduced
+        theme: root.dark; bridge: bridge; desktop: desktop; reduced: root.reduced; cardHost: actionCards
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
         onFixIt: problem => fixItWin.open(problem)
         onOpenWelcome: firstRun.open()

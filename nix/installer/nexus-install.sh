@@ -37,7 +37,7 @@ Usage: nexus-install [options]
   --yes                 do not ask for confirmation before changing the disk
   --progress-json       print one JSON object per step on standard output, for
                         the graphical installer; everything else goes to the log
-  --log FILE            the log for --progress-json (default: /tmp/nexus-install.log)
+  --log FILE            where everything is logged (default: /tmp/nexus-install.log)
   --probe-json          print the disks, what could go alongside on each and the
                         hardware scan as one JSON object; change nothing
 EOF
@@ -51,6 +51,7 @@ for arg in "$@"; do case "$arg" in --progress-json|--probe-json) exec 3>&1 1>&2;
 emit() { [ "$json" -eq 0 ] || jq -cn "$@" >&3; }
 fail() {
   printf '\nnexus-install: %s\n' "$*" >&2
+  [ -z "$log" ] || printf 'The full log is in %s\n' "$log" >&2
   if [ "$json" -eq 1 ] && [ "$reported" -eq 0 ]; then
     reported=1
     emit --arg m "$*" --arg log "$log" '{event: "error", message: $m} + (if $log == "" then {} else {log: $log} end)'
@@ -100,8 +101,23 @@ if [ "$progress" -eq 1 ]; then
   done
   [ "$assume_yes" -eq 1 ] || usage_fail "--progress-json needs --yes (it asks no questions)"
 fi
-[ -z "$log" ] || [ "$progress" -eq 1 ] || usage_fail "--log is for --progress-json"
+[ -z "$log" ] || [ "$probe" -eq 0 ] || usage_fail "--probe-json changes nothing and keeps no log"
 json=$((progress | probe))
+
+# Everything the installer prints also goes to a log, so a failure can be
+# reported in full; the installed system keeps a copy in /var/log. With
+# --progress-json only the log gets it (standard output is the JSON), and the
+# log is readable by the person, so the graphical installer can show it.
+if [ "$probe" -eq 0 ]; then
+  log="${log:-/tmp/nexus-install.log}"
+  if { : >> "$log"; } 2>/dev/null; then
+    chmod 644 "$log" 2>/dev/null || true
+    if [ "$progress" -eq 1 ]; then exec 1>>"$log" 2>&1; else exec > >(tee -a "$log") 2>&1; fi
+    echo "nexus-install started $(date -Is)" >> "$log"
+  else
+    log=""
+  fi
+fi
 
 # --- Progress ---------------------------------------------------------------
 # With --progress-json every step is one line, for example
@@ -125,19 +141,13 @@ on_exit() {
   emit --arg m "Installing stopped: \`${last_cmd:-a step}\` failed (exit $rc)." --arg log "$log" --argjson tail "$tail_lines" \
     '{event: "error", message: $m, tail: $tail} + (if $log == "" then {} else {log: $log} end)'
 }
-trap 'last_cmd=$BASH_COMMAND' ERR
+trap 'last_cmd=$BASH_COMMAND; printf "\nnexus-install stopped: \"%s\" failed (line %s).%s\n" "$BASH_COMMAND" "$LINENO" "${log:+ The full log is in $log}" >&2' ERR
 trap on_exit EXIT
 # --- end of progress
 
 [ "$(id -u)" -eq 0 ] || fail "run me as root: sudo nexus-install"
 [ -d /sys/firmware/efi ] || fail "this computer booted without UEFI. NexusOS needs UEFI: turn off legacy/CSM boot in the firmware settings and boot the installer again."
 [ -f "$source_dir/flake.nix" ] || fail "no NexusOS source in $source_dir"
-if [ "$progress" -eq 1 ]; then
-  log="${log:-/tmp/nexus-install.log}"
-  # Readable by the person, so the graphical installer can show it.
-  rm -f "$log"; install -m 644 /dev/null "$log"
-  exec 1>>"$log" 2>&1
-fi
 
 # --- Hardware ---------------------------------------------------------------
 # Found here, written to local.nix, acted on by nix/modules/hardware.nix and
@@ -611,6 +621,22 @@ if ! curl -sfI --max-time 8 https://cache.nixos.org/nix-cache-info > /dev/null 2
 fi
 # Lock first: locking inside nixos-install would change the flake mid-build.
 nix --extra-experimental-features "nix-command flakes" flake lock "path:/mnt/etc/nixos" "${offline[@]}"
+# Offline, only small files specific to this computer may need building (its
+# boot files and settings). Anything bigger means a package is missing from
+# the stick: say which, rather than spend hours trying to compile it.
+if [ "${#offline[@]}" -gt 0 ]; then
+  plan="$(nix --extra-experimental-features "nix-command flakes" build --dry-run "${offline[@]}" \
+    "path:/mnt/etc/nixos#nixosConfigurations.nexus.config.system.build.toplevel" 2>&1 || true)"
+  heavy="$(sed -n '/will be built/,/will be fetched/p' <<<"$plan" | grep -oE '/nix/store/[a-z0-9]{32}-[^ ]+\.drv' \
+    | sed -E 's|/nix/store/[a-z0-9]{32}-||; s|\.drv$||' \
+    | grep -E '^(stage0|hex0|bootstrap|gcc|binutils|glibc-2|xgcc|bash-5|python3-3|perl-5\.[0-9.]+$|rustc|cargo|llvm|clang)' | sort -u | head -20 || true)"
+  if [ -n "$heavy" ]; then
+    printf '%s\n' "$plan" >> "$log"
+    fail "this computer's system needs packages the USB stick does not carry, and there is no internet to fetch them:
+  ${heavy//$'\n'/$'\n'  }
+Connect to the internet (Wi-Fi in the system panel) and try again, or report this list."
+  fi
+fi
 if [ "$progress" -eq 1 ]; then
   # Each line to the log, and its start to the graphical installer.
   nixos-install --root /mnt --flake "path:/mnt/etc/nixos#nexus" --no-root-passwd --no-channel-copy "${offline[@]}" 2>&1 |
@@ -636,6 +662,7 @@ fi
 step password "Setting your password"
 printf '%s:%s\n' "$user" "$password" | nixos-enter --root /mnt -c 'chpasswd'
 
+[ -z "$log" ] || { mkdir -p /mnt/var/log && cp "$log" /mnt/var/log/nexus-install.log; }
 sync
 say "NexusOS is installed"
 echo "Remove the installer USB stick, then restart the computer."

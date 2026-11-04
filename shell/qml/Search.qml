@@ -10,7 +10,7 @@ import "settings"
 // outside the chosen folders is searched; Settings, Search chooses them.
 // File contents are untrusted text, so snippets are plain text. Opened by
 // Super+S, or `nexus-shell-ipc call search query "<words>"`.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     property var bridge

@@ -253,7 +253,7 @@ public sealed class ActivityJournalTests
     {
         using var factory = new CoreApiFactory();
         var client = factory.Authorized();
-        for (var i = 0; i < 60; i++) await Post(client, new { kind = "device", summary = "use " + i });
+        for (var i = 0; i < CoreLimits.JournalPerMinute; i++) await Post(client, new { kind = "device", summary = "use " + i });
         using var limited = await client.PostAsJsonAsync("/journal", new { kind = "device", summary = "over" });
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
     }

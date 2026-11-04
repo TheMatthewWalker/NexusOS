@@ -644,7 +644,7 @@ class ShellBuild(unittest.TestCase):
         self.assertNotIn("cloud", describe.lower().replace("never goes to a cloud model", ""))
         self.assertEqual(describe.count("capture.running = true"), 1)
         self.assertIn('case "describe.screen":', cards)
-        self.assertIn("describer.describeFile(", explain)
+        self.assertIn("describer.describeRegion(", explain)
         self.assertIn("---- describe the picture (Describe.qml) ----", explain)
         # Settings, Accessibility: real switches; the old placeholder is gone.
         self.assertNotIn("Coming later", page)

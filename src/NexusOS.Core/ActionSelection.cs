@@ -55,6 +55,8 @@ public static class ActionSelection
             "get_today_summary"),
         G("updates", @"updates?|updat\w*|upgrad\w*|security|patch\w*|kernel|up to date|outdated",
             "get_system_updates", "check_for_updates"),
+        G("describe", @"describe|screen|screenshot|what(?:'s| is) (?:on|in) (?:my|the|this)|see|look(?:ing)? at|read (?:this|it)|blind|vision",
+            "describe_screen"),
         G("images", @"images?|pictures?|photos?|clean ?up|draw\w*|paint\w*|illustrat\w*|art|artwork|logo|wallpaper|generate|sketch",
             "make_image", "get_picture_usage", "clean_up_pictures"),
         G("code", @"code|coding|coder|programm\w*|bugs?|debug\w*|projects?|repo\w*|functions?|scripts?|refactor\w*|tests?|" +

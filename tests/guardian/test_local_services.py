@@ -190,14 +190,14 @@ class BuilderKeyTests(unittest.TestCase):
 class NixRunner:
     """Answers the builder's nix commands like a working machine (or fails one step)."""
 
-    def __init__(self, fail_step=None):
-        self.commands, self.fail_step = [], fail_step
+    def __init__(self, fail_step=None, error="error: simulated"):
+        self.commands, self.fail_step, self.error = [], fail_step, error
 
     def __call__(self, command, timeout):
         self.commands.append(command)
         step = "evaluate" if "eval" in command else "vm-test" if command[-1] == VM_DRV + "^out" else "build"
         if step == self.fail_step:
-            return 1, "", "error: simulated"
+            return 1, "", self.error
         evaluated = {"toplevel": DRV, "vmTest": VM_DRV,
                      "before": {"options": {"services.printing.enable": False, "imports": True}, "packages": {}}}
         return 0, {"evaluate": json.dumps(evaluated), "build": TOPLEVEL + "\n", "vm-test": ""}[step], ""
@@ -264,6 +264,15 @@ class LocalBuilderTests(unittest.TestCase):
                 job = builder.status(self.fx.uid, {"candidateId": candidate_id})
                 self.assertEqual(("failed", "fail", None), (job["state"], job["checks"][step], job["attestation"]))
                 self.assertNotIn("simulated", job["message"])  # Details go to the journal, not the desktop.
+
+    def test_virtualisation_turned_off_is_said_plainly(self):
+        builder = self.builder(NixRunner(fail_step="vm-test", error="qemu-system-x86_64: Could not access KVM kernel module: No such file or directory"))
+        candidate_id = builder.build(self.fx.uid, {"changes": CHANGES})["candidate"]["candidateId"]
+        builder.run_job(candidate_id)
+        job = builder.status(self.fx.uid, {"candidateId": candidate_id})
+        self.assertEqual("failed", job["state"])
+        self.assertIn("virtualisation", job["message"])
+        self.assertIn("BIOS/UEFI", job["message"])
 
     def test_callers_and_requests_are_checked(self):
         builder = self.builder(NixRunner())

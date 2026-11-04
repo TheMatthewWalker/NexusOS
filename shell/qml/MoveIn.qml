@@ -16,7 +16,7 @@ import "settings"
 // NUL-separated output, checked names, no symlinks or special files, and
 // destinations only from a fixed list under the home folder (see the script).
 // Opened from Welcome, Settings, About, or `nexus-shell-ipc call movein open`.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     title: "Bring my stuff over"

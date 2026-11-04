@@ -290,7 +290,7 @@ static string ErrorMessage(string raw, HttpResponseMessage response)
     return response.StatusCode switch
     {
         System.Net.HttpStatusCode.Unauthorized => "Authentication failed; restart Core or check the api-token file.",
-        System.Net.HttpStatusCode.TooManyRequests => "Nexus Core is busy or rate limiting requests; try again shortly.",
+        System.Net.HttpStatusCode.TooManyRequests => "Nexus Core stopped an unusually fast run of requests (more than a person makes); it accepts them again within a minute.",
         _ => "Request failed."
     };
 }

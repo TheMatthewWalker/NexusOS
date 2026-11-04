@@ -72,6 +72,10 @@ CHECK_REQUEST = "update-requested"
 CHECK_INTERVAL = 600
 
 
+# How qemu and Nix say the machine cannot run virtual machines.
+KVM_MISSING = re.compile(r"(Could not access KVM kernel module|/dev/kvm|failed to initialize kvm|required system or feature not available.*kvm)", re.I)
+
+
 def run_command(command, timeout):
     """Run one nix command; return (exit status, stdout, last lines of stderr)."""
     try:
@@ -460,6 +464,10 @@ class LocalBuilder:
         status, _, err = self.runner(NIX + ["build", "--out-link", str(folder / "vm-test"), vm_drv + "^out"],
                                      self.vm_timeout + 4 * 3600)
         if status != 0:
+            if KVM_MISSING.search(err or ""):
+                return fail("vm-test", "Guardian tests each change in a virtual machine, and this computer's virtualisation "
+                            "(Intel VT-x or AMD-V) is turned off. Turn it on in the firmware (BIOS/UEFI) settings, "
+                            "then try again. Nothing on this computer was changed.", err)
             return fail("vm-test", "The changed system did not start up in a test machine. Nothing on this computer was changed.", err)
 
         statement = {"attestationVersion": 1, "candidateId": candidate_id, "baseline": candidate["baseline"],

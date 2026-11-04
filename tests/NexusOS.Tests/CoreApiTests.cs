@@ -159,20 +159,52 @@ public sealed class CoreApiTests
     }
 
     [Fact]
-    public async Task SecondConcurrentChatIsRejectedAndSlotIsReleased()
+    public async Task SecondChatWaitsForTheFirstInsteadOfBeingTurnedAway()
     {
         var gate = new GatedHandler();
         using var factory = new CoreApiFactory { AiHandler = gate };
         var client = factory.Authorized();
         var first = client.PostAsJsonAsync("/chat", new { prompt = "first" });
         await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        using (var second = await client.PostAsJsonAsync("/chat", new { prompt = "second" }))
-            Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);
+        var second = client.PostAsJsonAsync("/chat", new { prompt = "second" });
+        await Task.Delay(300);
+        Assert.False(second.IsCompleted, "the second question must wait for its turn");
         gate.Release.SetResult();
         using (var done = await first) Assert.Equal(HttpStatusCode.OK, done.StatusCode);
-        factory.AiHandler = StubHandler.Json(HttpStatusCode.OK, """{"response":"after","message":{"content":"after"}}""");
-        using var third = await client.PostAsJsonAsync("/chat", new { prompt = "third" });
-        Assert.Equal(HttpStatusCode.OK, third.StatusCode);
+        using (var waited = await second.WaitAsync(TimeSpan.FromSeconds(10))) Assert.Equal(HttpStatusCode.OK, waited.StatusCode);
+    }
+
+    [Fact]
+    public async Task ModelSuggestionsGiveWayToAQuestion()
+    {
+        var gate = new GatedHandler();
+        using var factory = new CoreApiFactory { AiHandler = gate };
+        var client = factory.Authorized();
+        // The shell's background suggestion takes the model first...
+        var suggestion = client.PostAsJsonAsync("/suggest/model", new { prompt = "edit my photos" });
+        await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        // ...then the person asks: the suggestion stops and falls back to the rules, and the question runs.
+        factory.AiHandler = StubHandler.Json(HttpStatusCode.OK, """{"response":"answer","message":{"content":"answer"}}""");
+        using var question = await client.PostAsJsonAsync("/chat", new { prompt = "hello" }).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(HttpStatusCode.OK, question.StatusCode);
+        using var suggested = await suggestion.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(HttpStatusCode.OK, suggested.StatusCode);
+        Assert.True(await gate.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+    }
+
+    [Fact]
+    public async Task ModelSuggestionsUseTheRulesWhileTheModelIsBusy()
+    {
+        var gate = new GatedHandler();
+        using var factory = new CoreApiFactory { AiHandler = gate };
+        var client = factory.Authorized();
+        var first = client.PostAsJsonAsync("/chat", new { prompt = "first" });
+        await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using (var suggested = await client.PostAsJsonAsync("/suggest/model", new { prompt = "edit my photos" }))
+            Assert.Equal(HttpStatusCode.OK, suggested.StatusCode);
+        gate.Release.SetResult();
+        using var done = await first;
+        Assert.Equal(HttpStatusCode.OK, done.StatusCode);
     }
 
     [Fact]
@@ -196,17 +228,19 @@ public sealed class CoreApiTests
     }
 
     [Fact]
-    public async Task ChatIsRateLimitedAfterTwentyRequestsPerMinute()
+    public async Task OrdinaryUseNeverMeetsTheRateLimit()
     {
+        // Opening Nexus asks for suggestions, then the question; a busy minute
+        // of that is far below the limit, which only stops a runaway loop.
+        Assert.True(CoreLimits.AiPerMinute >= 200);
+        Assert.True(CoreLimits.JournalPerMinute >= 1000);
         using var factory = new CoreApiFactory(("NEXUS_HISTORY_LIMIT", "0"));
         var client = factory.Authorized();
-        for (var i = 0; i < 20; i++)
+        for (var i = 0; i < 40; i++)
         {
             using var ok = await client.PostAsJsonAsync("/chat", new { prompt = "p" + i });
             Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         }
-        using var limited = await client.PostAsJsonAsync("/chat", new { prompt = "over" });
-        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
     }
 
     [Theory]

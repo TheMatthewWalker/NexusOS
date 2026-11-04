@@ -14,7 +14,7 @@ import "settings"
 // Every page reads real state and changes it through the service that owns
 // it (PipeWire, NetworkManager, BlueZ, UPower, Hyprland). System-wide changes
 // go through Guardian, never from here.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     property var bridge
@@ -36,7 +36,10 @@ FloatingWindow {
     Timer { id: unhighlight; interval: 2600; onTriggered: win.highlight = "" }
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
 
-    readonly property var pages: [
+    // The live installer shows only some pages (live.qml: Network); empty means all.
+    property var only: []
+    readonly property var pages: only.length ? allPages.filter(p => only.includes(p.id)) : allPages
+    readonly property var allPages: [
         { id: "network", label: "Network", colour: "#86A8FF", icon: "network" },
         { id: "bluetooth", label: "Bluetooth", colour: "#86A8FF", icon: "bluetooth" },
         { id: "sound", label: "Sound", colour: "#9C8FFF", icon: "sound" },
@@ -99,7 +102,7 @@ FloatingWindow {
             const hay = (label + " " + keys).toLowerCase();
             const score = words.filter(w => hay.includes(w)).length;
             return { page: p, highlight: h, label: label, score: score };
-        }).filter(r => r.score > 0).sort((a, b) => b.score - a.score).slice(0, 6);
+        }).filter(r => r.score > 0 && pages.some(p => p.id === r.page)).sort((a, b) => b.score - a.score).slice(0, 6);
     }
 
     function open(pageId, highlightId) {

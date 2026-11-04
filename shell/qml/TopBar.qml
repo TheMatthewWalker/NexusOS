@@ -14,6 +14,7 @@ PanelWindow {
     property var theme
     property var settings
     property var guardian: null      // Guardian.qml: a system change waiting, under way, or needing a restart
+    property bool live: false        // the installer's live session (live.qml): no Nexus, no apps
     signal openNexus()
     signal openApps()
 
@@ -51,6 +52,7 @@ PanelWindow {
             spacing: 10
             // The Nexus orb.
             Rectangle {
+                visible: !bar.live
                 width: 24; height: 24; radius: 12; anchors.verticalCenter: parent.verticalCenter
                 gradient: Gradient {
                     GradientStop { position: 0; color: "#FFE3B8" }
@@ -65,6 +67,7 @@ PanelWindow {
             }
             // All apps.
             Rectangle {
+                visible: !bar.live
                 width: 28; height: 26; radius: 8; anchors.verticalCenter: parent.verticalCenter
                 color: appsHover.hovered ? Qt.rgba(0.49, 0.42, 1.0, 0.2) : "transparent"
                 Image { anchors.centerIn: parent; width: 16; height: 16; sourceSize: Qt.size(32, 32); source: "icons/apps.svg" }

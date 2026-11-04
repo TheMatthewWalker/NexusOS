@@ -405,6 +405,18 @@ in
     services.upower.enable = lib.mkDefault true;
     # Bring my stuff over: old drives are opened read-only with udisksctl, and copied with rsync.
     services.udisks2.enable = lib.mkDefault true;
+    # Mac drives: HFS+ through the kernel's own hfsplus; APFS through the
+    # linux-apfs-rw module, which is read-only unless mounted with
+    # "readwrite", an option udisks is not allowed to pass (apfs_allow below).
+    # Not apfs-fuse: it reads the raw disk, which needs root, and udisks and
+    # polkit cannot hand that to a person. Move in picks the volume with vol=N
+    # (the data volume holds /Users) and maps the files to the person (uid, gid).
+    boot.supportedFilesystems.apfs = lib.mkDefault true;
+    environment.etc."udisks2/mount_options.conf".text = ''
+      [defaults]
+      apfs_defaults=ro,uid=$UID,gid=$GID
+      apfs_allow=ro,uid=$UID,gid=$GID,vol
+    '';
     # Settings, Power: the power mode.
     services.power-profiles-daemon.enable = lib.mkDefault true;
     # Settings, Display: brightness for people in the video group, without root.

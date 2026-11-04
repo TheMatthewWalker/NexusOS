@@ -167,6 +167,15 @@ NexusWindow {
             listInstalled.running = true;
         }
     }
+    // Move in's "Get these apps": [{ id, name, was, same }] from Core's fixed list; shown, never installed without a click.
+    property var suggested: []
+    function suggest(list) {
+        suggested = (list || []).filter(a => a && /^[A-Za-z][A-Za-z0-9_-]{0,63}(\.[A-Za-z0-9_-]{1,64}){2,6}$/.test(a.id)).slice(0, 40)
+            .map(a => ({ id: a.id, name: String(a.name || a.id).slice(0, 80),
+                         summary: a.same ? "On your old computer too" : "Instead of " + String(a.was || "").slice(0, 80) }));
+        query.text = "";
+        open("get");
+    }
     function report(op, id, name) {
         if (!bridge || !bridge.online) return;
         const i = changeInfo, o = changeOpts;
@@ -179,7 +188,7 @@ NexusWindow {
         if (o.undoes) body.undoes = o.undoes;
         bridge.api("POST", "/apps/changes", body);
     }
-    function nameOf(id) { const r = results.concat(featured).find(x => x.id === id); return r ? r.name : (sheet && sheet.id === id && sheet.name) || changeOpts.name || id }
+    function nameOf(id) { const r = results.concat(suggested, featured).find(x => x.id === id); return r ? r.name : (sheet && sheet.id === id && sheet.name) || changeOpts.name || id }
     // opts (from an Undo): { scope, origin, branch, commit, undoes, name }.
     function install(id, opts) {
         if (busy || !idPattern.test(id)) return;
@@ -454,10 +463,11 @@ NexusWindow {
             width: storeList.width; bottomPadding: 10; wrapMode: Text.Wrap
             text: !win.flathub ? "Flathub is not available yet: it is added once this computer has been online."
                 : query.text.trim() ? "From Flathub. Apps install for you only, with no password."
+                : win.suggested.length ? "Get these apps: matched to the programs on your old computer (Move in). Nothing installs until you press Install."
                 : "Popular on Flathub. Search above for anything else. Apps install for you only, with no password."
             color: win.theme.inkSecondary; font.pixelSize: 13
         }
-        model: query.text.trim() ? win.results : win.featured
+        model: query.text.trim() ? win.results : win.suggested.length ? win.suggested : win.featured
         delegate: SettingRow {
             required property var modelData
             readonly property bool installed: win.installedIds.includes(modelData.id)

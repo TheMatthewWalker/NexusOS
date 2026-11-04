@@ -66,7 +66,7 @@ public static class ActionSelection
             "remember_workspace", "restore_workspace"),
         G("moving", @"move in|moving|migrat\w*|old (?:drive|disk|computer|laptop|pc|mac)|windows|mac ?os|macbook|transfer\w*|" +
                     @"copy|bring (?:over|across)|welcome|set ?up|get started|getting started|new here|first time",
-            "open_move_in", "open_welcome"),
+            "open_move_in", "open_welcome", "get_move_in_report", "copy_old_files", "import_old_bookmarks", "show_old_apps"),
         G("system", @"system|everyone|every (?:account|user)|all (?:users|accounts)|services?|ssh|remote|printers?|printing|print|" +
                     @"cups|flatpak|networkmanager|drivers?|guardian|server",
             "install_system_software", "change_system_option"),

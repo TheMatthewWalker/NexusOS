@@ -213,7 +213,7 @@ ShellRoot {
     Overview { id: overview; theme: root.dark; bridge: bridge; apps: apps; reduced: root.reduced }
     FirstRun { id: firstRun; theme: root.dark; bridge: bridge; desktop: desktop; onMoveIn: moveInWin.open()
                onProposeSystem: plan => guardianWin.openPlan(plan, "user") }
-    MoveIn { id: moveInWin; theme: root.dark }
+    MoveIn { id: moveInWin; theme: root.dark; bridge: bridge; onGetApps: list => appsWin.suggest(list) }
     Explain { id: explainCard; theme: root.dark; bridge: bridge; describer: describer; onFixIt: problem => fixItWin.open(problem)
               onTellMeMore: { root.open(); input.text = "Tell me more about that."; root.ask(input.text) } }
     Code { id: codeWin; theme: root.dark; bridge: bridge; onSwitchToImages: imagesWin.open() }

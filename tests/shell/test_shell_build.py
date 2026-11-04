@@ -415,8 +415,26 @@ class ShellBuild(unittest.TestCase):
         mi = (self.out / "MoveIn.qml").read_text()
         shell = (self.out / "shell.qml").read_text()
         nix = (ROOT / "nix/modules/desktop.nix").read_text()
-        self.assertIn('"udisksctl", "mount", "--no-user-interaction", "-b", path, "-o", "ro"', mi)
+        # Always read-only (ext2/3/4 with noload too); a drive inside the computer asks for a password through polkit.
+        self.assertIn('mountOptions = /^ext[234]$/.test(d.fstype) ? "ro,noload" : "ro";', mi)
+        self.assertIn('const opts = mountOptions + (apfsVol >= 0 ? ",vol=" + apfsVol : "");', mi)
+        self.assertIn('["udisksctl", "mount"].concat(withPassword ? [] : ["--no-user-interaction"]).concat(["-b", source, "-o", opts])', mi)
+        self.assertEqual(len(re.findall(r'mountOptions = ', mi)), 1)
+        self.assertNotIn('"rw', mi)
+        self.assertIn("if (!d.removable) {", mi)
+        self.assertIn('d.fstype === "bitlocker"', mi)
+        # APFS read-only: udisks may never pass the module's "readwrite" option.
+        self.assertIn("boot.supportedFilesystems.apfs", nix)
+        allow = re.search(r"apfs_allow=(\S+)", nix).group(1).split(",")
+        self.assertNotIn("readwrite", allow)
+        self.assertIn("ro", re.search(r"apfs_defaults=(\S+)", nix).group(1).split(","))
         self.assertIn('"lsblk", "-J"', mi)
+        # Bookmarks and apps through Core; apps only listed in Apps.
+        self.assertIn('bridge.api("POST", "/movein/look"', mi)
+        self.assertIn("onGetApps: list => appsWin.suggest(list)", shell)
+        cards = (self.out / "ActionCards.qml").read_text()
+        self.assertIn('case "apps.suggest": appsWin.suggest(p.apps || [])', cards)
+        self.assertIn('case "movein.copy":', cards)
         helper = (self.out / "lib/movein.sh").read_text()
         self.assertIn("rsync -r -t --ignore-existing", helper)
         for text in [mi, helper]:

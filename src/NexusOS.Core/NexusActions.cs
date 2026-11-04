@@ -90,6 +90,9 @@ public static class NexusActions
             [new("app_id", "string", "Flathub id.", MaxLength: 128, Pattern: FlathubId)]),
         new("get_system_updates", ActionSafety.Read, "System security updates: last check, and whether any wait for approval.", []),
         new("get_picture_usage", ActionSafety.Read, "Room taken by pictures in ~/Pictures/Nexus, how long they are kept, what a clean-up would remove.", []),
+        new("get_move_in_report", ActionSafety.Read,
+            "What Move in found on the old drive: folders and sizes, bookmarks per person, its programs matched to apps here.", [],
+            Private: true),
 
         // ---- personal: offered to the person, run on "Do it" ----
         new("open_app", ActionSafety.Personal, "Open an app by id or name, or files, browser, terminal, settings, studio.",
@@ -135,7 +138,12 @@ public static class NexusActions
             [new("name", "string", "", MaxLength: 40, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}")]),
         new("try_app", ActionSafety.Personal, "Try a nixpkgs program in a sandbox that keeps nothing.",
             [new("package", "string", "nixpkgs name, e.g. gimp.", MaxLength: 100, Pattern: @"[A-Za-z0-9][A-Za-z0-9._+-]{0,99}")]),
-        new("open_move_in", ActionSafety.Personal, "Open Move in: copy documents and photos from an old Windows or macOS drive.", []),
+        new("open_move_in", ActionSafety.Personal, "Open Move in: bring files, bookmarks and apps over from an old Windows, Mac or Linux drive.", []),
+        new("copy_old_files", ActionSafety.Personal, "Copy the folders ticked in Move in into the home folder (never replaces files).", []),
+        new("import_old_bookmarks", ActionSafety.Personal, "Save one person's bookmarks from the old drive as a file to import into Firefox.",
+            [new("user", "string", "Whose, from get_move_in_report; omit if only one.", Required: false,
+                 MaxLength: 100, Pattern: @"[^/.][^/]{0,99}")]),
+        new("show_old_apps", ActionSafety.Personal, "Show apps matched to the old computer's programs in Apps, to install with a click.", []),
         new("open_welcome", ActionSafety.Personal, "Open the welcome setup (apps and settings for what the person does).", []),
         new("check_for_updates", ActionSafety.Personal, "Ask Guardian to check for security updates now.", []),
         new("apply_fix", ActionSafety.Personal, "Apply a personal fix diagnose_problem offered.",

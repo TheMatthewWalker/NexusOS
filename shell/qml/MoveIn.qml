@@ -10,8 +10,24 @@ import "settings"
 // Pictures, Music, Videos or Movies, Desktop, Downloads), shows their sizes,
 // and copies the ticked folders into the home folder with rsync: files are
 // copied, never moved, and nothing already in the home folder is overwritten
-// (--ignore-existing). Everything stays on this computer. Browser bookmarks
-// and app equivalents are coming later, and the window says so.
+// (--ignore-existing). Everything stays on this computer.
+// Drives:
+//  - a drive inside the computer (not removable) needs an administrator:
+//    the window says why first, then udisks asks through the shell's polkit
+//    agent. It is still opened read-only (ext2/3/4 also with noload, so not
+//    even the journal is replayed). Nothing is ever opened read-write;
+//  - Mac drives: HFS+ with the kernel's hfsplus, APFS with the apfs kernel
+//    module (desktop.nix). An APFS container holds several volumes; they are
+//    tried in turn (vol=0, 1, ...) until one has people's folders, which is
+//    the data volume (/Users/<name>);
+//  - encrypted drives (BitLocker, FileVault, LUKS) are said plainly and not
+//    opened: FileVault shows as a Mac system volume with no readable data
+//    volume.
+// Once the folders are found, Core (POST /movein/look, MoveIn.cs) finds each
+// person's browser bookmarks (saved as a file for Firefox's own import, which
+// adds and never replaces) and the old programs, matched to Flathub apps that
+// Apps lists under "Get these apps"; nothing installs without a click.
+// Nexus sees the same report (get_move_in_report) and offers the same steps.
 // The drive is not trusted: lib/movein.sh does the looking and copying, with
 // NUL-separated output, checked names, no symlinks or special files, and
 // destinations only from a fixed list under the home folder (see the script).
@@ -19,6 +35,9 @@ import "settings"
 NexusWindow {
     id: win
     property var theme
+    property var bridge
+    // The matched apps, for Apps' "Get these apps" list.
+    signal getApps(var apps)
     title: "Bring my stuff over"
     visible: false
     implicitWidth: 1160; implicitHeight: 740
@@ -47,6 +66,17 @@ NexusWindow {
     property var copying: null
     property real copiedBytes: 0
     property real currentPct: 0
+    property var privateFolders: []        // [{ user, folder }] this account cannot read
+    property int apfsVol: -1               // the APFS volume being tried, or -1
+    property bool apfsSawMac: false        // a Mac system volume opened, but no people's folders yet
+    property string mountOptions: "ro"
+    // From Core: bookmarks [{ user, browser, count }], apps [{ was, id, name, same, already }], notes.
+    property var bookmarks: []
+    property var apps: []
+    property var notes: []
+    property int lookId: -1
+    property int saveId: -1
+    property string bookmarkNote: ""
 
     function open() {
         if (visible) Quickshell.execDetached([hyprctl, "dispatch", "focuswindow", "title:^(Bring my stuff over)$"]);
@@ -74,7 +104,8 @@ NexusWindow {
                     path: dev.path, size: Number(dev.size) || 0, fstype: fs, mounts: mounts,
                     name: dev.label || dev.partlabel || (parent && parent.model ? parent.model.trim() : "") || dev.name,
                     removable: !!(dev.rm || dev.hotplug || (parent && (parent.rm || parent.hotplug))),
-                    guess: fs === "ntfs" ? "Windows" : fs === "apfs" || fs === "hfsplus" ? "Mac" : fs === "crypto_luks" ? "Locked" : ""
+                    guess: fs === "ntfs" ? "Windows" : fs === "apfs" || fs === "hfsplus" ? "Mac"
+                         : fs === "crypto_luks" || fs === "bitlocker" ? "Locked" : /^ext[234]$/.test(fs) ? "Linux" : ""
                 });
             }
             for (const c of dev.children || []) walk(c, dev);
@@ -84,19 +115,64 @@ NexusWindow {
     }
     function choose(path) {
         if (busy()) return false;
-        found = []; os = ""; root = ""; status = "";
+        found = []; os = ""; root = ""; status = ""; privateFolders = []; bookmarks = []; apps = []; notes = []; bookmarkNote = "";
+        apfsVol = -1; apfsSawMac = false;
         const d = drives.find(x => x.path === path);
         if (d) {
             source = path; sourceKind = "drive";
+            if (d.fstype === "bitlocker") {
+                status = "This drive is encrypted with BitLocker, so NexusOS cannot read it. On the old Windows computer, turn BitLocker off " +
+                         "(or copy your files to a USB drive), then try again.";
+                phase = "pick"; return false;
+            }
             if (d.fstype === "crypto_luks") { status = "This drive is locked (encrypted). Unlock it in Disks first, then choose it again."; phase = "pick"; return false }
             if (d.mounts.length) { root = d.mounts[0]; weMounted = false; scan(); return true }
-            phase = "mounting"; status = "Opening the drive read-only…";
-            mount.command = ["udisksctl", "mount", "--no-user-interaction", "-b", path, "-o", "ro"];
-            mount.running = true;
+            // ext2/3/4: noload, so even the journal is not replayed. APFS: one volume at a time.
+            mountOptions = /^ext[234]$/.test(d.fstype) ? "ro,noload" : "ro";
+            if (d.fstype === "apfs") apfsVol = 0;
+            if (!d.removable) {
+                phase = "admin";
+                status = "This drive is inside this computer, so opening it needs an administrator's password: drives inside a computer " +
+                         "can belong to other people or to the system. Nexus opens it read-only, so nothing on it can change.";
+                return true;
+            }
+            mountDrive(false);
             return true;
         }
         if (path.startsWith("/")) { source = path; sourceKind = "folder"; root = path; weMounted = false; scan(); return true }
         return false;
+    }
+    // udisks mounts it read-only; with interactive, polkit asks for the password through the shell's agent.
+    property bool interactive: false
+    function mountDrive(withPassword) {
+        if (sourceKind !== "drive" || !["admin", "pick", "mounting", "scanning", "ready"].includes(phase)) return false;
+        interactive = withPassword;
+        phase = "mounting";
+        status = apfsVol > 0 ? "Looking at the next part of the Mac drive…" : withPassword ? "Waiting for the administrator's password…" : "Opening the drive read-only…";
+        const opts = mountOptions + (apfsVol >= 0 ? ",vol=" + apfsVol : "");
+        mount.command = ["udisksctl", "mount"].concat(withPassword ? [] : ["--no-user-interaction"]).concat(["-b", source, "-o", opts]);
+        mount.running = true;
+        return true;
+    }
+    function openWithPassword() { return phase === "admin" && mountDrive(true) }
+    // APFS: this volume had nothing to copy; close it and try the next one.
+    function nextVolume() {
+        if (os === "Mac") apfsSawMac = true;
+        apfsVol += 1;
+        unmounter.command = ["udisksctl", "unmount", "--no-user-interaction", "-b", source];
+        unmounter.running = true;
+    }
+    Process {
+        id: unmounter
+        onExited: { win.weMounted = false; win.root = ""; if (win.apfsVol >= 0 && win.apfsVol < 8) win.mountDrive(win.interactive); else win.apfsDone("") }
+    }
+    // No more volumes to try: say what that means.
+    function apfsDone(err) {
+        apfsVol = -1; phase = "pick"; found = [];
+        status = apfsSawMac
+            ? "This Mac drive's personal files are encrypted (FileVault is on), so NexusOS cannot read them. On the Mac, turn FileVault off " +
+              "(System Settings, Privacy & Security), or copy your files to a USB drive, then try again."
+            : "This Mac drive could not be opened" + (err ? ": " + err : "") + ". If FileVault was on, the drive is encrypted and NexusOS cannot read it.";
     }
     function scan() {
         phase = "scanning"; status = "Looking in the usual places and measuring folders…";
@@ -138,6 +214,8 @@ NexusWindow {
         if (sourceKind === "drive" && weMounted && !busy()) {
             Quickshell.execDetached(["udisksctl", "unmount", "--no-user-interaction", "-b", source]);
             weMounted = false; status = "The old drive is closed. You can unplug it.";
+            bookmarks = []; apps = []; notes = [];
+            if (bridge && bridge.online) bridge.api("DELETE", "/movein", {});
         }
     }
 
@@ -162,28 +240,85 @@ NexusWindow {
             if (code === 0 && m) { win.root = m[1]; win.weMounted = true; win.refresh(); win.scan(); return }
             win.phase = "pick";
             const err = (mountErr.text || mountOut.text).trim().split("\n").pop() || "udisksctl stopped (" + code + ")";
-            win.status = /NotAuthorized|not authorized/i.test(err)
-                ? "This drive needs an administrator to open it (it is inside this computer). Ask the computer's owner, or copy from a USB drive or a backup folder instead."
-                : /apfs/i.test(err) || win.drives.some(d => d.path === win.source && d.fstype === "apfs")
-                ? "This is a Mac drive (APFS), which NexusOS cannot open yet. Copy the files to a USB drive from the Mac, or use a backup folder."
-                : "The drive could not be opened: " + err;
+            if (/NotAuthorized|not authorized|dismissed/i.test(err)) {
+                win.apfsVol = -1;
+                win.status = "Opening this drive needs an administrator's password, and it was not given. Choose the drive again to retry, " +
+                             "or copy from a USB drive or a backup folder instead.";
+            } else if (win.apfsVol >= 0) win.apfsDone(win.apfsVol === 0 ? err : "");
+            else win.status = "The drive could not be opened: " + err;
         }
     }
     Process {
         id: scanner
         stdout: StdioCollector {
             onStreamFinished: {
-                const items = [];
+                const items = [], hidden = [];
+                let unreadable = false;
                 for (const rec of text.split("\0")) {
                     const f = rec.split("\t");
-                    if (f[0] === "os" && f.length === 2) { win.os = f[1] === "Mac" ? "Mac" : "Windows"; continue }
+                    if (f[0] === "unreadable" && f.length === 1) { unreadable = true; continue }
+                    if (f[0] === "os" && f.length === 2) { win.os = ["Mac", "Linux"].includes(f[1]) ? f[1] : "Windows"; continue }
+                    if (f[0] === "private" && f.length === 3 && win.validUser(f[1]) && win.folderNames.includes(f[2])) { hidden.push({ user: f[1], folder: f[2] }); continue }
                     if (f[0] !== "item" || f.length !== 4 || !win.validUser(f[1]) || !win.folderNames.includes(f[2])) continue;
                     items.push({ user: f[1], folder: f[2], bytes: Number(f[3]) || 0, on: f[2] !== "Downloads" });
                 }
+                // APFS: a volume with nothing to copy is the system volume (or Preboot, Recovery...): try the next one.
+                if (win.apfsVol >= 0 && win.weMounted && items.length === 0 && hidden.length === 0) {
+                    if (unreadable) win.apfsSawMac = true;
+                    win.phase = "mounting";
+                    win.nextVolume();
+                    return;
+                }
+                win.apfsVol = -1;
                 win.found = items;
+                win.privateFolders = hidden;
                 win.phase = "ready";
-                win.status = items.length ? "" : "No Documents, Pictures, Music, Videos or Desktop folders were found there.";
+                win.status = unreadable ? "This drive opened, but its files cannot be read. If it is encrypted (FileVault or BitLocker), NexusOS cannot read it."
+                    : items.length ? "" : hidden.length ? "" : "No Documents, Pictures, Music, Videos or Desktop folders were found there.";
+                win.look();
             }
+        }
+    }
+    // Core looks for bookmarks and old programs where the helper found the folders.
+    function look() {
+        if (!bridge || !bridge.online || !root) return;
+        lookId = bridge.api("POST", "/movein/look", { root: root, os: os,
+            folders: found.map(f => ({ user: f.user, folder: f.folder, bytes: f.bytes, on: f.on })) });
+    }
+    function saveBookmarks(user) {
+        if (!bridge || !bridge.online) { bookmarkNote = "Nexus Core is not running, so bookmarks cannot be saved now."; return false }
+        bookmarkNote = "Saving bookmarks…";
+        saveId = bridge.api("POST", "/movein/bookmarks", { user: user });
+        return true;
+    }
+    readonly property var appsToGet: apps.filter(a => a.id)
+    function showApps() { if (appsToGet.length) getApps(appsToGet.map(a => ({ id: a.id, name: a.name, was: a.was, same: a.same }))); return appsToGet.length > 0 }
+    // Bookmark counts per person, for the window: [{ user, count, browsers }].
+    readonly property var bookmarkPeople: {
+        const by = {};
+        for (const b of bookmarks) { const p = by[b.user] || (by[b.user] = { user: b.user, count: 0, browsers: [] }); p.count += b.count; p.browsers.push(b.browser) }
+        return Object.values(by);
+    }
+    Connections {
+        target: win.bridge
+        ignoreUnknownSignals: true
+        function onResult(id, type, data) {
+            if (id === win.lookId) {
+                win.lookId = -1;
+                if (data.error) { win.notes = [String(data.error)]; return }
+                win.bookmarks = (data.bookmarks || []).filter(b => win.validUser(b.user) && typeof b.count === "number");
+                win.apps = (data.apps || []).slice(0, 60);
+                win.notes = (data.notes || []).slice(0, 6).map(String);
+            } else if (id === win.saveId) {
+                win.saveId = -1;
+                win.bookmarkNote = data.error ? String(data.error)
+                    : "Saved " + data.count + " bookmarks to " + data.shown + ". To add them in Firefox: Bookmarks, Manage bookmarks, " +
+                      "Import and Backup, Import Bookmarks from HTML. They arrive in a folder of their own; nothing is replaced.";
+            }
+        }
+        function onFailed(id, message) {
+            if (id === win.lookId) { win.lookId = -1; win.notes = ["Bookmarks and apps could not be looked at: " + message] }
+            if (id === win.saveId) { win.saveId = -1; win.bookmarkNote = "Saving did not work: " + message }
         }
     }
     Process {
@@ -220,8 +355,14 @@ NexusWindow {
             return JSON.stringify({ visible: win.visible, phase: win.phase, status: win.status, source: win.source, root: win.root, os: win.os,
                                     drives: win.drives.map(d => ({ path: d.path, name: d.name, fstype: d.fstype, size: d.size, mounted: d.mounts.length > 0 })),
                                     found: win.found.map(f => ({ user: f.user, folder: f.folder, bytes: f.bytes, on: f.on, to: win.destination(f) })),
-                                    selectedBytes: win.selectedBytes, freeBytes: win.freeBytes })
+                                    selectedBytes: win.selectedBytes, freeBytes: win.freeBytes,
+                                    privateFolders: win.privateFolders, bookmarks: win.bookmarks, apps: win.apps, notes: win.notes,
+                                    bookmarkNote: win.bookmarkNote })
         }
+        // A drive inside the computer: go on to the administrator's password prompt.
+        function openWithPassword(): bool { return win.openWithPassword() }
+        function saveBookmarks(user: string): bool { return win.saveBookmarks(user) }
+        function getApps(): bool { return win.showApps() }
     }
 
     // ---- the window ----
@@ -268,7 +409,7 @@ NexusWindow {
                     Text { width: parent.width; elide: Text.ElideRight; color: win.theme.inkSecondary; font.pixelSize: 12
                            text: [win.gb(modelData.size), modelData.guess, modelData.fstype.toUpperCase(), modelData.removable ? "removable" : ""].filter(x => x).join(" · ") }
                     Text { visible: on && win.root !== ""; color: "#7FE0B0"; font.pixelSize: 12
-                           text: win.weMounted || modelData.mounts.length ? "Opened read-only" : "" }
+                           text: win.weMounted ? "Opened read-only" : modelData.mounts.length ? "Already open" : "" }
                 }
                 HoverHandler { id: driveHover; cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: win.choose(modelData.path) }
@@ -387,18 +528,69 @@ NexusWindow {
                     }
                 }
             }
-            // Coming later, said plainly.
-            Rectangle {
-                visible: win.found.length > 0
-                width: parent.width; height: laterCol.implicitHeight + 28; radius: 14; color: "#0E1630"; border.color: "#1F2C55"
-                Column {
-                    id: laterCol
-                    x: 16; y: 14; width: parent.width - 32; spacing: 6
-                    Text { text: "Browser bookmarks and passwords · Apps"; color: win.theme.ink; font.pixelSize: 15; font.weight: 500 }
-                    Text {
-                        width: parent.width; wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 12
-                        text: "Coming later. For now, export bookmarks from your old browser to a file and import them in Firefox; " +
-                              "for apps, Apps lists what NexusOS has (for example LibreOffice for Microsoft Office)."
+            // Folders macOS or Linux kept private to the old account.
+            Text {
+                visible: win.privateFolders.length > 0
+                width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; color: win.theme.inkSecondary; font.pixelSize: 12
+                text: "Private to the old computer's account, so they cannot be read here: " +
+                      win.privateFolders.map(f => f.folder + (f.user ? " (" + f.user + ")" : "")).join(", ") +
+                      ". On the old computer, copy them to a USB drive or a backup folder."
+            }
+            // Browser bookmarks and apps, found by Core.
+            Grid {
+                visible: win.root !== "" && (win.bookmarks.length > 0 || win.apps.length > 0 || win.notes.length > 0)
+                width: parent.width; columns: 2; spacing: 12
+                Rectangle {
+                    width: (foundCol.width - 12) / 2; height: marksCol.implicitHeight + 28; radius: 14; color: "#0E1630"; border.color: "#1F2C55"
+                    Column {
+                        id: marksCol
+                        x: 16; y: 14; width: parent.width - 32; spacing: 8
+                        Text { text: "Browser bookmarks"; color: win.theme.ink; font.pixelSize: 15; font.weight: 500 }
+                        Text { visible: win.bookmarkPeople.length === 0; text: "None found"; color: win.theme.muted; font.pixelSize: 12 }
+                        Repeater {
+                            model: win.bookmarkPeople
+                            delegate: Item {
+                                required property var modelData
+                                width: marksCol.width; height: 34
+                                Text { anchors.verticalCenter: parent.verticalCenter; width: parent.width - saveBtn.width - 10; elide: Text.ElideRight
+                                       textFormat: Text.PlainText; color: win.theme.ink; font.pixelSize: 13
+                                       text: modelData.count + " from " + modelData.browsers.join(", ") + (win.bookmarkPeople.length > 1 ? " · " + modelData.user : "") }
+                                Button { id: saveBtn; theme: win.theme; anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                                         label: "Save for Firefox"; enabled: win.saveId < 0; onClicked: win.saveBookmarks(modelData.user) }
+                            }
+                        }
+                        Text {
+                            width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; color: win.theme.inkSecondary; font.pixelSize: 12
+                            text: win.bookmarkNote || "Only bookmarks: passwords, cookies and history stay on the old drive."
+                        }
+                        Text {
+                            visible: win.notes.length > 0
+                            width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; color: win.theme.inkSecondary; font.pixelSize: 12
+                            text: win.notes.join(" ")
+                        }
+                    }
+                }
+                Rectangle {
+                    width: (foundCol.width - 12) / 2; height: appsCol.implicitHeight + 28; radius: 14; color: "#0E1630"; border.color: "#1F2C55"
+                    Column {
+                        id: appsCol
+                        x: 16; y: 14; width: parent.width - 32; spacing: 6
+                        Text { text: "Apps from the old computer"; color: win.theme.ink; font.pixelSize: 15; font.weight: 500 }
+                        Text { visible: win.apps.length === 0; text: "No programs Nexus knows were found"; color: win.theme.muted; font.pixelSize: 12 }
+                        Repeater {
+                            model: win.apps.slice(0, 8)
+                            delegate: Text {
+                                required property var modelData
+                                width: appsCol.width; elide: Text.ElideRight; textFormat: Text.PlainText; color: win.theme.ink; font.pixelSize: 13
+                                text: modelData.already ? modelData.was + ": " + modelData.already + " is already here"
+                                    : modelData.same ? modelData.name : modelData.was + " → " + modelData.name
+                            }
+                        }
+                        Text { visible: win.apps.length > 8; text: "and " + (win.apps.length - 8) + " more"; color: win.theme.inkSecondary; font.pixelSize: 12 }
+                        Button { theme: win.theme; visible: win.appsToGet.length > 0; label: "Get these apps (" + win.appsToGet.length + ")"
+                                 onClicked: { win.showApps() } }
+                        Text { width: parent.width; wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 12
+                               text: "They open in Apps; nothing installs until you press Install." }
                     }
                 }
             }
@@ -436,6 +628,7 @@ NexusWindow {
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
             spacing: 10
             Button { theme: win.theme; visible: win.phase === "copying"; label: "Stop"; onClicked: win.cancel() }
+            Button { theme: win.theme; primary: true; visible: win.phase === "admin"; label: "Open it (asks for the password)"; onClicked: win.openWithPassword() }
             Button { theme: win.theme; visible: win.weMounted && !win.busy(); label: "Close the old drive"; onClicked: win.unmount() }
             Button { theme: win.theme; visible: win.phase === "done"; label: "Open home folder"; onClicked: Quickshell.execDetached(["xdg-open", win.home]) }
             Button {

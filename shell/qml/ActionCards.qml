@@ -168,6 +168,9 @@ Column {
             return overview.restore(p.name) ? { ok: true, message: "Bringing it back…" } : { ok: false, message: overview.message || "No workspace by that name." };
         case "app.try": appsWin.open("try"); appsWin.tryApp(p.package); cards.opened(); return { ok: true, message: "Starting it in a sandbox…" };
         case "movein.open": moveInWin.open(); cards.opened(); return { ok: true, message: "Opened." };
+        case "movein.copy": moveInWin.open(); cards.opened();
+            return moveInWin.copy() ? { ok: true, message: "Copying in Move in…" } : { ok: false, message: "Move in could not start copying: " + (moveInWin.status || "nothing is ticked.") };
+        case "apps.suggest": appsWin.suggest(p.apps || []); cards.opened(); return { ok: true, message: "Listed in Apps. Nothing installs until you press Install." };
         case "welcome.open": firstRun.open(); cards.opened(); return { ok: true, message: "Opened." };
         case "describe.screen":
             // Nexus closes first so it is not in the picture; the description comes back as its answer.

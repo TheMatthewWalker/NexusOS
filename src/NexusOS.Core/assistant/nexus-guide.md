@@ -76,9 +76,9 @@ Settings: ..."): answer in a line and offer open_settings or change_setting.
 - Sound: volume and microphone. Display: brightness, night light.
   Desktop: floating or tiled windows, motion and blur.
 - About: Welcome setup (suggests apps and settings for studying, gaming,
-  office, coding or creative work) and Bring files from Windows or macOS
-  (opens the old drive read-only and copies Documents, Pictures, Music,
-  Videos and Desktop into the home folder; bookmarks and apps come later).
+  office, coding or creative work) and Move in (opens an old Windows, Mac or
+  Linux drive read-only, copies its folders, saves bookmarks for Firefox,
+  matches old programs to apps; get_move_in_report says what it found).
 - Privacy and AI: which model answers, whether a cloud model may be used
   (off by default), and clearing conversation history.
 - Accessibility: text size, contrast, screen reader, Describe this (a local

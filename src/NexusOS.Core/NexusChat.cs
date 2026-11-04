@@ -179,6 +179,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
         "get_system_updates" => "Looking for security updates",
         "get_picture_usage" => "Looking at your pictures",
         "get_app_details" => "Looking the app up on Flathub",
+        "get_move_in_report" => "Looking at the old drive",
         _ => "Working"
     };
 
@@ -285,6 +286,13 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 return services.GetRequiredService<ImageStudio>().Usage();
             case "get_app_details":
                 return await services.GetRequiredService<FlathubDetails>().GetAsync(Str(args, "app_id"), ct);
+            case "get_move_in_report":
+            {
+                if (services.GetRequiredService<MoveInService>().Current is not { } report)
+                    return new { opened = false, hint = "No old drive is open. Offer open_move_in so the person can choose it." };
+                await Read("Nexus looked at what Move in found on the old drive", "movein", ct);
+                return MoveInEndpoints.View(report);
+            }
             default: // get_settings
             {
                 var router = services.GetRequiredService<ModelRouter>();
@@ -450,6 +458,38 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             }
             case "open_move_in":
                 return pending.Add(action, args, "Open Move in, to bring files over from an old drive", Perform("movein.open"));
+            case "copy_old_files":
+            {
+                var ticked = MoveInReport().Folders.Where(f => f.On).ToArray();
+                if (ticked.Length == 0) throw new ActionRejectedException("No folders are ticked in Move in. Offer open_move_in.");
+                var names = string.Join(", ", ticked.Select(f => f.Folder).Distinct().Take(7));
+                var gb = ticked.Sum(f => f.Bytes) / 1e9;
+                return pending.Add(action, args,
+                    $"Copy {names} ({gb.ToString(gb >= 10 ? "0" : "0.0", CultureInfo.InvariantCulture)} GB) from the old drive into your home folder",
+                    Perform("movein.copy"));
+            }
+            case "import_old_bookmarks":
+            {
+                var report = MoveInReport();
+                var users = report.Bookmarks.Select(b => b.User).Distinct().ToArray();
+                var who = args["user"]?.GetValue<string>() ?? (users.Length == 1 ? users[0] : throw new ActionRejectedException(users.Length == 0
+                    ? "No bookmarks were found on the old drive." : "Say whose bookmarks: " + string.Join(", ", users) + "."));
+                var found = report.Bookmarks.Where(b => b.User == who).ToArray();
+                if (found.Length == 0) throw new ActionRejectedException("No bookmarks were found for that person.");
+                args["user"] = who;
+                return pending.Add(action, args,
+                    $"Save {found.Sum(b => b.Count)} bookmarks from {NexusActions.Clean(who, 40)}'s {string.Join(" and ", found.Select(b => b.Browser))} as a file for Firefox");
+            }
+            case "show_old_apps":
+            {
+                var get = MoveInReport().ToGet.ToArray();
+                if (get.Length == 0) throw new ActionRejectedException("None of the old computer's programs matched an app to get.");
+                var list = new JsonArray(get.Select(a => (JsonNode)new JsonObject
+                    { ["id"] = a.AppId, ["name"] = a.Name, ["was"] = a.Was, ["same"] = a.Same }).ToArray());
+                return pending.Add(action, args,
+                    $"Show {get.Length} apps for your old programs in Apps ({string.Join(", ", get.Take(4).Select(a => a.Name))}{(get.Length > 4 ? "…" : "")}); nothing installs until you choose",
+                    Perform("apps.suggest", ("apps", list)));
+            }
             case "open_welcome":
                 return pending.Add(action, args, "Open the welcome setup", Perform("welcome.open"));
             case "check_for_updates":
@@ -578,6 +618,9 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
 
     private static string Str(JsonObject args, string key) => args[key]!.GetValue<string>();
 
+    private MoveInReport MoveInReport() => services.GetRequiredService<MoveInService>().Current
+        ?? throw new ActionRejectedException("No old drive is open in Move in. Offer open_move_in first.");
+
     // ---- the person said "Do it" ----
     public async Task<ConfirmResult> ConfirmAsync(PendingAction action, CancellationToken ct)
     {
@@ -601,6 +644,18 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             var cleaned = await images.CleanupAsync(ct);
             return new ConfirmResult("done", cleaned.Removed == 0 ? "Nothing to remove: every picture is within the limit."
                 : $"Removed {cleaned.Removed} picture{(cleaned.Removed == 1 ? "" : "s")} ({cleaned.FreedBytes / 1e6:0.#} MB).", Detail: cleaned);
+        }
+        if (action.Action.Name == "import_old_bookmarks")
+        {
+            var movein = services.GetRequiredService<MoveInService>();
+            try
+            {
+                var saved = await movein.SaveBookmarksAsync(Str(action.Args, "user"), ct);
+                return new ConfirmResult("done", $"Saved {saved.Count} bookmarks to {movein.Display(saved.Path)}. To add them in Firefox: " +
+                    "Bookmarks, Manage bookmarks, Import and Backup, Import Bookmarks from HTML. They arrive in a folder of their own; nothing is replaced.",
+                    Detail: new { path = saved.Path, count = saved.Count });
+            }
+            catch (MoveInException ex) { return new ConfirmResult("failed", ex.Message); }
         }
         if (action.Perform is { } perform)
         {

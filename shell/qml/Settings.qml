@@ -236,6 +236,7 @@ NexusWindow {
                 }
                 // Nothing matched, or it reads like a question: Nexus can answer it.
                 Rectangle {
+                    visible: !!win.bridge       // not in the live installer, which has no Nexus
                     width: resultColumn.width; height: 38; radius: 9
                     color: ah.hovered ? Qt.rgba(0.49, 0.42, 1.0, 0.2) : "transparent"
                     Text { x: 12; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 24; elide: Text.ElideRight

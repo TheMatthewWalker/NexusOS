@@ -39,7 +39,7 @@ class ShellBuild(unittest.TestCase):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
                      "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "Images.qml", "ActionCards.qml", "Guardian.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
                      "Search.qml", "Overview.qml", "FirstRun.qml", "Explain.qml", "MoveIn.qml", "lib/movein.sh", "lib/firstrun.mjs", "lib/bundles.mjs",
-                     *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About", "Search"]],
+                     *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About", "Search"]], "settings/AskBox.qml",
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
 
@@ -215,8 +215,9 @@ class ShellBuild(unittest.TestCase):
         code = (self.out / "Code.qml").read_text()
         # The agent's test request is a card; the one place a run starts is the Run button.
         self.assertEqual(code.count('bridge.send("code-run"'), 1)
-        self.assertEqual(code.count("win.runTests()"), 1)
-        self.assertIn('label: "Run"; enabled: !win.working && win.sandbox', code)
+        self.assertEqual(code.count("win.runTests()") + code.count("rc.w.runTests()"), 1)
+        self.assertIn('label: "Run"; enabled: !rc.w.working && rc.w.sandbox', code)
+        self.assertEqual(code.count("rc.w.runTests()"), 1)
         self.assertIn("if (ev.run) win.proposal = ev.run;", code)
         # A task from Nexus's chat is filled in, not sent (audit: "Code auto-sends the task").
         self.assertIn("prompt.text = win.pendingTask", code)
@@ -224,6 +225,65 @@ class ShellBuild(unittest.TestCase):
         self.assertNotIn("win.ask(win.pendingTask", code)
         cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
         self.assertIn('/runs/{Uri.EscapeDataString(Arg("run"))}/confirm', cli)
+
+    def test_code_timeline_is_a_second_view_of_the_same_session(self):
+        """Code B: Split or Timeline, remembered per person; one message box, one Run card, the same actions."""
+        code = (self.out / "Code.qml").read_text()
+        self.assertIn('path: win.configDir + "/code.json"', code)
+        self.assertIn('options: [{ value: "split", label: "Split" }, { value: "timeline", label: "Timeline" }]', code)
+        self.assertIn("function view(name: string): void { win.setView(name) }", code)
+        # Both views place the same components, reading win's properties; nothing is copied.
+        self.assertEqual(code.count("RunCard { w: win; width: parent.width }"), 2)
+        self.assertEqual(code.count("TestOutput { w: win; width: parent.width }"), 2)
+        self.assertEqual(code.count("ViewToggle {"), 2)
+        self.assertIn("delegate: DiffLine { required property var modelData; line: modelData", code)
+        self.assertIn("parent: win.timeline ? timelineInput : chatPane", code)
+        self.assertEqual(code.count("id: prompt"), 1)
+        timeline = code.split("id: lineArea")[1]
+        self.assertIn("model: win.conversation", timeline)
+        self.assertIn("model: win.files", timeline)
+        self.assertIn('win.act("code-accept", { files: [card.modelData.path] })', timeline)
+        self.assertIn('win.act("code-reject")', timeline)
+        # Still one place a test run starts, and one request to Core for it.
+        self.assertEqual(code.count('bridge.send("code-run"'), 1)
+
+    def test_images_orbit_shows_the_gallerys_pictures_with_the_same_actions(self):
+        """Images B: Gallery or Orbit, remembered per person; both show win.shown and call the same functions."""
+        images = (self.out / "Images.qml").read_text()
+        self.assertIn('path: win.configDir + "/images.json"', images)
+        self.assertIn('options: [{ value: "gallery", label: "Gallery" }, { value: "orbit", label: "Orbit" }]', images)
+        self.assertIn("function view(name: string): void { win.setView(name) }", images)
+        gallery, orbit = images.split("id: results")[1].split("id: orbitView")
+        self.assertIn("readonly property var shown: win.shown", gallery)
+        self.assertIn("model: win.shown", orbit)
+        for fn in ["win.openImage(win.selected)", "win.moreLike(win.selected)", "win.again(win.selected)",
+                   "win.remove(win.selected)", "win.showFolder(win.selected)", "win.remix(win.selected, modelData.words)",
+                   "win.useAsWallpaper(win.selected.path)"]:
+            self.assertIn(fn, gallery, fn)
+            self.assertIn(fn, orbit, fn)
+        self.assertEqual(images.count('bridge.send("images-delete"'), 1)
+        self.assertEqual(images.count('bridge.send("images-generate"'), 1)
+
+    def test_settings_ask_uses_nexus_chat_and_action_cards(self):
+        """Settings C: the ask box goes through Core's chat and /actions (ActionCards), never its own model call."""
+        ask = (self.out / "settings/AskBox.qml").read_text()
+        settings = (self.out / "Settings.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        live = (self.out / "live.qml").read_text()
+        self.assertIn('chatId = bridge.chat("From Settings: " + q)', ask)
+        self.assertEqual(ask.count("bridge.send("), 0)
+        self.assertEqual(ask.count("bridge.api("), 0)
+        self.assertIn("ActionCards {", ask)
+        self.assertIn("const m = host.search(q);", ask)           # Settings' own index lights the page at once
+        self.assertIn('if (ev.action === "open_settings" && a.page)', ask)
+        self.assertIn('ev.action === "change_setting"', ask)
+        self.assertIn("if (!bridge) return;", ask)                 # the live installer has no Nexus
+        self.assertIn("textFormat: Text.PlainText", ask)
+        self.assertIn("AskBox {", settings)
+        self.assertIn("askBox.show(text.trim())", settings)
+        self.assertIn("function ask(text: string): void", settings)
+        self.assertIn("cardHost: actionCards", shell)
+        self.assertNotIn("cardHost", live)
 
     def test_apps_installs_per_person_without_a_password(self):
         apps = (self.out / "Apps.qml").read_text()

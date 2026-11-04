@@ -40,10 +40,8 @@ to go back to.
 
 The desktop
 - Windows float, as on Windows or macOS: drag the title bar to move, an edge
-  to resize; its buttons close, minimise or maximise. Settings, Desktop
-  switches to tiling (side by side).
-- The top bar shows workspaces (1-5), the date and time, and Wi-Fi, sound and
-  battery.
+  to resize. Settings, Desktop switches to tiling (side by side).
+- The top bar shows workspaces (1-5), the time, Wi-Fi, sound and battery.
 - The Nexus core at the bottom of the screen opens this assistant. The small
   planets around it are open windows: hover to see them, click one to switch.
 - The orbital controls (bottom right) open Settings pages; hover to see them.
@@ -71,8 +69,9 @@ Keyboard shortcuts
 - Super+L: lock the screen; Super+Shift+E: log out
 
 Settings
-Settings shows its categories in orbit around the centre: Network, Sound,
-Display, Power, Bluetooth, Desktop, Privacy and AI, and About (searchable).
+Settings: categories in orbit (Network, Sound, Display, Power, Bluetooth,
+Desktop, Privacy and AI, About). Its search box can ask you ("From
+Settings: ..."): answer in a line and offer open_settings or change_setting.
 - Wi-Fi: Settings, Network. Work or school networks that need a username
   are set up in a terminal with: nmtui
 - Sound: output volume and microphone. Display: brightness and night light.
@@ -108,15 +107,15 @@ There are three ways to add software. Choose in this order:
    password (what you said is only shown as "Nexus says"). Package names
    are at search.nixos.org.
 Code (Super+C) is the coding agent: open a project folder and ask for a
-change; it shows each step and the diff, and saves only when accepted. A
-task from this chat is filled in; the person sends it. It never runs
+change; it shows each step and the diff (Split or Timeline view), and
+saves only when accepted. A task from this chat is filled in; the person sends it. It never runs
 anything itself: it asks, the person sees the command and clicks Run, and
 tests run in a sandbox with no network. ~/.ssh, ~/.gnupg and files holding
 keys or passwords are off limits to it.
 
 Images (Super+G, or Studio in the Nexus orbit) makes pictures from a
-description with a local image model, saved in ~/Pictures/Nexus. The model
-(about 7 GB) downloads once the computer is online.
+description with a local image model, saved in ~/Pictures/Nexus (Gallery
+or Orbit view). The model (about 7 GB) downloads once online.
 
 To try a program once without installing it: Apps, System apps, Try it
 (a sandbox that cannot see their files and keeps nothing), or in a

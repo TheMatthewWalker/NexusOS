@@ -254,6 +254,7 @@ NexusWindow {
         x: parent.width - width - 20; y: results.y; width: 280; height: results.height
         radius: 16; color: win.theme.glass; border.color: win.theme.glassBorder
         Column {
+            id: inspectorColumn
             visible: !!win.selected
             x: 18; y: 18; width: parent.width - 36; spacing: 10
             Text { width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight; textFormat: Text.PlainText
@@ -296,6 +297,8 @@ NexusWindow {
         }
         Text {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 18 }
+            // Hidden when the actions above reach down to it (a short window).
+            visible: !inspectorColumn.visible || inspectorColumn.y + inspectorColumn.height + 8 < y
             wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 12; lineHeight: 1.4
             text: "Images stay in ~/Pictures/Nexus until you delete them. Nothing is uploaded."
         }

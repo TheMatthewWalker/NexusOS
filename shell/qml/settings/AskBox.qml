@@ -31,6 +31,7 @@ Rectangle {
         animations: ["desktop", "animations"], high_contrast: ["accessibility", "contrast"] })
 
     function show(text) {
+        if (!bridge) return;    // the live installer's Settings has no Nexus
         shown = true;
         askField.text = text || "";
         askField.forceActiveFocus();

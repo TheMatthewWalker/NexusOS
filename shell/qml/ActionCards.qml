@@ -15,6 +15,11 @@ import "settings"
 //    Flathub, apt in a terminal the person can see, Images, Code, Fix it;
 //  - system actions: "Review the change". The shell asks for the Guardian
 //    dialog; without one, the plan is sent to Guardian, which decides.
+// The text an action carries (a coding task, a picture's description) is
+// shown whole, wrapped and scrolling, up to Core's limit (it says if cut).
+// When a card's action is done (or fails), finished() lets the chat ask Nexus
+// for one short follow-up. Desktop actions confirmed from a terminal
+// (`nexus actions confirm`) are collected from Core and done here too.
 Column {
     id: cards
     property var theme
@@ -29,7 +34,8 @@ Column {
     property var overview
     property var moveInWin
     property var firstRun
-    property var cardList: []    // [{ id, action, safety, summary, plan, state, message }]
+    property var describer       // Describe.qml: the picture is taken now, on the person's click
+    property var cardList: []    // [{ id, action, safety, summary, detail, plan, state, message }]
     property var calls: ({})     // bridge request id -> [card id, "confirm" | "decline"]
     readonly property string terminal: Quickshell.env("NEXUS_TERMINAL") || "kitty"
     // An app or a window: the shell closes Nexus so it can be seen.
@@ -38,6 +44,10 @@ Column {
     // A system change to review; returns true if a Guardian dialog took it.
     signal review(var card)
     property bool reviewTaken: false
+    // The action ran (ok) or failed; message is what the desktop or Core said.
+    signal finished(string cardId, bool ok, string message)
+    readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
+    property int collectId: -1
 
     spacing: 8
     visible: cardList.length > 0
@@ -46,7 +56,8 @@ Column {
     function offer(ev) {
         // actionId: the bridge's own request id replaces "id" on every event.
         cardList = cardList.concat([{ id: ev.actionId, action: ev.action, safety: ev.safety, summary: ev.summary,
-                                      plan: ev.plan || null, state: "offered", message: "" }]);
+                                      detail: ev.detail || "", detailTruncated: !!ev.detailTruncated, detailLength: ev.detailLength || 0,
+                                      plan: ev.plan || null, details: ev.details || null, state: "offered", message: "" }]);
     }
     function update(id, change) {
         cardList = cardList.map(c => c.id === id ? Object.assign({}, c, change) : c);
@@ -70,25 +81,44 @@ Column {
     Connections {
         target: cards.bridge
         function onResult(id, type, data) {
+            if (id === cards.collectId) { cards.collectId = -1; cards.collected(data.items || []); return }
             const entry = cards.calls[id];
             if (!entry) return;
             const m = cards.calls; delete m[id]; cards.calls = m;
             const [cardId, verb] = entry;
             if (verb === "decline") { cards.update(cardId, { state: "declined", message: "Not done." }); return }
+            let ok, message;
             if (data.status === "perform") {
                 const said = cards.perform(data.perform);
-                cards.update(cardId, { state: said.ok ? "done" : "failed", message: said.message });
+                ok = said.ok; message = said.message;
             } else if (data.status === "sent") {
-                cards.update(cardId, { state: "done", message: "Sent to Guardian. Nothing changes until you approve it." });
+                ok = true; message = "Sent to Guardian. Nothing changes until you approve it.";
             } else {
-                cards.update(cardId, { state: data.status === "done" ? "done" : "failed", message: data.message || "" });
+                ok = data.status === "done"; message = data.message || "";
             }
+            cards.update(cardId, { state: ok ? "done" : "failed", message: message });
+            cards.finished(cardId, ok, message);
         }
         function onFailed(id, message) {
             const entry = cards.calls[id];
             if (!entry) return;
             const m = cards.calls; delete m[id]; cards.calls = m;
             cards.update(entry[0], { state: "failed", message: message });
+        }
+    }
+
+    // Desktop actions someone confirmed in a terminal: Core hands them over
+    // (DesktopHandoff) and they are done here, as if "Do it" was clicked.
+    Timer {
+        interval: 3000; running: true; repeat: true
+        onTriggered: if (cards.bridge && cards.bridge.online && cards.collectId < 0)
+                         cards.collectId = cards.bridge.api("POST", "/actions/desktop/collect", {})
+    }
+    function collected(items) {
+        for (const item of items) {
+            const said = perform(item.perform);
+            if (cardList.some(c => c.id === item.id)) update(item.id, { state: said.ok ? "done" : "failed", message: said.message });
+            else Quickshell.execDetached([hyprctl, "notify", "-1", "5000", "rgb(86a8ff)", "Nexus: " + item.summary + " — " + said.message]);
         }
     }
 
@@ -120,12 +150,12 @@ Column {
                                                  after: { value: p.value }, reversible: true, ref: "sound:volume" });
             return { ok: true, message: "Done. Undo it in Settings, Timeline." };
         }
-        case "flathub.install": appsWin.open("get"); appsWin.install(p.appId); cards.opened(); return { ok: true, message: "Installing in Apps…" };
-        case "flathub.remove": appsWin.open("all"); appsWin.uninstall(p.appId); cards.opened(); return { ok: true, message: "Removing in Apps…" };
-        case "apt.install":
-            Quickshell.execDetached([terminal, "sh", "-c", "apt install \"$1\"; echo; printf 'Press Enter to close. '; read -r _", "sh", p.package]);
-            cards.opened();
-            return { ok: true, message: "Installing in a terminal." };
+        // Installs, removals and their Undo run in Apps, which journals them (Apps.perform); apt in a terminal.
+        case "flathub.install": case "flathub.remove": case "apt.install": case "apt.remove": {
+            const said = appsWin.perform(p);
+            if (said.ok) cards.opened();
+            return said;
+        }
         case "images.make": imagesWin.make(p.prompt); cards.opened(); return { ok: true, message: "Making it in Images…" };
         case "code.start": codeWin.start(p.folder, p.task); cards.opened(); return { ok: true, message: "Opened in Code with the task filled in; press Enter there to send it." };
         case "fixit.open": fixItWin.open(p.problem); cards.opened(); return { ok: true, message: "Checking in Fix it…" };
@@ -138,7 +168,14 @@ Column {
             return overview.restore(p.name) ? { ok: true, message: "Bringing it back…" } : { ok: false, message: overview.message || "No workspace by that name." };
         case "app.try": appsWin.open("try"); appsWin.tryApp(p.package); cards.opened(); return { ok: true, message: "Starting it in a sandbox…" };
         case "movein.open": moveInWin.open(); cards.opened(); return { ok: true, message: "Opened." };
+        case "movein.copy": moveInWin.open(); cards.opened();
+            return moveInWin.copy() ? { ok: true, message: "Copying in Move in…" } : { ok: false, message: "Move in could not start copying: " + (moveInWin.status || "nothing is ticked.") };
+        case "apps.suggest": appsWin.suggest(p.apps || []); cards.opened(); return { ok: true, message: "Listed in Apps. Nothing installs until you press Install." };
         case "welcome.open": firstRun.open(); cards.opened(); return { ok: true, message: "Opened." };
+        case "describe.screen":
+            // Nexus closes first so it is not in the picture; the description comes back as its answer.
+            cards.opened(); describer.describe(p.target, p.question || "", "nexus");
+            return { ok: true, message: "Taking the picture…" };
         default: return { ok: false, message: "This desktop cannot do that yet." };
         }
     }
@@ -167,6 +204,51 @@ Column {
                     textFormat: Text.PlainText
                     text: modelData.summary
                     font.pixelSize: 14; font.weight: 550; color: cards.theme.ink
+                }
+                // The whole text the action carries, scrolling past a few lines.
+                Flickable {
+                    id: detailView
+                    visible: modelData.detail !== ""
+                    width: parent.width
+                    height: Math.min(detailText.implicitHeight, 160)
+                    contentWidth: width; contentHeight: detailText.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    Text {
+                        id: detailText
+                        width: detailView.width - 8; wrapMode: Text.Wrap
+                        textFormat: Text.PlainText      // model words are never rendered as rich text
+                        text: modelData.detail
+                        font.pixelSize: 13; lineHeight: 1.4; color: cards.theme.ink
+                    }
+                    Rectangle {
+                        visible: detailView.contentHeight > detailView.height
+                        x: detailView.width - 3; width: 3; radius: 1.5
+                        y: detailView.contentY + detailView.visibleArea.yPosition * detailView.height
+                        height: Math.max(16, detailView.visibleArea.heightRatio * detailView.height)
+                        color: cards.theme.glassBorder
+                    }
+                }
+                Text {
+                    visible: modelData.detailTruncated
+                    width: parent.width; wrapMode: Text.Wrap
+                    text: "Shortened here: showing the first " + modelData.detail.length + " of " + modelData.detailLength + " characters."
+                    font.pixelSize: 12; font.italic: true; color: cards.theme.inkSecondary
+                }
+                // Facts Core looked up for this card: a Flathub app's publisher, licence and permissions; what apt is.
+                Text {
+                    width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                    visible: !!(modelData.details && modelData.details.warning)
+                    text: modelData.details && modelData.details.warning ? modelData.details.warning : ""
+                    font.pixelSize: 13; font.weight: 500; color: "#FFC48F"
+                }
+                Repeater {
+                    model: modelData.details && modelData.details.lines ? modelData.details.lines.slice(0, 12) : []
+                    delegate: Text {
+                        required property var modelData
+                        width: body.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                        text: "· " + modelData; font.pixelSize: 12; color: cards.theme.inkSecondary
+                    }
                 }
                 Row {
                     spacing: 8

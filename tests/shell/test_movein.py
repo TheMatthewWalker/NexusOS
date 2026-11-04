@@ -77,7 +77,137 @@ class MoveInHelper(unittest.TestCase):
                 items = sorted((r[1], r[2]) for r in recs if r[0] == "item")
                 self.assertEqual(items, [("", "Pictures"), ("bob", "Documents"), ("bob", "Movies")])
                 for r in recs:
-                    self.assertEqual(len(r), 4 if r[0] == "item" else 2)
+                    self.assertEqual(len(r), {"item": 4, "private": 3, "os": 2}[r[0]])
+
+    def test_a_mac_data_volume_is_found(self):
+        # The data volume of a Mac (APFS, opened read-only): /Users/<name> next to /Applications and /Library.
+        self.make("Users/alice/Documents/thesis.pages")
+        self.make("Users/alice/Movies/holiday.mov")
+        self.make("Users/alice/Library/Safari/Bookmarks.plist")
+        self.make("Users/Shared/Documents/shared.txt")
+        self.make("Users/Guest/Documents/guest.txt")
+        (self.drive / "Applications/Spotify.app").mkdir(parents=True)
+        (self.drive / "Library").mkdir(exist_ok=True)
+        (self.drive / "private/var").mkdir(parents=True)
+        for shell in SHELLS:
+            with self.subTest(shell=shell):
+                recs = self.records(shell)
+                self.assertIn(["os", "Mac"], recs)
+                self.assertEqual(sorted((r[1], r[2]) for r in recs if r[0] == "item"),
+                                 [("alice", "Documents"), ("alice", "Movies")])
+
+    def test_a_mac_system_volume_alone_has_nothing_to_copy(self):
+        # The sealed system volume: System/Library and an empty Users firmlink folder.
+        (self.drive / "System/Library/CoreServices").mkdir(parents=True)
+        (self.drive / "Users").mkdir()
+        for shell in SHELLS:
+            with self.subTest(shell=shell):
+                recs = self.records(shell)
+                self.assertIn(["os", "Mac"], recs)
+                self.assertEqual([r for r in recs if r[0] == "item"], [])
+
+    @unittest.skipUnless(shutil.which("rsync"), "rsync not installed")
+    def test_an_apfs_fuse_mount_uses_its_root_folder(self):
+        # apfs-fuse shows the volume under root/, next to private-dir/.
+        self.make("root/Users/alice/Pictures/cat.heic", "cat")
+        (self.drive / "private-dir").mkdir()
+        (self.drive / "root/Applications").mkdir()
+        for shell in SHELLS:
+            with self.subTest(shell=shell):
+                recs = self.records(shell)
+                self.assertIn(["os", "Mac"], recs)
+                self.assertEqual([(r[1], r[2]) for r in recs if r[0] == "item"], [("alice", "Pictures")])
+                run = self.run_helper(shell, "copy", str(self.drive), "alice", "Pictures", "0")
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertEqual((self.home / "Pictures/cat.heic").read_text(), "cat")
+
+    def test_a_symlinked_apfs_fuse_root_is_not_followed(self):
+        (self.outside / "Users/eve/Documents").mkdir(parents=True)
+        (self.drive / "root").symlink_to(self.outside)
+        (self.drive / "private-dir").mkdir()
+        for shell in SHELLS:
+            with self.subTest(shell=shell):
+                self.assertEqual([r for r in self.records(shell) if r[0] == "item"], [])
+                run = self.run_helper(shell, "copy", str(self.drive), "eve", "Documents", "0")
+                self.assertNotEqual(run.returncode, 0)
+
+    def test_an_old_linux_drive_uses_home(self):
+        self.make("etc/os-release", "ID=ubuntu")
+        self.make("home/sam/Music/song.flac")
+        self.make("home/lost+found/Documents/x")
+        self.make("home/.cache/Documents/x")
+        for shell in SHELLS:
+            with self.subTest(shell=shell):
+                recs = self.records(shell)
+                self.assertIn(["os", "Linux"], recs)
+                self.assertEqual([(r[1], r[2]) for r in recs if r[0] == "item"], [("sam", "Music")])
+
+    def test_users_wins_over_home_in_both_scan_and_copy(self):
+        # A crafted drive with both: the same base is used for looking and copying.
+        self.make("Users/bob/Documents/a.txt")
+        self.make("home/bob/Documents/planted.txt", "planted")
+        for shell in SHELLS:
+            with self.subTest(shell=shell):
+                items = [(r[1], r[2]) for r in self.records(shell) if r[0] == "item"]
+                self.assertEqual(items, [("bob", "Documents")])
+
+    def skip_unless_nobody_can_reach(self):
+        # As root the tests run the helper as nobody, who must be able to get to the temporary folder.
+        if os.geteuid() == 0 and any(not os.stat(p).st_mode & 0o001 for p in self.tmp.parents):
+            self.skipTest(f"{self.tmp.parent} is not reachable by an unprivileged account (set TMPDIR)")
+
+    def run_as_nobody(self, shell, *args):
+        env = dict(os.environ, HOME=str(self.home))
+        return subprocess.run(["setpriv", "--reuid=65534", "--regid=65534", "--clear-groups", shell, str(SCRIPT), *args],
+                              capture_output=True, env=env)
+
+    @unittest.skipUnless(os.geteuid() != 0 or shutil.which("setpriv"), "needs an unprivileged account")
+    def test_folders_private_to_the_old_account_are_reported_not_copied(self):
+        # A Mac or Linux home folder keeps its old owner and mode 700: say so, and do not try to copy it.
+        self.skip_unless_nobody_can_reach()
+        self.make("Users/alice/Documents/a.txt")
+        self.make("Users/alice/Pictures/p.jpg")
+        if os.geteuid() == 0:
+            # Everything else readable by the unprivileged account, whatever the umask.
+            os.chmod(self.tmp, 0o755)
+            for path in [self.drive, *self.drive.rglob("*")]:
+                os.chmod(path, 0o755 if path.is_dir() else 0o644)
+            os.chmod(self.drive / "Users/alice/Documents", 0o700)
+            os.chown(self.home, 65534, 65534)
+            os.chown(self.drive / "Users/alice/Documents", 0, 0)
+            run_helper = self.run_as_nobody
+        else:
+            os.chmod(self.drive / "Users/alice/Documents", 0)
+            run_helper = self.run_helper
+        try:
+            for shell in SHELLS:
+                with self.subTest(shell=shell):
+                    run = run_helper(shell, "scan", str(self.drive))
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    recs = [r.decode().split("\t") for r in run.stdout.split(b"\0") if r]
+                    self.assertIn(["private", "alice", "Documents"], recs)
+                    self.assertIn("Pictures", [r[2] for r in recs if r[0] == "item"])
+                    run = run_helper(shell, "copy", str(self.drive), "alice", "Documents", "0")
+                    self.assertNotEqual(run.returncode, 0)
+                    self.assertIn(b"cannot be read", run.stderr)
+                    self.assertFalse((self.home / "Documents").exists())
+        finally:
+            os.chmod(self.drive / "Users/alice/Documents", 0o700)
+
+    @unittest.skipUnless(os.geteuid() != 0 or shutil.which("setpriv"), "needs an unprivileged account")
+    def test_an_unreadable_volume_is_reported(self):
+        # An encrypted Mac volume that mounts but cannot be listed.
+        self.skip_unless_nobody_can_reach()
+        os.chmod(self.tmp, 0o755)
+        os.chmod(self.drive, 0)
+        try:
+            for shell in SHELLS:
+                with self.subTest(shell=shell):
+                    run = (self.run_as_nobody if os.geteuid() == 0 else self.run_helper)(shell, "scan", str(self.drive))
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    self.assertEqual(run.stdout, b"unreadable\0")
+        finally:
+            os.chmod(self.drive, 0o755)
 
     def test_scan_skips_a_symlinked_users_folder(self):
         (self.outside / "bob/Documents").mkdir(parents=True)

@@ -39,7 +39,7 @@ class ShellBuild(unittest.TestCase):
         for name in ["shell.qml", "NovaCore.qml", "CoreBridge.qml", "AppDirectory.qml", "Wallpaper.qml",
                      "OrbitalControls.qml", "TopBar.qml", "Settings.qml", "Apps.qml", "Code.qml", "Images.qml", "ActionCards.qml", "Guardian.qml", "greeter.qml", "WifiModel.qml", "DesktopSettings.qml", "Nebula.qml",
                      "Search.qml", "Overview.qml", "FirstRun.qml", "Explain.qml", "MoveIn.qml", "lib/movein.sh", "lib/firstrun.mjs", "lib/bundles.mjs",
-                     *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About", "Search"]],
+                     *[f"settings/{p}Page.qml" for p in ["Network", "Bluetooth", "Sound", "Display", "Power", "Desktop", "Privacy", "About", "Search"]], "settings/AskBox.qml",
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
 
@@ -215,8 +215,9 @@ class ShellBuild(unittest.TestCase):
         code = (self.out / "Code.qml").read_text()
         # The agent's test request is a card; the one place a run starts is the Run button.
         self.assertEqual(code.count('bridge.send("code-run"'), 1)
-        self.assertEqual(code.count("win.runTests()"), 1)
-        self.assertIn('label: "Run"; enabled: !win.working && win.sandbox', code)
+        self.assertEqual(code.count("win.runTests()") + code.count("rc.w.runTests()"), 1)
+        self.assertIn('label: "Run"; enabled: !rc.w.working && rc.w.sandbox', code)
+        self.assertEqual(code.count("rc.w.runTests()"), 1)
         self.assertIn("if (ev.run) win.proposal = ev.run;", code)
         # A task from Nexus's chat is filled in, not sent (audit: "Code auto-sends the task").
         self.assertIn("prompt.text = win.pendingTask", code)
@@ -225,11 +226,101 @@ class ShellBuild(unittest.TestCase):
         cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
         self.assertIn('/runs/{Uri.EscapeDataString(Arg("run"))}/confirm', cli)
 
+    def test_code_timeline_is_a_second_view_of_the_same_session(self):
+        """Code B: Split or Timeline, remembered per person; one message box, one Run card, the same actions."""
+        code = (self.out / "Code.qml").read_text()
+        self.assertIn('path: win.configDir + "/code.json"', code)
+        self.assertIn('options: [{ value: "split", label: "Split" }, { value: "timeline", label: "Timeline" }]', code)
+        self.assertIn("function view(name: string): void { win.setView(name) }", code)
+        # Both views place the same components, reading win's properties; nothing is copied.
+        self.assertEqual(code.count("RunCard { w: win; width: parent.width }"), 2)
+        self.assertEqual(code.count("TestOutput { w: win; width: parent.width }"), 2)
+        self.assertEqual(code.count("ViewToggle {"), 2)
+        self.assertIn("delegate: DiffLine { required property var modelData; line: modelData", code)
+        self.assertIn("parent: win.timeline ? timelineInput : chatPane", code)
+        self.assertEqual(code.count("id: prompt"), 1)
+        timeline = code.split("id: lineArea")[1]
+        self.assertIn("model: win.conversation", timeline)
+        self.assertIn("model: win.files", timeline)
+        self.assertIn('win.act("code-accept", { files: [card.modelData.path] })', timeline)
+        self.assertIn('win.act("code-reject")', timeline)
+        # Still one place a test run starts, and one request to Core for it.
+        self.assertEqual(code.count('bridge.send("code-run"'), 1)
+
+    def test_images_orbit_shows_the_gallerys_pictures_with_the_same_actions(self):
+        """Images B: Gallery or Orbit, remembered per person; both show win.shown and call the same functions."""
+        images = (self.out / "Images.qml").read_text()
+        self.assertIn('path: win.configDir + "/images.json"', images)
+        self.assertIn('options: [{ value: "gallery", label: "Gallery" }, { value: "orbit", label: "Orbit" }]', images)
+        self.assertIn("function view(name: string): void { win.setView(name) }", images)
+        gallery, orbit = images.split("id: results")[1].split("id: orbitView")
+        self.assertIn("readonly property var shown: win.shown", gallery)
+        self.assertIn("model: win.shown", orbit)
+        for fn in ["win.openImage(win.selected)", "win.moreLike(win.selected)", "win.again(win.selected)",
+                   "win.remove(win.selected)", "win.showFolder(win.selected)", "win.remix(win.selected, modelData.words)",
+                   "win.useAsWallpaper(win.selected.path)"]:
+            self.assertIn(fn, gallery, fn)
+            self.assertIn(fn, orbit, fn)
+        self.assertEqual(images.count('bridge.send("images-delete"'), 1)
+        self.assertEqual(images.count('bridge.send("images-generate"'), 1)
+
+    def test_settings_ask_uses_nexus_chat_and_action_cards(self):
+        """Settings C: the ask box goes through Core's chat and /actions (ActionCards), never its own model call."""
+        ask = (self.out / "settings/AskBox.qml").read_text()
+        settings = (self.out / "Settings.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        live = (self.out / "live.qml").read_text()
+        self.assertIn('chatId = bridge.chat("From Settings: " + q)', ask)
+        self.assertEqual(ask.count("bridge.send("), 0)
+        self.assertEqual(ask.count("bridge.api("), 0)
+        self.assertIn("ActionCards {", ask)
+        self.assertIn("const m = host.search(q);", ask)           # Settings' own index lights the page at once
+        self.assertIn('if (ev.action === "open_settings" && a.page)', ask)
+        self.assertIn('ev.action === "change_setting"', ask)
+        self.assertIn("if (!bridge) return;", ask)                 # the live installer has no Nexus
+        self.assertIn("textFormat: Text.PlainText", ask)
+        self.assertIn("AskBox {", settings)
+        self.assertIn("askBox.show(text.trim())", settings)
+        self.assertIn("function ask(text: string): void", settings)
+        self.assertIn("cardHost: actionCards", shell)
+        self.assertNotIn("cardHost", live)
+
     def test_apps_installs_per_person_without_a_password(self):
         apps = (self.out / "Apps.qml").read_text()
         self.assertIn("flatpak install --user --noninteractive", apps)
         self.assertNotIn("sudo", apps)
         self.assertNotIn("pkexec", apps)
+
+    def test_apps_says_what_an_app_can_do_before_installing_and_journals_an_undo(self):
+        """Install sheet from Core's details; changes reported to the journal; leftover data only on request."""
+        apps = (self.out / "Apps.qml").read_text()
+        cards = (self.out / "ActionCards.qml").read_text()
+        timeline = (self.out / "settings/TimelinePage.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        # Install opens the sheet; only the sheet's button installs.
+        self.assertIn("onClicked: win.requestInstall(modelData.id)", apps)
+        self.assertEqual(apps.count("onClicked: win.install("), 1)
+        self.assertIn('bridge.api("GET", "/apps/flathub/" + id)', apps)
+        self.assertIn("win.sheet.warning", apps)
+        # Each change is reported with what Undo needs, read from flatpak info.
+        self.assertIn('bridge.api("POST", "/apps/changes", body)', apps)
+        self.assertIn("LC_ALL=C flatpak info", apps)
+        self.assertIn("--commit=", apps)
+        # Leftover data: offered after a removal, deleted only from its own button.
+        self.assertIn('label: "Delete its data"; onClicked: win.deleteLeftover()', apps)
+        self.assertEqual(apps.count("win.deleteLeftover()"), 1)
+        self.assertIn('"rm -rf -- \\"$HOME/.var/app/$1\\""', apps)
+        # apt is said plainly, with the isolated container on offer.
+        self.assertIn("Ubuntu software runs as you and can read your home folder", apps)
+        self.assertIn("apt --isolated", apps)
+        # Nexus's cards and the Timeline's Undo go through Apps.perform.
+        self.assertIn("appsWin.perform(p)", cards)
+        self.assertIn("modelData.details.warning", cards)
+        self.assertIn("page.host.appChange(data.perform)", timeline)
+        self.assertIn("onAppChange: perform => appsWin.perform(perform)", shell)
+        apt = (ROOT / "nix/packages/nexus-apt.sh").read_text()
+        self.assertIn("is NOT a sandbox", apt)
+        self.assertIn("nexus \"${args[@]}\"", apt)
 
     def test_reply_scrolls_instead_of_being_cut_off(self):
         shell = (self.out / "shell.qml").read_text()
@@ -267,6 +358,48 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('name: "overview"', shell)
         self.assertIn("bind = SUPER, Tab, global, nexus:overview", nix)
 
+    def test_workspaces_restore_files_tabs_and_conversation_from_cores_plan(self):
+        """Restore asks Core what can come back now, hands files to %F/%f, and says what it could not."""
+        ov = (self.out / "Overview.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        self.assertIn('bridge.api("GET", "/workspaces/restore?name="', ov)
+        self.assertIn('a === "%F" || a === "%U"', ov)
+        self.assertIn("conversation: conversation || null", ov)
+        self.assertIn("conversationRestored(plan.conversation.prompt, plan.conversation.answer)", ov)
+        self.assertNotIn("not kept yet", ov)
+        self.assertIn("onConversationRestored:", shell)
+
+    def test_settings_orbit_groups_every_page_once(self):
+        """The orbit shows four groups; each page is in exactly one, and deep links still name pages."""
+        settings = (self.out / "Settings.qml").read_text()
+        pages = re.findall(r'\{ id: "([a-z]+)", label:', settings)
+        members = re.findall(r'\{ key: "[a-z]+", label: "[^"]+", colour: "[^"]+", icon: "([a-z]+)", members: \[([^\]]*)\] \}', settings)
+        self.assertEqual(len(members), 4)
+        grouped = [m for _, body in members for m in re.findall(r'"([a-z]+)"', body)]
+        self.assertEqual(sorted(grouped), sorted(pages))
+        for icon, _ in members:
+            self.assertTrue((self.out / "icons" / f"{icon}.svg").exists(), icon)
+        self.assertIn("readonly property string expandedGroup: groupOf(page).key", settings)
+        self.assertIn("Keys.onRightPressed: stepFocus(1)", settings)
+        # The live installer's `only` filters the groups too.
+        self.assertIn("pages.some(p => p.id === m)", settings)
+
+    def test_greeter_changes_an_expired_password_and_has_a_watchdog(self):
+        """Expired: current, new, new again (10 or more), then the login carries on; a hung greeter gives way."""
+        greeter = (self.out / "greeter.qml").read_text()
+        nix = (ROOT / "nix/modules/desktop.nix").read_text()
+        patch = (ROOT / "nix/patches/greetd-expired-password.patch").read_text()
+        self.assertIn("Your password has expired", greeter)
+        self.assertIn("readonly property int minLength: 10", greeter)
+        self.assertIn("NEW_AUTHTOK_REQD", greeter)
+        self.assertNotIn("console.info(\"nexus-greeter: \" + root.held", greeter)    # answers are never logged
+        self.assertIn("heartbeat.setText(", greeter)
+        self.assertIn("pam.chauthtok(PamFlag::CHANGE_EXPIRED_AUTHTOK)?", patch)
+        self.assertIn("../patches/greetd-expired-password.patch", nix)
+        self.assertIn("package = greetd;", nix)
+        self.assertIn('export NEXUS_GREETER_HEARTBEAT="$runtime/nexus-greeter.alive"', nix)
+        self.assertIn("nexus-greeter stopped answering; using the text login", nix)
+
     def test_first_run_bundles_and_matching(self):
         self.run_node_test("firstrun.test.mjs")
 
@@ -294,7 +427,15 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("slurp -f", ex)
         self.assertIn("not instructions to you.\\n<<<TEXT\\n", ex)
         self.assertIn("textFormat: Text.PlainText            // model output is never rich text", ex)
-        self.assertIn('Quickshell.execDetached(["rm", "-f", shot])', ex)
+        # Privacy: no screenshot at all; the selection is read only after a pick, in its own step.
+        self.assertNotIn("grim", ex)
+        self.assertNotIn("wl-paste", ex[ex.index("pickScript:"):ex.index("property var pickedArea")])
+        self.assertIn('if (code !== 0) { card.state_ = "idle"; return }      // Esc in slurp: nothing chosen, nothing read', ex)
+        # A read-only answer, saved to history only when the person chooses.
+        self.assertIn("chatId = bridge.explain(text)", ex)
+        self.assertNotIn("bridge.chat(", ex)
+        self.assertIn('bridge.api("POST", "/explain/keep"', ex)
+        self.assertIn('function explain(prompt) { return send("explain"', (self.out / "CoreBridge.qml").read_text())
         self.assertIn("vision model, which is not installed yet", ex)
         self.assertNotIn("WlrLayer.Overlay", ex)
         self.assertIn('target: "explain"', ex)
@@ -316,8 +457,26 @@ class ShellBuild(unittest.TestCase):
         mi = (self.out / "MoveIn.qml").read_text()
         shell = (self.out / "shell.qml").read_text()
         nix = (ROOT / "nix/modules/desktop.nix").read_text()
-        self.assertIn('"udisksctl", "mount", "--no-user-interaction", "-b", path, "-o", "ro"', mi)
+        # Always read-only (ext2/3/4 with noload too); a drive inside the computer asks for a password through polkit.
+        self.assertIn('mountOptions = /^ext[234]$/.test(d.fstype) ? "ro,noload" : "ro";', mi)
+        self.assertIn('const opts = mountOptions + (apfsVol >= 0 ? ",vol=" + apfsVol : "");', mi)
+        self.assertIn('["udisksctl", "mount"].concat(withPassword ? [] : ["--no-user-interaction"]).concat(["-b", source, "-o", opts])', mi)
+        self.assertEqual(len(re.findall(r'mountOptions = ', mi)), 1)
+        self.assertNotIn('"rw', mi)
+        self.assertIn("if (!d.removable) {", mi)
+        self.assertIn('d.fstype === "bitlocker"', mi)
+        # APFS read-only: udisks may never pass the module's "readwrite" option.
+        self.assertIn("boot.supportedFilesystems.apfs", nix)
+        allow = re.search(r"apfs_allow=(\S+)", nix).group(1).split(",")
+        self.assertNotIn("readwrite", allow)
+        self.assertIn("ro", re.search(r"apfs_defaults=(\S+)", nix).group(1).split(","))
         self.assertIn('"lsblk", "-J"', mi)
+        # Bookmarks and apps through Core; apps only listed in Apps.
+        self.assertIn('bridge.api("POST", "/movein/look"', mi)
+        self.assertIn("onGetApps: list => appsWin.suggest(list)", shell)
+        cards = (self.out / "ActionCards.qml").read_text()
+        self.assertIn('case "apps.suggest": appsWin.suggest(p.apps || [])', cards)
+        self.assertIn('case "movein.copy":', cards)
         helper = (self.out / "lib/movein.sh").read_text()
         self.assertIn("rsync -r -t --ignore-existing", helper)
         for text in [mi, helper]:
@@ -366,13 +525,32 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("desktop.set(p.key, p.value)", cards)      # journalled with undo by DesktopSettings.set
         self.assertIn('ref: "sound:volume"', cards)
         self.assertIn('ref === "sound:volume"', (self.out / "Settings.qml").read_text())
-        self.assertIn('"apt install \\"$1\\"', cards)              # apt runs in a terminal the person sees
+        # apt runs in a terminal the person sees (Apps.aptRun, which cards reach through appsWin.perform).
+        self.assertIn('then apt --isolated \\"$1\\" \\"$2\\"; else apt \\"$1\\" \\"$2\\"; fi', (self.out / "Apps.qml").read_text())
         self.assertIn("guardianWin.open(", shell)                 # the Guardian dialog, where there is one
         self.assertIn("ActionCards {", shell)
         self.assertIn('pending[id] === "chat" && ev.type === "action"', bridge)
         self.assertIn("id: ev.actionId", cards)                    # the bridge replaces "id" with its request id
         cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
         self.assertIn('"/actions"]', cli)
+
+    def test_action_cards_show_the_whole_text_and_follow_up(self):
+        """Cards show an action's full text (scrolling, says if cut); after Do it Nexus says what happened."""
+        cards = (self.out / "ActionCards.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        bridge = (self.out / "CoreBridge.qml").read_text()
+        cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
+        self.assertIn("text: modelData.detail", cards)
+        self.assertIn("height: Math.min(detailText.implicitHeight, 160)", cards)
+        self.assertIn('"Shortened here: showing the first "', cards)
+        self.assertNotIn("Clean(", cards)
+        self.assertIn("cards.finished(cardId, ok, message)", cards)
+        self.assertIn("bridge.followUp(cardId, ok, message)", shell)
+        self.assertIn('send("followup"', bridge)
+        self.assertIn('"followup" => $"/actions/{Uri.EscapeDataString(Arg("action"))}/followup"', cli)
+        # Desktop actions confirmed in a terminal are collected from Core and done here, once.
+        self.assertIn('"/actions/desktop/collect"', cards)
+        self.assertIn("const said = perform(item.perform)", cards)
 
     def test_every_desktop_instruction_core_sends_is_handled(self):
         """Each Perform("op") in NexusChat.cs has a case in ActionCards.perform, so no "Do it" falls through."""
@@ -499,6 +677,46 @@ class ShellBuild(unittest.TestCase):
         for op in re.findall(r'Perform\("([a-z.]+)"', (ROOT / "src/NexusOS.Core/NexusChat.cs").read_text()) + ["desktop.set", "volume.set"]:
             self.assertIn(f'case "{op}":', cards, op)
 
+    def test_describe_this_and_voice_stay_local_and_listen_only_on_request(self):
+        """Vision.cs/Voice.cs with Describe.qml/Voice.qml: pictures and the microphone only when asked, all local."""
+        voice = (self.out / "Voice.qml").read_text()
+        describe = (self.out / "Describe.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        page = (self.out / "settings/AccessibilityPage.qml").read_text()
+        explain = (self.out / "Explain.qml").read_text()
+        cards = (self.out / "ActionCards.qml").read_text()
+        nix = (ROOT / "nix/modules/desktop.nix").read_text()
+        cli = (ROOT / "src/NexusOS.Cli/Program.cs").read_text()
+        # Push-to-talk: Super+V held (press/release), the recording made only in press(), a visible indicator.
+        self.assertIn("bind = SUPER, V, global, nexus:talk", nix)
+        self.assertIn('name: "talk"; onPressed: voiceCtl.press(); onReleased: voiceCtl.release()', shell)
+        self.assertEqual(voice.count("recorder.running = true"), 1)
+        self.assertIn('visible: voice.state_ !== "idle"', voice)                # the bar shows whenever the mic is open
+        self.assertIn('WlrLayershell.namespace: "nexus-microphone"', voice)
+        self.assertIn("interval: 30000", voice)                                 # a recording stops by itself
+        self.assertIn('bridge.api("POST", "/voice/transcribe", { audio: "voice.wav" })', voice)
+        self.assertIn('onHeard: text => { root.open(); input.text = text; root.ask(text) }', shell)
+        self.assertIn('icons/mic.svg', shell)
+        self.assertIn("voiceCtl.speak(root.reply)", shell)
+        self.assertIn("if (!spokenReplies", voice)                               # spoken replies only when turned on
+        # Describe this: grim only after the person's request, then Core (local vision model only).
+        self.assertIn('bridge.api("POST", "/vision/describe"', describe)
+        self.assertNotIn("cloud", describe.lower().replace("never goes to a cloud model", ""))
+        self.assertEqual(describe.count("capture.running = true"), 1)
+        self.assertIn('case "describe.screen":', cards)
+        self.assertIn("describer.describeRegion(", explain)
+        self.assertIn("---- describe the picture (Describe.qml) ----", explain)
+        # Settings, Accessibility: real switches; the old placeholder is gone.
+        self.assertNotIn("Coming later", page)
+        for label in ['label: "Describe this"', 'label: "Voice control"', 'label: "Spoken replies"']:
+            self.assertIn(label, page)
+        self.assertIn('page.voice.setChoice("pushToTalk"', page)
+        self.assertIn('page.voice.setChoice("spokenReplies"', page)
+        self.assertIn('"/vision", "/voice"', cli)
+        guide = (ROOT / "src/NexusOS.Core/assistant/nexus-guide.md").read_text()
+        self.assertIn("Super+V", guide)
+        self.assertIn("describe_screen", guide)
+
     def run_node_test(self, name):
         if not shutil.which("node"):
             self.skipTest("node not installed")
@@ -521,6 +739,28 @@ class ShellBuild(unittest.TestCase):
         about = (self.out / "settings/AboutPage.qml").read_text()
         self.assertIn('import "lib/describe.mjs" as D', controls)
         self.assertIn('"df", "-P", "-B1", "/", "/home"', about)
+
+    def test_app_windows_open_again_after_being_closed(self):
+        """Every app window is a NexusWindow, which marks itself hidden when Hyprland closes it."""
+        window = (self.out / "NexusWindow.qml").read_text()
+        self.assertIn("onClosed: visible = false", window)
+        for qml in sorted(self.out.glob("*.qml")):
+            if qml.name != "NexusWindow.qml":
+                self.assertNotRegex(qml.read_text(), r"(?m)^FloatingWindow \{", qml.name)
+
+    def test_live_session_offers_only_wifi_and_install(self):
+        live = (self.out / "live.qml").read_text()
+        self.assertIn('only: ["network"]', live)
+        self.assertIn("nexus-install-welcome", live)
+        self.assertIn("live: true", live)
+        for absent in ("CoreBridge", "FirstRun", "Apps {", "Code {", "Guardian {", "NovaCore"):
+            self.assertNotIn(absent, live)
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn('if cfg.live then "nexus-live-shell" else "nexus-shell"', desktop)
+        self.assertIn("lib.optionalString (!cfg.live) appBinds", desktop)
+        iso = (ROOT / "nix/installer/iso.nix").read_text()
+        self.assertIn("live = true;", iso)
+        self.assertIn("services.nexus-core.enable = false;", iso)
 
 
 if __name__ == "__main__":

@@ -78,6 +78,8 @@ try
             return await PrintGet("/inference/status");
         case "rules":
             return await RulesCommand.RunAsync(http, args[1..], Console.In, Console.Out, Console.Error);
+        case "actions":
+            return await ActionsCommand.RunAsync(http, args[1..], Console.Out, Console.Error);
         case "unload":
             using (var res = await http.PostAsync("/inference/unload", null))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
@@ -98,6 +100,26 @@ try
                 else { Usage(); return 2; }
             }
             return await PrintGet("/journal" + (query.Count > 0 ? "?" + string.Join('&', query) : ""));
+        // `nexus apps details <flathub id>`: publisher, licence, size and permissions before installing.
+        case "apps" when args.Length == 3 && args[1] == "details":
+            return await PrintGet("/apps/flathub/" + Uri.EscapeDataString(args[2]));
+        // `nexus apps record --source apt --op install --id htop [--version V] [--box B] [--isolated] [--undoes N]`:
+        // the apt command reports what it changed, for the timeline and its Undo. Core checks every value.
+        case "apps" when args.Length > 2 && args[1] == "record":
+        {
+            var change = new Dictionary<string, object?>();
+            for (var i = 2; i < args.Length; i++)
+            {
+                var key = args[i].StartsWith("--", StringComparison.Ordinal) ? args[i][2..] : "";
+                if (key == "isolated") { change["isolated"] = true; continue; }
+                if (key is not ("source" or "op" or "id" or "name" or "version" or "box" or "scope" or "origin" or "branch" or "commit" or "undoes")
+                    || i + 1 >= args.Length) { Usage(); return 2; }
+                change[key] = key == "undoes" ? long.TryParse(args[++i], out var n) ? n : null : args[++i];
+            }
+            using var res = await http.PostAsJsonAsync("/apps/changes", change);
+            await PrintResponse(res);
+            return res.IsSuccessStatusCode ? 0 : 1;
+        }
         case "use" when args.Length == 2:
             using (var res = await http.PostAsJsonAsync("/providers/select", new { name = args[1] }))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
@@ -290,7 +312,7 @@ static string ErrorMessage(string raw, HttpResponseMessage response)
     return response.StatusCode switch
     {
         System.Net.HttpStatusCode.Unauthorized => "Authentication failed; restart Core or check the api-token file.",
-        System.Net.HttpStatusCode.TooManyRequests => "Nexus Core is busy or rate limiting requests; try again shortly.",
+        System.Net.HttpStatusCode.TooManyRequests => "Nexus Core stopped an unusually fast run of requests (more than a person makes); it accepts them again within a minute.",
         _ => "Request failed."
     };
 }
@@ -304,9 +326,15 @@ async Task<int> StreamAnswer(string prompt)
         if (type == "delta") { Console.Write(ev.GetProperty("text").GetString()); Console.Out.Flush(); }
         else if (type == "error") { Console.Error.WriteLine($"\nnexus: {ev.GetProperty("message").GetString()}"); ok = false; }
         else if (type == "done") Console.WriteLine();
-        // Actions wait for the person's click in the Nexus window; the command line only says what was offered.
+        // Actions wait for the person: "Do it" in the Nexus window, or `nexus actions confirm` here.
         else if (type == "action")
-            Console.Error.WriteLine($"\nNexus offers to: {ev.GetProperty("summary").GetString()}. Ask in Nexus (Super+Space) to do it.");
+        {
+            var offerId = ev.GetProperty("id").GetString();
+            Console.Error.WriteLine($"\nNexus offers to: {ev.GetProperty("summary").GetString()}");
+            if (ev.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.String)
+                Console.Error.WriteLine("    " + detail.GetString()!.ReplaceLineEndings("\n    "));
+            Console.Error.WriteLine($"Do it: nexus actions confirm {offerId}   Not now: nexus actions dismiss {offerId}");
+        }
     }
     return ok ? 0 : 1;
 }
@@ -337,7 +365,10 @@ async IAsyncEnumerable<JsonElement> StreamEvents(string path, object body)
 // one JSON event per stdout line, each tagged with the request's id. The shell
 // never holds the API token itself; this process reads it like any CLI call.
 //   {"id":1,"op":"chat","prompt":"..."}     -> delta, tool and action events, then done or error
+//   {"op":"explain","prompt":"..."}         -> Explain mode: delta events, then done or error (no actions, no history)
 //   (an action card's "Do it": {"op":"api","method":"POST","path":"/actions/<id>/confirm"})
+//   {"id":1,"op":"followup","action":"<id>","ok":true,"message":".."} -> delta events, then done or error:
+//     after "Do it", Nexus says what happened (one short turn, no tools)
 //   {"id":2,"op":"suggest","prompt":"...","model":false}
 //   {"id":3,"op":"apps"} | {"id":4,"op":"health"}
 //   {"id":5,"op":"unload"}                  -> {"type":"unloaded","data":{"vramFreedBytes":N|null}}
@@ -420,10 +451,22 @@ async Task<int> Bridge()
             });
             continue;
         }
-        if (op is "chat" or "code-send")
+        if (op is "chat" or "explain" or "code-send" or "followup")
         {
-            var path = op == "chat" ? "/chat/stream" : $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/messages";
-            object body = op == "chat" ? new { prompt } : new { text = Arg("text") };
+            var path = op switch
+            {
+                "chat" => "/chat/stream",
+                "explain" => "/explain/stream",
+                "followup" => $"/actions/{Uri.EscapeDataString(Arg("action"))}/followup",
+                _ => $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/messages"
+            };
+            object body = op switch
+            {
+                "chat" or "explain" => new { prompt },
+                "followup" => new { ok = req.TryGetProperty("ok", out var ok) && ok.ValueKind is JsonValueKind.True or JsonValueKind.False
+                                        ? ok.GetBoolean() : (bool?)null, message = Arg("message") },
+                _ => new { text = Arg("text") }
+            };
             _ = Task.Run(async () =>
             {
                 try { await foreach (var ev in StreamEvents(path, body)) Emit(id, ev); }
@@ -563,7 +606,9 @@ static int RunTrial(string[] trialArgs)
 static void Usage()
 {
     Console.WriteLine("nexus [health [report]|fixit <problem>|fixit apply <fix id> <token>|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge|journal [--today] [--kind K]|journal forget-today|try <app> [-- args]|try keep <app>]");
+    Console.WriteLine("nexus apps details <flathub id> | apps record --source flathub|apt --op install|remove --id <id> [--version V] [--box B] [--isolated] [--undoes N]");
     Console.WriteLine(RulesCommand.Usage);
+    Console.WriteLine(ActionsCommand.Usage);
     Console.WriteLine("nexus search <query> | search status | search formats | search reindex | search erase");
     Console.WriteLine("nexus search sources [list | add <folder>... | rm <folder>]   (search -- <query> to search for a subcommand word)");
 }
@@ -574,7 +619,7 @@ static class BridgeApi
     private static readonly string[] Prefixes =
         ["/journal", "/fixit", "/health/report", "/search", "/rules", "/events", "/guardian/propose", "/guardian/preview",
          "/guardian/proposals", "/guardian/review", "/guardian/stage",
-         "/try/keep", "/settings/plan", "/workspaces", "/history", "/system", "/actions"];
+         "/try/keep", "/apps", "/settings/plan", "/workspaces", "/history", "/system", "/images", "/explain/keep", "/vision", "/voice", "/movein", "/actions"];
 
     public static bool Allowed(string method, string path) =>
         method is "GET" or "POST" or "DELETE" && path.StartsWith('/') && !path.Contains("..") &&

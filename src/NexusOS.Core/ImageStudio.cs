@@ -12,6 +12,11 @@ using System.Text.RegularExpressions;
 // server stops again after a few idle minutes, so the next question to Nexus
 // gets the GPU back. Images are written to ~/Pictures/Nexus with a small JSON
 // file beside each (prompt, seed, size, steps, model); nothing is uploaded.
+// Pictures are kept for a while (ImageSettings: 90 days by default, and
+// optionally up to so many GB), then removed oldest first; a starred picture,
+// or one moved out of the folder, is never removed. The model's download
+// (nexus_image_model.py, a root service) reports how it is going in
+// download.json beside the model, which Status() passes on.
 //   NEXUS_SD_SERVER_BIN   absolute path to sd-server
 //   NEXUS_SD_MODEL        absolute path to the model (.safetensors or .gguf)
 //   NEXUS_SD_STEPS        default steps (4: SDXL-Turbo needs few)
@@ -26,6 +31,10 @@ public sealed partial class ImageStudio : IDisposable
     private readonly ActivityJournal _journal;
     private readonly ILogger<ImageStudio> _log;
     private readonly Timer _idle;
+    private readonly Timer _tidy;
+    private readonly string _settingsPath;
+    private readonly string? _downloadState;
+    private readonly TimeProvider _time;
     private Process? _process;
     private int _port;
 
@@ -36,9 +45,10 @@ public sealed partial class ImageStudio : IDisposable
     public string Folder { get; }
     public string ModelName => Model is null ? "" : Path.GetFileNameWithoutExtension(Model);
 
-    public ImageStudio(IHttpClientFactory factory, IConfiguration config, ModelRouter router, ActivityJournal journal, ILogger<ImageStudio> log)
+    public ImageStudio(IHttpClientFactory factory, IConfiguration config, ModelRouter router, ActivityJournal journal, ILogger<ImageStudio> log,
+        TimeProvider? time = null)
     {
-        _factory = factory; _router = router; _journal = journal; _log = log;
+        _factory = factory; _router = router; _journal = journal; _log = log; _time = time ?? TimeProvider.System;
         Server = config["NEXUS_SD_SERVER_BIN"];
         Model = config["NEXUS_SD_MODEL"];
         DefaultSteps = int.TryParse(config["NEXUS_SD_STEPS"], out var s) && s is >= 1 and <= 60 ? s : 4;
@@ -46,7 +56,13 @@ public sealed partial class ImageStudio : IDisposable
         var pictures = Environment.GetEnvironmentVariable("XDG_PICTURES_DIR");
         Folder = config["NEXUS_IMAGES_DIR"] ?? Path.Combine(string.IsNullOrWhiteSpace(pictures)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Pictures") : pictures, "Nexus");
+        var configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") is { Length: > 0 } xdg ? xdg
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
+        _settingsPath = config["NEXUS_IMAGES_SETTINGS"] ?? Path.Combine(configHome, "nexusos", "images.json");
+        _downloadState = config["NEXUS_SD_DOWNLOAD_STATE"] ?? (Model is null ? null : Path.Combine(Path.GetDirectoryName(Model) ?? "/", "download.json"));
         _idle = new Timer(_ => Stop(), null, Timeout.Infinite, Timeout.Infinite);
+        // Old pictures are tidied a little after start and then daily.
+        _tidy = new Timer(_ => _ = TidyAsync(), null, TimeSpan.FromMinutes(5), TimeSpan.FromHours(24));
     }
 
     public object Status() => new
@@ -54,9 +70,49 @@ public sealed partial class ImageStudio : IDisposable
         installed = Server is not null && File.Exists(Server),
         model = Model is not null && File.Exists(Model) ? ModelName : null,
         downloading = Model is not null && File.Exists(Model + ".part"),
+        download = Download(),
         running = _process is { HasExited: false },
         folder = Folder
     };
+
+    // What the download service last wrote (state, a plain message, when it tries
+    // again), with the progress read from the partial file. Only known fields
+    // of simple types are passed on.
+    public const long MaxStateBytes = 16384;
+    public static readonly TimeSpan StalledAfter = TimeSpan.FromMinutes(10);
+    public object? Download()
+    {
+        if (_downloadState is null || Model is null) return null;
+        try
+        {
+            if (new FileInfo(_downloadState) is not { Exists: true, Length: <= MaxStateBytes }) return null;
+            using var doc = JsonDocument.Parse(File.ReadAllText(_downloadState));
+            var root = doc.RootElement;
+            string? Text(string key) => root.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String
+                ? NexusActions.Clean(v.GetString()!, 300) : null;
+            long? Number(string key) => root.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n) ? n : null;
+            var part = new FileInfo(Model + ".part");
+            var bytes = part.Exists ? part.Length : File.Exists(Model) ? new FileInfo(Model).Length : 0;
+            var total = Number("total");
+            var state = Text("state") ?? "waiting";
+            var message = Text("message") ?? "";
+            // A download that stopped with the computer (a restart) resumes on its own.
+            if (state == "downloading" && (!part.Exists || _time.GetUtcNow() - part.LastWriteTimeUtc > StalledAfter))
+            {
+                state = "waiting";
+                message = "The download is paused. It resumes by itself in a few minutes.";
+            }
+            var next = Number("nextTry") is long n and > 0 ? DateTimeOffset.FromUnixTimeSeconds(n) : (DateTimeOffset?)null;
+            return new
+            {
+                state, reason = Text("reason") ?? "", message, bytes, total,
+                percent = total is > 0 ? Math.Clamp((int)(bytes * 100 / total.Value), 0, 100) : (int?)null,
+                nextTry = next is { } t && t > _time.GetUtcNow() ? t : (DateTimeOffset?)null,
+                free = Number("free"), needed = Number("needed")
+            };
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return null; }
+    }
 
     public static readonly Dictionary<string, (int W, int H)> Shapes = new()
     {
@@ -102,12 +158,13 @@ public sealed partial class ImageStudio : IDisposable
                 var name = $"{DateTime.Now:yyyyMMdd-HHmmss}-{seed + i}.png";
                 var path = Path.Combine(Folder, name);
                 await File.WriteAllBytesAsync(path, Convert.FromBase64String(b64), ct);
-                var info = new ImageInfo(name, path, request.Prompt.Trim(), request.Style, seed + i, width, height, steps, ModelName, DateTimeOffset.Now);
+                var info = new ImageInfo(name, path, request.Prompt.Trim(), request.Style, seed + i, width, height, steps, ModelName, _time.GetLocalNow());
                 await File.WriteAllTextAsync(path + ".json", JsonSerializer.Serialize(info), ct);
                 made.Add(info);
             }
             await _journal.AppendAsync(new JournalRecord(JournalKinds.App, "nexus",
                 Summary($"Made {count} image{(count == 1 ? "" : "s")} on this computer: {request.Prompt.Trim()}")), ct);
+            _ = TidyAsync();
             return new { images = made };
         }
         catch (HttpRequestException ex) { throw new ImageException("The image model stopped: " + ex.Message, 502); }
@@ -119,7 +176,7 @@ public sealed partial class ImageStudio : IDisposable
     }
 
     public sealed record ImageInfo(string Name, string Path, string Prompt, string? Style, long Seed, int Width, int Height,
-        int Steps, string Model, DateTimeOffset Made);
+        int Steps, string Model, DateTimeOffset Made, bool Starred = false);
 
     public IReadOnlyList<ImageInfo> Gallery()
     {
@@ -144,6 +201,145 @@ public sealed partial class ImageStudio : IDisposable
         var path = Path.Combine(Folder, name);
         File.Delete(path);
         File.Delete(path + ".json");
+    }
+
+    // A starred picture is kept however old it is.
+    public ImageInfo Star(string name, bool starred)
+    {
+        if (!SafeName().IsMatch(name)) throw new ImageException("Not an image made by Nexus.");
+        var path = Path.Combine(Folder, name);
+        if (Read(path + ".json") is not { } info || !File.Exists(path)) throw new ImageException("No such image.", 404);
+        info = info with { Path = path, Starred = starred };
+        File.WriteAllText(path + ".json", JsonSerializer.Serialize(info));
+        return info;
+    }
+
+    private static ImageInfo? Read(string json)
+    {
+        try
+        {
+            return new FileInfo(json) is { Exists: true, Length: <= MaxStateBytes } && !new FileInfo(json).Attributes.HasFlag(FileAttributes.ReparsePoint)
+                ? JsonSerializer.Deserialize<ImageInfo>(File.ReadAllText(json)) : null;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    // ---- keeping pictures for a while ----
+    // KeepDays: pictures older than this go (1-3650). KeepGb: if set, the
+    // oldest go until the folder's Nexus pictures fit (starred ones count, but stay).
+    public sealed record ImageSettings(int KeepDays = ImageSettings.DefaultKeepDays, double? KeepGb = null)
+    {
+        public const int DefaultKeepDays = 90, MaxKeepDays = 3650;
+        public const double MaxKeepGb = 10000;
+    }
+
+    public ImageSettings Settings()
+    {
+        try
+        {
+            if (new FileInfo(_settingsPath) is { Exists: true, Length: <= MaxStateBytes } &&
+                JsonSerializer.Deserialize<ImageSettings>(File.ReadAllText(_settingsPath), Json) is { } saved)
+                return Checked(saved.KeepDays, saved.KeepGb);
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or ImageException) { }
+        return new ImageSettings();
+    }
+
+    public static ImageSettings Checked(int keepDays, double? keepGb)
+    {
+        if (keepDays is < 1 or > ImageSettings.MaxKeepDays) throw new ImageException($"Keep pictures for 1-{ImageSettings.MaxKeepDays} days.");
+        if (keepGb is { } gb && (double.IsNaN(gb) || gb <= 0 || gb > ImageSettings.MaxKeepGb))
+            throw new ImageException($"Keep up to 0.1-{ImageSettings.MaxKeepGb} GB, or no size limit.");
+        return new ImageSettings(keepDays, keepGb is { } g ? Math.Round(g, 1) : null);
+    }
+
+    public ImageSettings SaveSettings(int keepDays, double? keepGb)
+    {
+        var settings = Checked(keepDays, keepGb);
+        Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
+        var temporary = _settingsPath + ".new";
+        File.WriteAllText(temporary, JsonSerializer.Serialize(settings, Json));
+        File.Move(temporary, _settingsPath, true);
+        return settings;
+    }
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    private sealed record Kept(string Name, string Path, long Bytes, DateTimeOffset Made, bool Starred);
+
+    // Only pictures Nexus made (its file names, with the JSON beside them) directly in the folder.
+    private List<Kept> Pictures()
+    {
+        var list = new List<Kept>();
+        if (!Directory.Exists(Folder)) return list;
+        foreach (var png in Directory.EnumerateFiles(Folder, "*.png"))
+        {
+            var name = Path.GetFileName(png);
+            if (!SafeName().IsMatch(name)) continue;
+            var file = new FileInfo(png);
+            if (file.Attributes.HasFlag(FileAttributes.ReparsePoint) || Read(png + ".json") is not { } info) continue;
+            list.Add(new Kept(name, png, file.Length + new FileInfo(png + ".json").Length, info.Made, info.Starred));
+        }
+        return list;
+    }
+
+    // Oldest first: past the age limit, then, while the total is over the size limit.
+    private List<Kept> Due(List<Kept> all, ImageSettings settings)
+    {
+        var cutoff = _time.GetUtcNow() - TimeSpan.FromDays(settings.KeepDays);
+        var due = new List<Kept>();
+        var total = all.Sum(p => p.Bytes);
+        foreach (var p in all.Where(p => !p.Starred).OrderBy(p => p.Made).ThenBy(p => p.Name, StringComparer.Ordinal))
+        {
+            var overSize = settings.KeepGb is { } gb && total > (long)(gb * 1e9);
+            if (p.Made >= cutoff && !overSize) break;
+            due.Add(p);
+            total -= p.Bytes;
+        }
+        return due;
+    }
+
+    public object Usage()
+    {
+        var all = Pictures();
+        var settings = Settings();
+        var due = Due(all, settings);
+        return new
+        {
+            folder = Folder, count = all.Count, bytes = all.Sum(p => p.Bytes), starred = all.Count(p => p.Starred),
+            oldest = all.Count == 0 ? (DateTimeOffset?)null : all.Min(p => p.Made),
+            keepDays = settings.KeepDays, keepGb = settings.KeepGb,
+            due = new { count = due.Count, bytes = due.Sum(p => p.Bytes) }
+        };
+    }
+
+    public sealed record CleanupResult(int Removed, long FreedBytes);
+
+    private readonly SemaphoreSlim _tidyGate = new(1, 1);
+    public async Task<CleanupResult> CleanupAsync(CancellationToken ct)
+    {
+        await _tidyGate.WaitAsync(ct);
+        try
+        {
+            var removed = 0;
+            long freed = 0;
+            foreach (var p in Due(Pictures(), Settings()))
+            {
+                try { File.Delete(p.Path); File.Delete(p.Path + ".json"); removed++; freed += p.Bytes; }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _log.LogInformation("Kept {Name}: {Message}", p.Name, ex.Message); }
+            }
+            if (removed > 0)
+                await _journal.AppendAsync(new JournalRecord(JournalKinds.App, "nexus",
+                    Summary($"Removed {removed} old picture{(removed == 1 ? "" : "s")} from {Folder} ({freed / 1e6:0.#} MB)")), ct);
+            return new CleanupResult(removed, freed);
+        }
+        finally { _tidyGate.Release(); }
+    }
+
+    private async Task TidyAsync()
+    {
+        try { await CleanupAsync(CancellationToken.None); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _log.LogInformation("Pictures not tidied: {Message}", ex.Message); }
     }
 
     [GeneratedRegex(@"^[0-9]{8}-[0-9]{6}-[0-9]+\.png$")]
@@ -215,8 +411,10 @@ public sealed partial class ImageStudio : IDisposable
 
     private static string Summary(string s) => s.Length <= ActivityJournal.MaxSummaryLength ? s : s[..(ActivityJournal.MaxSummaryLength - 1)] + "…";
 
-    public void Dispose() { _idle.Dispose(); Stop(); }
+    public void Dispose() { _idle.Dispose(); _tidy.Dispose(); Stop(); }
 }
+
+public sealed record StarRequest(bool Starred);
 
 public sealed class ImageException(string message, int status = 400) : Exception(message)
 {
@@ -239,6 +437,20 @@ public static class ImageEndpoints
         app.MapDelete("/images/{name}", (string name, ImageStudio studio) =>
         {
             try { studio.Delete(name); return Results.NoContent(); }
+            catch (ImageException ex) { return Results.Problem(ex.Message, statusCode: ex.Status); }
+        });
+        app.MapPost("/images/{name}/star", (string name, StarRequest request, ImageStudio studio) =>
+        {
+            try { return Results.Ok(studio.Star(name, request.Starred)); }
+            catch (ImageException ex) { return Results.Problem(ex.Message, statusCode: ex.Status); }
+        });
+        // How much room the pictures take, what the settings would remove; and the clean-up itself.
+        app.MapGet("/images/usage", (ImageStudio studio) => Results.Ok(studio.Usage()));
+        app.MapPost("/images/cleanup", async (ImageStudio studio, CancellationToken ct) => Results.Ok(await studio.CleanupAsync(ct)));
+        app.MapGet("/images/settings", (ImageStudio studio) => Results.Ok(studio.Settings()));
+        app.MapPost("/images/settings", (ImageStudio.ImageSettings request, ImageStudio studio) =>
+        {
+            try { return Results.Ok(studio.SaveSettings(request.KeepDays, request.KeepGb)); }
             catch (ImageException ex) { return Results.Problem(ex.Message, statusCode: ex.Status); }
         });
     }

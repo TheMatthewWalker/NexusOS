@@ -109,6 +109,20 @@ in
         default = 1800;
         description = "How long the candidate's test machine may take to start up.";
       };
+      minFreeGiB = lib.mkOption {
+        type = lib.types.ints.between 1 1000;
+        default = 10;
+        description = "Free space the Nix store needs before the builder checks a change; with less, it refuses and says why.";
+      };
+      keepResults = lib.mkOption {
+        type = lib.types.ints.between 1 100;
+        default = 5;
+        description = ''
+          How many finished checks the builder keeps (each holds its built system
+          and test machine from garbage collection); older ones, and any older
+          than 14 days, are let go.
+        '';
+      };
     };
     desktopApproval.enable = lib.mkEnableOption ''
       approval from the desktop: the person enters their password through polkit
@@ -215,15 +229,17 @@ in
         User = "root";
         Group = "nexus-guardian";
         ExecStart = "${cfg.package}/bin/nexus-guardian-builder serve --config /etc/nexus-guardian/config.json --dir ${builderDir}"
-          + " --vm-timeout ${toString cfg.localBuilder.vmTestSeconds}" + requireUnits;
+          + " --vm-timeout ${toString cfg.localBuilder.vmTestSeconds}"
+          + " --min-free-gib ${toString cfg.localBuilder.minFreeGiB} --keep-results ${toString cfg.localBuilder.keepResults}" + requireUnits;
         Restart = "on-failure";
         RestartSec = 5;
         UMask = "0077";
         RuntimeDirectory = "nexus-guardian-builder";
         RuntimeDirectoryMode = "0750";
         ReadWritePaths = [ "${builderDir}/work" ];
-        # Evaluating a whole NixOS system needs room.
-        MemoryMax = "4G";
+        # Evaluating a whole NixOS desktop (and its trial-boot entry) can take
+        # more than 4 GB; a fixed cap made the builder disappear mid-check.
+        MemoryMax = "75%";
         TasksMax = 64;
       };
     };

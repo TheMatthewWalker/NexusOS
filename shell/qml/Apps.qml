@@ -14,8 +14,15 @@ import "settings"
 // app with `nexus try` in a throwaway bubblewrap sandbox (no access to your
 // files; nothing kept when it closes); Keep it asks Core (/try/keep) for a
 // normal Guardian install proposal, which still needs approval.
+// Before a Flathub install, a sheet says who publishes the app, whether
+// Flathub verified them, its licence, download size and permissions in plain
+// words, with a warning for wide access. Every install and removal (Flathub
+// here, apt through the apt command) is journalled with an Undo, and after a
+// removal the app's leftover data is offered for deletion, never by default.
+// apt is said plainly: the Ubuntu container runs as you and is not a sandbox;
+// Install isolated uses a separate container that cannot see your files.
 // Opened by Super+A, the top bar, Nexus, or `nexus-shell-ipc call apps open [tab]`.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     property var bridge
@@ -41,6 +48,7 @@ FloatingWindow {
         function state(): string {
             return JSON.stringify({ visible: win.visible, tab: win.tab, flathub: win.flathub, results: win.results.map(r => r.id),
                                     installed: win.installedIds, busy: win.busy, message: win.message,
+                                    sheet: win.sheetId, sheetLines: win.sheet ? win.sheet.lines : [], leftover: win.leftover,
                                     trial: win.trialAttr, trialRunning: trial.running, trialNote: win.trialNote })
         }
         // Try before you install: a nixpkgs app in a throwaway sandbox, and keeping it (a Guardian proposal).
@@ -109,36 +117,186 @@ FloatingWindow {
         searchProc.command = ["flatpak", "search", "--columns=application,name,description", q];
         searchProc.running = true;
     }
+
+    // ---- before installing: who makes it and what it may reach ----
+    // Core reads the catalogue flatpak keeps on disk and the cached summary
+    // (GET /apps/flathub/<id>, FlathubDetails.cs): publisher, verified or not,
+    // licence, download size and the permissions in plain words. Nothing is
+    // installed until the person presses Install on the sheet.
+    readonly property var idPattern: /^[A-Za-z][A-Za-z0-9_-]{0,63}(\.[A-Za-z0-9_-]{1,64}){2,6}$/
+    property string sheetId: ""
+    property var sheet: null           // the details, or null while they are read
+    property string sheetNote: ""
+    property int sheetCall: -1
+    function requestInstall(id) {
+        if (busy || !idPattern.test(id)) return;
+        sheetId = id; sheet = null; sheetNote = "Reading what " + nameOf(id) + " can do…";
+        if (!bridge || !bridge.online) { sheetNote = "Nexus Core is not running, so its publisher and permissions cannot be shown."; return }
+        sheetCall = bridge.api("GET", "/apps/flathub/" + id);
+    }
+    function closeSheet() { sheetId = ""; sheet = null; sheetNote = "" }
+
+    // ---- installing and removing, each journalled with an Undo ----
+    // The change is reported to Core once it has happened (POST /apps/changes)
+    // with what an Undo needs: the scope (--user or --system), remote, branch
+    // and commit, read from `flatpak info`. Undo (Timeline or Nexus) comes back
+    // here as perform(): a removal is undone by reinstalling in the same place
+    // and going back to the same commit when Flathub still has it.
+    property var changeInfo: ({})      // "Label" -> value, from `flatpak info`
+    property var changeOpts: ({})
+    readonly property var wordPattern: /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
     Process {
         id: change
         property string verb: ""
-        stdout: SplitParser { onRead: line => { if (line.trim()) win.message = line.trim().slice(0, 140) } }
-        stderr: SplitParser { onRead: line => { if (line.trim()) win.message = line.trim().slice(0, 140) } }
+        function line(text) {
+            const t = text.trim();
+            const m = /^@info\s+([A-Z][A-Za-z]{1,20}):\s+(\S.*)$/.exec(t);
+            if (m) { const i = win.changeInfo; i[m[1]] = m[2].trim(); win.changeInfo = i; return }
+            if (t.startsWith("@note ")) { win.message = t.slice(6, 200); return }
+            if (t && !t.startsWith("@")) win.message = t.slice(0, 140);
+        }
+        stdout: SplitParser { onRead: line => change.line(line) }
+        stderr: SplitParser { onRead: line => change.line(line) }
         onExited: code => {
-            const name = win.nameOf(win.busy);
+            const id = win.busy, name = win.nameOf(id);
             win.message = code === 0 ? name + (change.verb === "install" ? " is installed. Find it in All apps." : " is removed.")
                                      : "Could not " + change.verb + " " + name + ". " + win.message;
+            if (code === 0) win.report(change.verb, id, name);
+            if (code === 0 && change.verb === "remove") win.checkLeftover(id, name, win.changeInfo.Installation === "system" ? "system" : "user");
             win.busy = "";
             listInstalled.running = true;
         }
     }
-    function nameOf(id) { const r = results.concat(featured).find(x => x.id === id); return r ? r.name : id }
-    function install(id) {
-        if (busy) return;
+    // Move in's "Get these apps": [{ id, name, was, same }] from Core's fixed list; shown, never installed without a click.
+    property var suggested: []
+    function suggest(list) {
+        suggested = (list || []).filter(a => a && /^[A-Za-z][A-Za-z0-9_-]{0,63}(\.[A-Za-z0-9_-]{1,64}){2,6}$/.test(a.id)).slice(0, 40)
+            .map(a => ({ id: a.id, name: String(a.name || a.id).slice(0, 80),
+                         summary: a.same ? "On your old computer too" : "Instead of " + String(a.was || "").slice(0, 80) }));
+        query.text = "";
+        open("get");
+    }
+    function report(op, id, name) {
+        if (!bridge || !bridge.online) return;
+        const i = changeInfo, o = changeOpts;
+        const scope = i.Installation === "system" || i.Installation === "user" ? i.Installation : (o.scope || "user");
+        const body = { source: "flathub", op: op, id: id, name: String(name).slice(0, 80), scope: scope };
+        if (wordPattern.test(i.Origin || "")) body.origin = i.Origin;
+        if (wordPattern.test(i.Branch || "")) body.branch = i.Branch;
+        if (/^[0-9a-f]{64}$/.test(i.Commit || "")) body.commit = i.Commit;
+        if (/^[A-Za-z0-9][A-Za-z0-9 .+~:_()-]{0,63}$/.test(i.Version || "")) body.version = i.Version;
+        if (o.undoes) body.undoes = o.undoes;
+        bridge.api("POST", "/apps/changes", body);
+    }
+    function nameOf(id) { const r = results.concat(suggested, featured).find(x => x.id === id); return r ? r.name : (sheet && sheet.id === id && sheet.name) || changeOpts.name || id }
+    // opts (from an Undo): { scope, origin, branch, commit, undoes, name }.
+    function install(id, opts) {
+        if (busy || !idPattern.test(id)) return;
+        const o = opts || {};
+        const scope = o.scope === "system" ? "system" : "user";
+        const origin = wordPattern.test(o.origin || "") ? o.origin : "flathub";
+        const branch = wordPattern.test(o.branch || "") ? o.branch : "";
+        const commit = /^[0-9a-f]{64}$/.test(o.commit || "") ? o.commit : "";
+        closeSheet();
+        changeInfo = ({}); changeOpts = o;
         busy = id; message = "Installing " + nameOf(id) + "…"; change.verb = "install";
         // A per-person install needs Flathub in the person's own list of remotes.
-        change.command = ["sh", "-c", "flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && " +
-                          "flatpak install --user --noninteractive -y flathub \"$1\"", "sh", id];
+        // One for everyone (only when undoing a removal of one) asks polkit.
+        change.command = ["sh", "-c",
+            "ref=\"$1\"; [ -z \"$4\" ] || ref=\"$1//$4\"; " +
+            "if [ \"$2\" = system ]; then flatpak install --system --noninteractive -y \"$3\" \"$ref\"; " +
+            "else flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && " +
+            "flatpak install --user --noninteractive -y \"$3\" \"$ref\"; fi || exit 1; " +
+            "if [ -n \"$5\" ]; then flatpak update --\"$2\" --noninteractive -y --commit=\"$5\" \"$ref\" >/dev/null 2>&1 || " +
+            "echo '@note The same version is no longer offered, so the current one is installed.'; fi; " +
+            "LC_ALL=C flatpak info --\"$2\" \"$1\" | sed 's/^/@info /'",
+            "sh", id, scope, origin, branch, commit];
         change.running = true;
     }
-    function uninstall(id) {
-        if (busy) return;
+    function uninstall(id, opts) {
+        if (busy || !idPattern.test(id)) return;
+        const o = opts || {};
+        changeInfo = ({}); changeOpts = o;
         busy = id; message = "Removing " + nameOf(id) + "…"; change.verb = "remove";
         // Apps installs for the person; one installed for everyone is removed there (polkit asks).
-        change.command = ["sh", "-c", "flatpak uninstall --user --noninteractive -y \"$1\" || flatpak uninstall --system --noninteractive -y \"$1\"", "sh", id];
+        // `flatpak info` first, so an Undo can reinstall the same version in the same place.
+        change.command = ["sh", "-c",
+            "s=\"$2\"; if [ -z \"$s\" ]; then if flatpak info --user \"$1\" >/dev/null 2>&1; then s=user; else s=system; fi; fi; " +
+            "LC_ALL=C flatpak info --\"$s\" \"$1\" | sed 's/^/@info /'; " +
+            "flatpak uninstall --\"$s\" --noninteractive -y \"$1\"",
+            "sh", id, o.scope === "system" || o.scope === "user" ? o.scope : ""];
         change.running = true;
     }
     onVisibleChanged: if (visible) listInstalled.running = true
+
+    // ---- after removing: the app's own data is offered, never deleted by default ----
+    // Flatpak keeps an app's settings and files in ~/.var/app/<id>; keeping
+    // them means a reinstall (or Undo) brings them back.
+    property var leftover: null        // { id, name, size, scope }
+    Process {
+        id: leftoverCheck
+        property var pending: null
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const size = text.trim().split(/\s/)[0];
+                if (size && leftoverCheck.pending) win.leftover = Object.assign({ size: size }, leftoverCheck.pending);
+            }
+        }
+    }
+    function checkLeftover(id, name, scope) {
+        leftover = null;
+        leftoverCheck.pending = { id: id, name: name, scope: scope };
+        leftoverCheck.command = ["sh", "-c", "[ -d \"$HOME/.var/app/$1\" ] && du -sh \"$HOME/.var/app/$1\"", "sh", id];
+        leftoverCheck.running = true;
+    }
+    Process {
+        id: leftoverDelete
+        property var what: null
+        onExited: code => {
+            const w = leftoverDelete.what;
+            win.message = code === 0 ? w.name + "'s data and settings are deleted." : "Could not delete " + w.name + "'s data.";
+            if (code === 0 && win.bridge && win.bridge.online)
+                win.bridge.api("POST", "/apps/changes", { source: "flathub", op: "delete-data", id: w.id, name: String(w.name).slice(0, 80), scope: w.scope });
+        }
+    }
+    function deleteLeftover() {
+        const w = leftover;
+        if (!w || !idPattern.test(w.id)) return;
+        leftover = null;
+        leftoverDelete.what = w;
+        leftoverDelete.command = ["sh", "-c", "rm -rf -- \"$HOME/.var/app/$1\"", "sh", w.id];
+        leftoverDelete.running = true;
+    }
+
+    // ---- apt, in a terminal the person can see ----
+    // The apt command reports each change to Core itself (nexus apps record);
+    // NEXUS_UNDOES says the run is an Undo.
+    readonly property string terminal: Quickshell.env("NEXUS_TERMINAL") || "kitty"
+    readonly property var aptPattern: /^[a-z0-9][a-z0-9+.-]{0,99}$/
+    function aptRun(op, pkg, version, isolated, undoes) {
+        if (!["install", "remove"].includes(op) || !aptPattern.test(pkg || "")) return false;
+        const target = /^[A-Za-z0-9][A-Za-z0-9.+~:_-]{0,99}$/.test(version || "") && op === "install" ? pkg + "=" + version : pkg;
+        Quickshell.execDetached([terminal, "env", "NEXUS_UNDOES=" + (Number(undoes) > 0 ? String(Number(undoes)) : ""), "sh", "-c",
+            "if [ \"$3\" = 1 ]; then apt --isolated \"$1\" \"$2\"; else apt \"$1\" \"$2\"; fi; echo; printf 'Press Enter to close. '; read -r _",
+            "sh", op, target, isolated ? "1" : "0"]);
+        return true;
+    }
+
+    // An instruction from Nexus's card or an Undo in the Timeline (Core: AppChanges.Inverse).
+    function perform(p) {
+        switch (p.op) {
+        case "flathub.install":
+            open("get"); install(p.appId, { scope: p.scope, origin: p.origin, branch: p.branch, commit: p.commit, undoes: p.undoes, name: p.name });
+            return { ok: true, message: "Installing in Apps…" };
+        case "flathub.remove":
+            open("get"); uninstall(p.appId, { scope: p.scope, undoes: p.undoes, name: p.name });
+            return { ok: true, message: "Removing in Apps…" };
+        case "apt.install": case "apt.remove":
+            return aptRun(p.op.slice(4), p.package, p.version, p.isolated === true, p.undoes)
+                ? { ok: true, message: "Running apt in a terminal." } : { ok: false, message: "That is not an apt package name." };
+        default: return { ok: false, message: "Apps cannot do that." };
+        }
+    }
 
     // ---- system apps, tried first (nixpkgs) ----
     // A curated list, so this works offline and needs no search service; any
@@ -201,8 +359,12 @@ FloatingWindow {
         function onResult(id, type, data) {
             if (id === win.keepId) win.trialNote = "Sent for approval: install " + win.trialName(win.trialAttr) + " for every account. " +
                 "Nothing is installed until you approve it as a system change; it then installs on the next trial boot and can be rolled back.";
+            else if (id === win.sheetCall && data && data.id === win.sheetId) { win.sheet = data; win.sheetNote = "" }
         }
-        function onFailed(id, message) { if (id === win.keepId) win.trialNote = "Keeping it did not work: " + message }
+        function onFailed(id, message) {
+            if (id === win.keepId) win.trialNote = "Keeping it did not work: " + message;
+            else if (id === win.sheetCall) win.sheetNote = "Its details could not be read: " + message;
+        }
     }
 
     // ---- the window ----
@@ -301,10 +463,11 @@ FloatingWindow {
             width: storeList.width; bottomPadding: 10; wrapMode: Text.Wrap
             text: !win.flathub ? "Flathub is not available yet: it is added once this computer has been online."
                 : query.text.trim() ? "From Flathub. Apps install for you only, with no password."
+                : win.suggested.length ? "Get these apps: matched to the programs on your old computer (Move in). Nothing installs until you press Install."
                 : "Popular on Flathub. Search above for anything else. Apps install for you only, with no password."
             color: win.theme.inkSecondary; font.pixelSize: 13
         }
-        model: query.text.trim() ? win.results : win.featured
+        model: query.text.trim() ? win.results : win.suggested.length ? win.suggested : win.featured
         delegate: SettingRow {
             required property var modelData
             readonly property bool installed: win.installedIds.includes(modelData.id)
@@ -317,7 +480,64 @@ FloatingWindow {
                 Button { theme: win.theme; visible: installed; danger: true; label: win.busy === modelData.id ? "Removing…" : "Remove"
                          enabled: win.busy === ""; onClicked: win.uninstall(modelData.id) }
                 Button { theme: win.theme; visible: !installed; primary: true; label: win.busy === modelData.id ? "Installing…" : "Install"
-                         enabled: win.busy === "" && win.flathub; onClicked: win.install(modelData.id) }
+                         enabled: win.busy === "" && win.flathub; onClicked: win.requestInstall(modelData.id) }
+            }
+        }
+    }
+
+    // The install sheet: what the app is and what it may reach, then Install or Cancel.
+    // After a removal, the same place offers to delete the app's leftover data.
+    Rectangle {
+        id: sheetPanel
+        visible: win.sheetId !== "" || win.leftover !== null
+        z: 5
+        x: 32; width: parent.width - 64
+        height: Math.min(sheetCol.implicitHeight + 32, parent.height - 200)
+        anchors.bottom: parent.bottom; anchors.bottomMargin: 20
+        radius: 16; color: "#0E1630"
+        border.color: win.sheet && win.sheet.warning ? "#FFA65C" : win.theme.glassBorder
+        Flickable {
+            anchors { fill: parent; margins: 16 }
+            contentHeight: sheetCol.implicitHeight; clip: true
+            Column {
+                id: sheetCol
+                width: parent.width; spacing: 8
+                // Install sheet.
+                Text { visible: win.sheetId !== ""; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                       text: "Install " + win.nameOf(win.sheetId) + " (" + win.sheetId + ")"
+                       color: win.theme.ink; font.pixelSize: 16; font.weight: 600 }
+                Text { visible: win.sheetId !== "" && win.sheetNote !== ""; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                       text: win.sheetNote; color: win.theme.inkSecondary; font.pixelSize: 13 }
+                Text { visible: win.sheetId !== "" && !!(win.sheet && win.sheet.warning); width: parent.width; wrapMode: Text.Wrap
+                       textFormat: Text.PlainText; text: win.sheet && win.sheet.warning ? win.sheet.warning : ""
+                       color: "#FFC48F"; font.pixelSize: 13; font.weight: 500 }
+                Repeater {
+                    model: win.sheetId !== "" && win.sheet ? win.sheet.lines : []
+                    delegate: Text {
+                        required property var modelData
+                        width: sheetCol.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                        text: "· " + modelData; color: win.theme.inkSecondary; font.pixelSize: 13
+                    }
+                }
+                Row {
+                    visible: win.sheetId !== ""
+                    spacing: 8
+                    Button { theme: win.theme; primary: true; label: "Install, just for me"; enabled: win.busy === "" && win.flathub
+                             onClicked: win.install(win.sheetId) }
+                    Button { theme: win.theme; label: "Cancel"; onClicked: win.closeSheet() }
+                }
+                // Leftover data after a removal: offered, never deleted by default.
+                Text { visible: win.sheetId === "" && win.leftover !== null; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                       text: win.leftover ? win.leftover.name + "'s data and settings are still in your home folder (~/.var/app/" + win.leftover.id +
+                                            ", " + win.leftover.size + "). Keeping them means reinstalling it, or Undo, brings them back. " +
+                                            "Deleting them cannot be undone." : ""
+                       color: win.theme.ink; font.pixelSize: 13 }
+                Row {
+                    visible: win.sheetId === "" && win.leftover !== null
+                    spacing: 8
+                    Button { theme: win.theme; label: "Keep them"; onClicked: win.leftover = null }
+                    Button { theme: win.theme; danger: true; label: "Delete its data"; onClicked: win.deleteLeftover() }
+                }
             }
         }
     }
@@ -386,21 +606,57 @@ FloatingWindow {
         }
     }
 
-    // Ubuntu (apt).
+    // Ubuntu (apt). Said plainly: the Ubuntu container is not a sandbox.
     Column {
         visible: win.tab === "apt"
         x: 32; y: 110; width: parent.width - 64
         spacing: 10
         SettingRow {
             theme: win.theme; label: "apt, in an Ubuntu container"
-            detail: "NexusOS is built on NixOS, which has no apt of its own. The apt command runs apt inside Ubuntu 24.04, " +
-                    "which shares your home folder. Apps you install there are added to All apps. No password is needed."
-            Button { theme: win.theme; primary: true; label: "Open a terminal"
-                     onClicked: Quickshell.execDetached([Quickshell.env("NEXUS_TERMINAL") || "kitty"]) }
+            detail: "NexusOS is built on NixOS, which has no apt of its own. The apt command runs apt inside Ubuntu 24.04. " +
+                    "Apps you install there are added to All apps. No password is needed."
+            Button { theme: win.theme; label: "Open a terminal"; onClicked: Quickshell.execDetached([win.terminal]) }
+        }
+        Rectangle {
+            width: parent.width; height: aptWarn.implicitHeight + 24; radius: 12
+            color: "#2A1A0C"; border.color: "#FFA65C"
+            Text {
+                id: aptWarn
+                x: 16; y: 12; width: parent.width - 32; wrapMode: Text.Wrap; color: "#FFC48F"; font.pixelSize: 13
+                text: "Ubuntu software runs as you and can read your home folder. The Ubuntu container shares it (and can see the " +
+                      "rest of this computer's files), so it is not a sandbox: install only software you trust. " +
+                      "For anything else, use Install isolated: a separate container with its own home folder that cannot see your files " +
+                      "(command-line tools only; run them with apt --isolated run <name>)."
+            }
+        }
+        SettingRow {
+            theme: win.theme; label: "Install a package"
+            detail: "Opens a terminal so you see what apt does. Installs and removals are in Settings, Timeline, where they can be undone."
+            Row {
+                spacing: 8
+                Rectangle {
+                    width: 180; height: 34; radius: 10; color: win.theme.glass
+                    border.color: aptName.activeFocus ? win.theme.focus : win.theme.glassBorder
+                    TextInput {
+                        id: aptName
+                        x: 10; width: parent.width - 20; anchors.verticalCenter: parent.verticalCenter
+                        color: win.theme.ink; font.pixelSize: 13; clip: true
+                        validator: RegularExpressionValidator { regularExpression: /[a-z0-9][a-z0-9+.-]{0,99}/ }
+                        Text { visible: !aptName.text; text: "package, e.g. htop"; color: win.theme.inkSecondary; font.pixelSize: 13 }
+                        Accessible.role: Accessible.EditableText
+                        Accessible.name: "apt package name"
+                    }
+                }
+                Button { theme: win.theme; label: "Install isolated"; enabled: win.aptPattern.test(aptName.text)
+                         onClicked: win.aptRun("install", aptName.text, "", true, 0) }
+                Button { theme: win.theme; primary: true; label: "Install"; enabled: win.aptPattern.test(aptName.text)
+                         onClicked: win.aptRun("install", aptName.text, "", false, 0) }
+            }
         }
         SettingRow {
             theme: win.theme; label: "Examples"
-            detail: "apt install htop        apt search ffmpeg        apt remove htop        apt upgrade        apt shell (a terminal inside Ubuntu)"
+            detail: "apt install htop        apt search ffmpeg        apt remove htop        apt upgrade        apt shell (a terminal inside Ubuntu)        " +
+                    "apt --isolated install X (no access to your files)"
         }
         SettingRow {
             theme: win.theme; label: "Software for the whole system"

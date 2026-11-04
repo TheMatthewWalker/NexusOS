@@ -22,6 +22,10 @@ PanelWindow {
     property var apps
     property bool reduced: false
     property bool open: false
+    // The question on screen in Nexus, if it has an answer: Remember keeps it with the workspace.
+    property string conversation: ""
+    // Restore hands the remembered conversation back to Nexus (shell.qml shows it).
+    signal conversationRestored(string prompt, string answer)
     visible: open
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
@@ -37,6 +41,7 @@ PanelWindow {
     property int listId: -1
     property int saveId: -1
     property int forgetId: -1
+    property int restoreId: -1
     readonly property string filter: search.text.trim().toLowerCase()
     readonly property var monitor: Hyprland.focusedMonitor
     readonly property real monW: monitor && monitor.width > 0 ? monitor.width : 1920
@@ -113,33 +118,67 @@ PanelWindow {
         }).slice(0, 24);
         if (ws && displayName(ws) !== name) rename(id, name);
         message = "";
-        saveId = bridge.api("POST", "/workspaces", { name: name, workspace: id, apps: list });
+        saveId = bridge.api("POST", "/workspaces", { name: name, workspace: id, apps: list, conversation: conversation || null });
         return true;
     }
     function forget(name) { if (bridge.online) forgetId = bridge.api("DELETE", "/workspaces?name=" + encodeURIComponent(name)) }
     function quote(arg) { return "'" + String(arg).replace(/'/g, "'\\''") + "'" }
-    // Restore: relaunch each remembered app that is not already there, onto its workspace.
+    // Restore: Core says what can come back now (the files still there, the
+    // tabs, the conversation if history has it); without Core, the apps only.
     function restore(name) {
         const rec = saved.find(s => s.name.toLowerCase() === name.trim().toLowerCase());
         if (!rec) { message = "No remembered workspace is called “" + name + "”."; return false }
+        if (bridge.online) restoreId = bridge.api("GET", "/workspaces/restore?name=" + encodeURIComponent(rec.name));
+        else relaunch(rec, { apps: rec.apps.map(a => ({ appId: a.appId, desktopId: a.desktopId, files: [] })), tabs: [], conversation: null,
+                             notes: ["Nexus Core is not running, so only the apps reopen, without their files and tabs."] });
+        return true;
+    }
+    // A desktop entry's command with its files: %F/%U take them all at once,
+    // %f/%u one each (an app started once per file); other field codes go.
+    function commandsFor(entry, files) {
+        const base = entry ? entry.command : [];
+        if (!base.length) return [];
+        const strip = args => args.filter(a => !/^%[a-zA-Z]$/.test(a));
+        if (!files.length) return [strip(base)];
+        if (base.some(a => a === "%F" || a === "%U")) return [strip(base.flatMap(a => a === "%F" || a === "%U" ? files : [a]))];
+        if (base.some(a => a === "%f" || a === "%u")) return files.map(f => strip(base.map(a => a === "%f" || a === "%u" ? f : a)));
+        return null;                                   // the app takes no files
+    }
+    function relaunch(rec, plan) {
         const ws = workspaceById(rec.workspace);
         const there = windowsOf(ws).map(t => appIdOf(t).toLowerCase());
         const missing = [];
-        let started = 0;
-        for (const app of rec.apps) {
-            if (there.includes(app.appId.toLowerCase())) continue;
+        const notes = (plan.notes || []).slice();
+        let started = 0, filesOpened = 0, tabsOpened = 0;
+        let tabsLeft = (plan.tabs || []).map(t => t.url);
+        for (const app of plan.apps) {
+            const firefox = /firefox/i.test(app.appId);
+            if (there.includes(app.appId.toLowerCase())) {
+                if (firefox && tabsLeft.length) { notes.push("Firefox was already open here, so its tabs were not opened again."); tabsLeft = [] }
+                continue;
+            }
             const entry = (app.desktopId && DesktopEntries.byId(app.desktopId)) || DesktopEntries.heuristicLookup(app.appId);
-            const command = entry ? entry.command.filter(a => !/^%[a-zA-Z]$/.test(a)) : [];
-            if (!command.length) { missing.push(app.appId); continue }
-            Hyprland.dispatch("exec [workspace " + rec.workspace + " silent] " + command.map(quote).join(" "));
+            // The tabs go with the first Firefox window.
+            const files = firefox ? tabsLeft : (app.files || []);
+            let commands = commandsFor(entry, files);
+            if (commands === null) { notes.push(app.appId + " cannot be handed files, so it opens without them."); commands = commandsFor(entry, []) }
+            else if (firefox) { tabsOpened += files.length; tabsLeft = [] }
+            else filesOpened += files.length;
+            if (!commands.length) { missing.push(app.appId); continue }
+            for (const command of commands)
+                Hyprland.dispatch("exec [workspace " + rec.workspace + " silent] " + command.map(quote).join(" "));
             started++;
         }
         Hyprland.dispatch("workspace " + rec.workspace);
         rename(rec.workspace, rec.name);
-        message = (started ? "Opening " + started + (started === 1 ? " app" : " apps") + " on workspace " + rec.workspace + ". " : "") +
-                  (missing.length ? "Could not find how to start: " + missing.join(", ") + "." : "");
-        if (!missing.length) hide();
-        return true;
+        if (plan.conversation) conversationRestored(plan.conversation.prompt, plan.conversation.answer);
+        const opened = [started ? started + (started === 1 ? " app" : " apps") : "",
+                        filesOpened ? filesOpened + (filesOpened === 1 ? " file" : " files") : "",
+                        tabsOpened ? tabsOpened + (tabsOpened === 1 ? " tab" : " tabs") : "",
+                        plan.conversation ? "the Nexus conversation" : ""].filter(s => s);
+        if (missing.length) notes.push("Could not find how to start: " + missing.join(", ") + ".");
+        message = (opened.length ? "Opening " + opened.join(", ") + " on workspace " + rec.workspace + ". " : "") + notes.join(" ");
+        if (!notes.length) hide();
     }
 
     Connections {
@@ -148,11 +187,21 @@ PanelWindow {
             if (id === ov.listId) ov.saved = data.workspaces || [];
             else if (id === ov.saveId) {
                 ov.saved = data.workspaces || [];
-                ov.message = "Remembered “" + data.workspace.name + "” with " + data.workspace.apps.length +
-                             (data.workspace.apps.length === 1 ? " app." : " apps.") + " Say or type “open " + data.workspace.name + "” to bring it back.";
+                const w = data.workspace;
+                const files = w.apps.reduce((n, a) => n + (a.files ? a.files.length : 0), 0);
+                const tabs = w.tabs ? w.tabs.length : 0;
+                ov.message = "Remembered “" + w.name + "” with " + [w.apps.length + (w.apps.length === 1 ? " app" : " apps"),
+                             files ? files + (files === 1 ? " file" : " files") : "", tabs ? tabs + (tabs === 1 ? " tab" : " tabs") : "",
+                             w.conversation ? "the Nexus conversation" : ""].filter(s => s).join(", ") + ". " +
+                             (w.notes && w.notes.length ? w.notes.join(" ") + " " : "") +
+                             "Say or type “open " + w.name + "” to bring it back.";
             } else if (id === ov.forgetId) { ov.saved = data.workspaces || []; ov.selectedSaved = ""; ov.message = "Forgotten. Your windows and files are not touched." }
+            else if (id === ov.restoreId) {
+                const rec = ov.saved.find(s => s.name.toLowerCase() === String(data.name).toLowerCase());
+                if (rec) ov.relaunch(rec, data);
+            }
         }
-        function onFailed(id, message) { if ([ov.listId, ov.saveId, ov.forgetId].includes(id)) ov.message = message }
+        function onFailed(id, message) { if ([ov.listId, ov.saveId, ov.forgetId, ov.restoreId].includes(id)) ov.message = message }
     }
 
     IpcHandler {
@@ -175,7 +224,9 @@ PanelWindow {
                                     focused: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 0,
                                     workspaces: ov.workspaces.map(w => ({ id: w.id, name: ov.displayName(w),
                                         windows: ov.windowsOf(w).map(t => ({ address: ov.address(t), appId: ov.appIdOf(t), title: t.title })) })),
-                                    remembered: ov.saved.map(s => ({ name: s.name, workspace: s.workspace, apps: s.apps.map(a => a.appId) })) })
+                                    remembered: ov.saved.map(s => ({ name: s.name, workspace: s.workspace, apps: s.apps.map(a => a.appId),
+                                        files: s.apps.flatMap(a => a.files || []), tabs: (s.tabs || []).length,
+                                        conversation: s.conversation ? s.conversation.prompt : "", notes: s.notes || [] })) })
         }
     }
 
@@ -497,8 +548,20 @@ PanelWindow {
             }
             Text {
                 width: parent.width; wrapMode: Text.Wrap; color: ov.theme.inkSecondary; font.pixelSize: 12; lineHeight: 1.3
-                text: "Remember keeps this workspace's name and the apps open on it, on this computer. Restore reopens those apps " +
-                      "and moves them back here. Open files and browser tabs are not kept yet."
+                text: "Remember keeps this workspace's name, the apps open on it, the files they show (when the window title names one), " +
+                      "Firefox's tabs and the conversation in Nexus, on this computer. Restore reopens them here and says what it could not."
+            }
+            // What else it remembers, and what it could not keep.
+            Text {
+                visible: !!panel.rec && text !== ""
+                width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; color: ov.theme.inkSecondary; font.pixelSize: 12
+                text: !panel.rec ? "" : [
+                    panel.rec.apps.some(a => a.files && a.files.length)
+                        ? "Files: " + panel.rec.apps.flatMap(a => a.files || []).map(f => f.split("/").pop()).join(", ") : "",
+                    panel.rec.tabs && panel.rec.tabs.length ? "Firefox tabs: " + panel.rec.tabs.length : "",
+                    panel.rec.conversation ? "Nexus: “" + panel.rec.conversation.prompt + "”" : "",
+                    (panel.rec.notes || []).join(" ")
+                ].filter(s => s).join("\n")
             }
             Text { visible: ov.message !== ""; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
                    text: ov.message; color: "#C9D4FF"; font.pixelSize: 13 }

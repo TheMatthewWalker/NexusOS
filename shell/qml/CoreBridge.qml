@@ -34,6 +34,10 @@ Item {
         return id;
     }
     function chat(prompt) { return send("chat", { prompt: prompt }) }
+    // Explain mode: a read-only answer, with no actions and nothing saved (Explain.cs).
+    function explain(prompt) { return send("explain", { prompt: prompt }) }
+    // After "Do it": Nexus says what happened (delta events, then done).
+    function followUp(actionId, ok, message) { return send("followup", { action: actionId, ok: ok, message: message || "" }) }
     function suggest(prompt, useModel) { return send("suggest", { prompt: prompt, model: !!useModel }) }
     function unload() { return send("unload") }
     // Any page's Core request (allowed areas only, see BridgeApi in the CLI); the answer comes as result(id, "api", data).

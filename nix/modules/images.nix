@@ -1,8 +1,11 @@
 # Local image generation for Nexus (ImageStudio.cs): stable-diffusion.cpp
 # with Vulkan, and an image model downloaded once the machine is online
 # (about 7 GB, too big for the installer image). Until it is there, the
-# Images window says so. The download is checked against the SHA-256 the
-# model host publishes for the file.
+# Images window says why and how far the download has got. The download
+# (scripts/images/nexus_image_model.py) needs room for the file plus 2 GiB,
+# resumes when interrupted, waits longer after each failure (up to 6 hours, a
+# few attempts a day), and keeps the file only if it matches the SHA-256
+# pinned here.
 { config, lib, pkgs, ... }:
 let
   cfg = config.nexusos.imageModel;
@@ -26,6 +29,29 @@ in
         works, with steps and guidance set to suit it.
       '';
     };
+    sha256 = lib.mkOption {
+      type = lib.types.nullOr (lib.types.strMatching "[0-9a-f]{64}");
+      # SDXL-Turbo's sd_xl_turbo_1.0_fp16.safetensors (6,938,081,905 bytes):
+      # the LFS SHA-256 Hugging Face publishes for it (revision 71153311), as
+      # copied by many independent model catalogues. If it were ever wrong,
+      # the download is deleted and never used, so it fails safe.
+      default = "e869ac7d6942cb327d68d5ed83a40447aadf20e0c3358d98b2cc9e270db0da26";
+      description = ''
+        SHA-256 of the model file; a download that does not match is deleted.
+        Set it with url. null uses the hash the host publishes for the file
+        (Hugging Face's X-Linked-Etag) and refuses the download if there is none.
+      '';
+    };
+    size = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = 6938081905;
+      description = "Size of the model file in bytes (null: as the host says), for the free-space check and progress.";
+    };
+    maxAttemptsPerDay = lib.mkOption {
+      type = lib.types.ints.between 1 48;
+      default = 4;
+      description = "How many download attempts a day at most; between failures the wait doubles from 10 minutes to 6 hours.";
+    };
     file = lib.mkOption {
       type = lib.types.str;
       default = "sdxl-turbo.safetensors";
@@ -48,35 +74,31 @@ in
       NEXUS_SD_CFG = cfg.guidance;
     };
     systemd.tmpfiles.rules = [ "d ${dir} 0755 root root -" ];
+    # The timer starts the download a few minutes after boot and 15 minutes
+    # after each run; the script decides whether to try (backoff, daily limit,
+    # free space) and writes what it is doing to ${dir}/download.json.
     systemd.services.nexus-image-model = {
       description = "Download the Nexus image model";
-      wantedBy = [ "multi-user.target" ];
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
-      path = [ pkgs.curl pkgs.coreutils pkgs.gnugrep pkgs.gawk ];
-      serviceConfig = { Type = "oneshot"; Restart = "on-failure"; RestartSec = 300; Nice = 10; IOSchedulingClass = "idle"; };
-      script = ''
-        set -eu
-        [ -f ${lib.escapeShellArg model} ] && { echo "The image model is present."; exit 0; }
-        url=${lib.escapeShellArg cfg.url}
-        # Hugging Face publishes each large file's SHA-256 as X-Linked-Etag.
-        expected=$(curl -sfIL "$url" | tr -d '\r' | awk -F'"' 'tolower($0) ~ /^x-linked-etag:/ {print $2}' | tail -1)
-        echo "Downloading the image model (resumes if interrupted)…"
-        curl -fL --retry 5 -C - -o ${lib.escapeShellArg "${model}.part"} "$url"
-        if [ -n "$expected" ]; then
-          actual=$(sha256sum ${lib.escapeShellArg "${model}.part"} | cut -d' ' -f1)
-          if [ "$actual" != "$expected" ]; then
-            echo "Checksum mismatch: got $actual, expected $expected. Deleting the download." >&2
-            rm -f ${lib.escapeShellArg "${model}.part"}
-            exit 1
-          fi
-        else
-          echo "No published checksum for this file; keeping it as downloaded." >&2
-        fi
-        chmod 0644 ${lib.escapeShellArg "${model}.part"}
-        mv ${lib.escapeShellArg "${model}.part"} ${lib.escapeShellArg model}
-        echo "The image model is ready."
-      '';
+      path = [ pkgs.curl ];
+      serviceConfig = {
+        Type = "oneshot";
+        TimeoutStartSec = "infinity";
+        Nice = 10;
+        IOSchedulingClass = "idle";
+        # %% so systemd does not read % in a URL as one of its specifiers.
+        ExecStart = lib.replaceStrings [ "%" ] [ "%%" ] (lib.escapeShellArgs ([
+          "${pkgs.python3.interpreter}" "${../../scripts/images/nexus_image_model.py}"
+          "--dir" dir "--file" cfg.file "--url" cfg.url "--max-per-day" (toString cfg.maxAttemptsPerDay)
+        ] ++ lib.optionals (cfg.sha256 != null) [ "--sha256" cfg.sha256 ]
+          ++ lib.optionals (cfg.size != null) [ "--size" (toString cfg.size) ]));
+      };
+    };
+    systemd.timers.nexus-image-model = {
+      description = "Download the Nexus image model when it is missing";
+      wantedBy = [ "timers.target" ];
+      timerConfig = { OnBootSec = "3min"; OnUnitInactiveSec = "15min"; };
     };
   };
 }

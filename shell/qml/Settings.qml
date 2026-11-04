@@ -9,17 +9,21 @@ import "settings"
 // Settings (design: "Settings B · Orbital categories", approved with the AI
 // changes window). The categories orbit on the left, the chosen page fills
 // the right, and the box at the top searches every setting; if nothing
-// matches, it offers to ask Nexus instead. Opened from the orbital controls,
+// matches, or the person picks "Ask Nexus", it asks Nexus in place
+// (settings/AskBox.qml, "Settings C · Ask"). Opened from the orbital controls,
 // the top bar, the Nexus orbit, Super+I, or `nexus-shell-ipc call settings open <page>`.
 // Every page reads real state and changes it through the service that owns
 // it (PipeWire, NetworkManager, BlueZ, UPower, Hyprland). System-wide changes
 // go through Guardian, never from here.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     property var bridge
     property var desktop
+    property var voice           // Voice.qml and Describe.qml, for the Accessibility page
+    property var describer
     property bool reduced: false
+    property var cardHost: null     // the shell's ActionCards, for "Do it" cards in the ask box
     signal askNexus(string text)
     signal fixIt(string problem)
     signal openWelcome()
@@ -27,8 +31,11 @@ FloatingWindow {
 
     title: "Settings"
     visible: false
-    implicitWidth: 1120; implicitHeight: 740
-    minimumSize: Qt.size(920, 620)
+    // Fits a 1280x720 or 1366x768 screen, with room for the top bar.
+    readonly property real screenW: screen && screen.width > 0 ? screen.width : 1920
+    readonly property real screenH: screen && screen.height > 0 ? screen.height : 1080
+    implicitWidth: Math.min(1120, screenW - 60); implicitHeight: Math.min(740, screenH - 80)
+    minimumSize: Qt.size(Math.min(920, screenW - 60), Math.min(620, screenH - 80))
     color: "#05071A"
 
     property string page: "network"
@@ -36,7 +43,10 @@ FloatingWindow {
     Timer { id: unhighlight; interval: 2600; onTriggered: win.highlight = "" }
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
 
-    readonly property var pages: [
+    // The live installer shows only some pages (live.qml: Network); empty means all.
+    property var only: []
+    readonly property var pages: only.length ? allPages.filter(p => only.includes(p.id)) : allPages
+    readonly property var allPages: [
         { id: "network", label: "Network", colour: "#86A8FF", icon: "network" },
         { id: "bluetooth", label: "Bluetooth", colour: "#86A8FF", icon: "bluetooth" },
         { id: "sound", label: "Sound", colour: "#9C8FFF", icon: "sound" },
@@ -51,6 +61,43 @@ FloatingWindow {
         { id: "health", label: "Health", colour: "#7FE0B0", icon: "health" },
         { id: "about", label: "About", colour: "#9AA9C9", icon: "about" }
     ]
+    // The pages in four groups, so the orbit stays readable on a small
+    // screen: the open page's group shows its pages, the others are one
+    // planet each that opens the page last used in it. Deep links still name
+    // a page (open("health", "")): its group opens with it.
+    readonly property var allGroups: [
+        { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth"] },
+        { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power"] },
+        { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "accessibility", "privacy"] },
+        { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "timeline", "automations", "search", "about"] }
+    ]
+    // Only the pages this Settings shows (`only`); a group left empty is not shown.
+    readonly property var groups: allGroups.map(g => Object.assign({}, g, { members: g.members.filter(m => pages.some(p => p.id === m)) }))
+                                           .filter(g => g.members.length > 0)
+    function groupOf(pageId) { return groups.find(g => g.members.includes(pageId)) || groups[0] }
+    readonly property string expandedGroup: groupOf(page).key
+    // Changes only when another group opens, so moving within a group keeps the planets (and the keyboard focus).
+    readonly property var orbitItems: {
+        const out = [];
+        for (const g of groups) {
+            if (g.key === expandedGroup) for (const m of g.members) out.push({ group: g, page: pages.find(p => p.id === m) });
+            else out.push({ group: g, page: null });
+        }
+        return out;
+    }
+    property var lastInGroup: ({})
+    onPageChanged: { const l = Object.assign({}, lastInGroup); l[groupOf(page).key] = page; lastInGroup = l }
+    function openGroup(key) {
+        const g = groups.find(g => g.key === key);
+        if (g) open(lastInGroup[key] || g.members[0], "");
+    }
+    // After a group opens from the keyboard its planets are new: keep the focus on the open page.
+    function focusPlanet(pageId) {
+        Qt.callLater(() => {
+            const i = orbitItems.findIndex(o => o.page && o.page.id === pageId);
+            if (i >= 0 && planets.itemAt(i)) planets.itemAt(i).forceActiveFocus();
+        });
+    }
     // What the search box finds: [page, highlight id, label, words people might type].
     readonly property var index: [
         ["network", "wifi", "Wi-Fi", "wifi wireless internet network password connect hotspot"],
@@ -84,6 +131,9 @@ FloatingWindow {
         ["accessibility", "reader", "Screen reader", "screen reader orca blind accessibility read aloud"],
         ["accessibility", "pointer", "Pointer size", "pointer cursor mouse size bigger"],
         ["accessibility", "motion", "Less motion", "reduce motion animations dizzy accessibility"],
+        ["accessibility", "describe", "Describe this", "describe screen picture image vision blind what is on screen"],
+        ["accessibility", "voice", "Voice control", "voice speech talk microphone dictate push to talk"],
+        ["accessibility", "spoken", "Spoken replies", "read aloud speak text to speech voice replies"],
         ["health", "", "Health", "health report problems disk smart updates check status"],
         ["about", "name", "Computer name", "about computer name hostname version"],
         ["about", "storage", "Storage", "storage disk space full free files"],
@@ -99,7 +149,7 @@ FloatingWindow {
             const hay = (label + " " + keys).toLowerCase();
             const score = words.filter(w => hay.includes(w)).length;
             return { page: p, highlight: h, label: label, score: score };
-        }).filter(r => r.score > 0).sort((a, b) => b.score - a.score).slice(0, 6);
+        }).filter(r => r.score > 0 && pages.some(p => p.id === r.page)).sort((a, b) => b.score - a.score).slice(0, 6);
     }
 
     function open(pageId, highlightId) {
@@ -111,6 +161,8 @@ FloatingWindow {
     }
     function hypr(args) { Quickshell.execDetached([hyprctl].concat(args)) }
     // Undo from the Timeline: Core hands back the old value and where it belongs.
+    // Undo of an app install or removal: shell.qml hands it to Apps (Apps.perform).
+    signal appChange(var perform)
     function restore(ref, value) {
         if (typeof ref === "string" && ref.startsWith("desktop:") && value && "value" in value) desktop.set(ref.slice(8), value.value, true);
         // The volume, when Nexus changed it (ActionCards.qml).
@@ -130,9 +182,16 @@ FloatingWindow {
         target: "settings"
         function open(page: string): void { win.open(page, "") }
         function close(): void { win.visible = false }
-        function state(): string { return JSON.stringify({ visible: win.visible, page: win.page }) }
+        function state(): string {
+            return JSON.stringify({ visible: win.visible, page: win.page, group: win.expandedGroup,
+                                    orbit: win.orbitItems.map(o => o.page ? o.page.id : "group:" + o.group.key) })
+        }
+        // Opens a group as its planet would (for tests and previews).
+        function openGroup(key: string): void { win.openGroup(key) }
         // Types into the search box, as a person would (for tests and previews).
         function search(text: string): string { query.text = text; return JSON.stringify(win.search(text)) }
+        // Asks in the Settings ask box, as if typed there.
+        function ask(text: string): void { win.open(win.page, ""); askBox.show(text) }
         // Wi-Fi for tests: rows with their centres in window coordinates.
         function wifi(): string {
             const rows = win.visible && win.page === "network" && pageLoader.item ? pageLoader.item.ipcRows() : [];
@@ -189,12 +248,12 @@ FloatingWindow {
                 id: query
                 x: 42; width: parent.width - 56; anchors.verticalCenter: parent.verticalCenter
                 color: win.theme.ink; font.pixelSize: 14; clip: true
-                Text { visible: !query.text; text: "Search settings, e.g. night light"; color: win.theme.inkSecondary; font.pixelSize: 14 }
+                Text { visible: !query.text; text: "Search or ask, e.g. make text bigger"; color: win.theme.inkSecondary; font.pixelSize: 14 }
                 Keys.onEscapePressed: text = ""
                 onAccepted: {
                     const r = win.search(text);
                     if (r.length) { win.open(r[0].page, r[0].highlight); text = "" }
-                    else if (text.trim()) { win.askNexus(text.trim()); text = "" }
+                    else if (text.trim()) { askBox.show(text.trim()); text = "" }
                 }
                 Accessible.role: Accessible.EditableText
                 Accessible.name: "Search settings"
@@ -229,25 +288,33 @@ FloatingWindow {
                 }
                 // Nothing matched, or it reads like a question: Nexus can answer it.
                 Rectangle {
+                    visible: !!win.bridge       // not in the live installer, which has no Nexus
                     width: resultColumn.width; height: 38; radius: 9
                     color: ah.hovered ? Qt.rgba(0.49, 0.42, 1.0, 0.2) : "transparent"
                     Text { x: 12; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 24; elide: Text.ElideRight
                            text: "Ask Nexus: “" + query.text.trim() + "”"; textFormat: Text.PlainText
                            color: win.theme.focus; font.pixelSize: 13 }
                     HoverHandler { id: ah; cursorShape: Qt.PointingHandCursor }
-                    TapHandler { onTapped: { win.askNexus(query.text.trim()); query.text = "" } }
+                    TapHandler { onTapped: { askBox.show(query.text.trim()); query.text = "" } }
                     Accessible.role: Accessible.Button
                     Accessible.name: "Ask Nexus"
                 }
             }
         }
 
-        // The orbit of categories.
+        // The orbit of categories: one planet per group, and the pages of
+        // the open page's group in its place, so it never holds more than
+        // eight planets. Arrow keys move round the orbit.
         Item {
             id: orbit
             readonly property real cx: left.width / 2
             readonly property real cy: 160 + (left.height - 160) / 2
             readonly property real r: Math.min(left.width / 2 - 70, (left.height - 160) / 2 - 56)
+            // Smaller planets in a small window (1280x720, 1366x768).
+            readonly property real unit: r < 150 ? 0.85 : 1
+            readonly property real step: Math.PI * 2 / Math.max(1, win.orbitItems.length)
+            readonly property int firstPage: win.orbitItems.findIndex(o => o.page !== null)
+            readonly property int pageCount: win.orbitItems.filter(o => o.page !== null).length
             anchors.fill: parent
             Shape {
                 x: orbit.cx; y: orbit.cy
@@ -261,16 +328,27 @@ FloatingWindow {
                     strokeStyle: ShapePath.DashLine; dashPattern: [2, 7]
                     PathAngleArc { radiusX: orbit.r * 0.55; radiusY: radiusX; sweepAngle: 360 }
                 }
+                // A brighter stretch of the orbit under the open group's pages.
+                ShapePath {
+                    strokeColor: Qt.rgba(0.53, 0.66, 1.0, 0.5); strokeWidth: 3; fillColor: "transparent"; capStyle: ShapePath.RoundCap
+                    PathAngleArc {
+                        radiusX: orbit.r; radiusY: radiusX
+                        startAngle: (-Math.PI / 2 + (orbit.firstPage - 0.35) * orbit.step) * 180 / Math.PI
+                        sweepAngle: (orbit.pageCount - 0.3) * orbit.step * 180 / Math.PI
+                    }
+                }
             }
-            // The chosen category, at the centre.
+            // The chosen category, at the centre, with its group above it.
             Column {
                 id: centre
                 x: orbit.cx - width / 2; y: orbit.cy - height / 2
                 spacing: 8
                 readonly property var current: win.pages.find(p => p.id === win.page)
+                Text { anchors.horizontalCenter: parent.horizontalCenter; text: win.groupOf(win.page).label.toUpperCase()
+                       color: win.theme.inkSecondary; font.pixelSize: 11; font.letterSpacing: 1.5 }
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 72; height: 72; radius: 36
+                    width: 72 * orbit.unit; height: width; radius: width / 2
                     gradient: Gradient {
                         GradientStop { position: 0; color: centre.current.colour }
                         GradientStop { position: 0.85; color: "#121B33" }
@@ -283,45 +361,68 @@ FloatingWindow {
                        color: win.theme.ink; font.pixelSize: 14; font.weight: 600 }
             }
             Repeater {
-                model: win.pages
+                id: planets
+                model: win.orbitItems
                 delegate: Item {
                     id: planet
                     required property var modelData
                     required property int index
-                    readonly property bool current: modelData.id === win.page
-                    readonly property bool matched: results.visible && results.found.some(r => r.page === modelData.id)
-                    readonly property real angle: -Math.PI / 2 + index * Math.PI * 2 / win.pages.length
-                    readonly property real size: current ? 48 : 36
+                    readonly property bool isGroup: modelData.page === null
+                    readonly property var item: isGroup ? modelData.group : modelData.page
+                    readonly property bool current: !isGroup && item.id === win.page
+                    readonly property bool matched: results.visible && results.found.some(r =>
+                        isGroup ? modelData.group.members.includes(r.page) : r.page === item.id)
+                    readonly property real angle: -Math.PI / 2 + index * orbit.step
+                    readonly property real size: (current ? 48 : isGroup ? 40 : 36) * orbit.unit
                     x: orbit.cx + orbit.r * Math.cos(angle); y: orbit.cy + orbit.r * Math.sin(angle)
                     opacity: results.visible && !matched ? 0.4 : 1
+                    function choose() {
+                        if (isGroup) { const focused = activeFocus; win.openGroup(modelData.group.key); if (focused) win.focusPlanet(win.page) }
+                        else win.open(item.id, "")
+                    }
+                    function stepFocus(by) { planets.itemAt((index + by + planets.count) % planets.count).forceActiveFocus() }
+                    // A group is a planet with a faint ring round it: it holds more.
+                    Rectangle {
+                        visible: planet.isGroup
+                        x: -width / 2; y: -height / 2
+                        width: planet.size + 12; height: width; radius: width / 2
+                        color: "transparent"; border.color: Qt.rgba(0.55, 0.62, 1.0, 0.35)
+                    }
                     Rectangle {
                         x: -width / 2; y: -height / 2
                         width: planet.size; height: width; radius: width / 2
                         Behavior on width { NumberAnimation { duration: win.reduced ? 0 : 180 } }
                         gradient: Gradient {
-                            GradientStop { position: 0; color: planet.modelData.colour }
+                            GradientStop { position: 0; color: planet.item.colour }
                             GradientStop { position: 0.8; color: "#121B33" }
                         }
                         border.color: planet.current || ph.hovered || planet.activeFocus || planet.matched ? win.theme.focus : win.theme.glassBorder
                         border.width: planet.activeFocus ? 3 : 1
                         Image { anchors.centerIn: parent; width: parent.width * 0.45; height: width; sourceSize: Qt.size(48, 48)
-                                source: "icons/" + planet.modelData.icon + ".svg" }
+                                source: "icons/" + planet.item.icon + ".svg" }
                     }
                     Text {
-                        y: planet.size / 2 + 6; x: -width / 2
-                        text: planet.modelData.label
-                        color: planet.current ? win.theme.ink : win.theme.inkSecondary; font.pixelSize: 12
+                        y: planet.size / 2 + (planet.isGroup ? 10 : 6); x: -width / 2
+                        horizontalAlignment: Text.AlignHCenter
+                        text: planet.item.label + (planet.isGroup ? "\n" + planet.modelData.group.members.length + " pages" : "")
+                        color: planet.current ? win.theme.ink : win.theme.inkSecondary
+                        font.pixelSize: 12; lineHeight: 1.1
                     }
                     Item {
-                        x: -30; y: -30; width: 60; height: 72
+                        x: -32; y: -32; width: 64; height: 76
                         HoverHandler { id: ph; cursorShape: Qt.PointingHandCursor }
-                        TapHandler { onTapped: win.open(planet.modelData.id, "") }
+                        TapHandler { onTapped: planet.choose() }
                     }
                     activeFocusOnTab: true
-                    Keys.onReturnPressed: win.open(modelData.id, "")
-                    Keys.onSpacePressed: win.open(modelData.id, "")
-                    Accessible.role: Accessible.PageTab
-                    Accessible.name: modelData.label
+                    Keys.onReturnPressed: choose()
+                    Keys.onSpacePressed: choose()
+                    Keys.onRightPressed: stepFocus(1)
+                    Keys.onDownPressed: stepFocus(1)
+                    Keys.onLeftPressed: stepFocus(-1)
+                    Keys.onUpPressed: stepFocus(-1)
+                    Accessible.role: isGroup ? Accessible.Button : Accessible.PageTab
+                    Accessible.name: isGroup ? item.label + ", " + modelData.group.members.length + " pages: " +
+                                     modelData.group.members.map(m => win.pages.find(p => p.id === m).label).join(", ") : item.label
                     Accessible.selected: current
                 }
             }
@@ -357,5 +458,12 @@ FloatingWindow {
                 Connections { target: win; function onVisibleChanged() { pageLoader.reload() } }
             }
         }
+    }
+
+    AskBox {
+        id: askBox
+        z: 5
+        x: 24; y: 90; width: left.width - 32; maxHeight: win.height - 114
+        theme: win.theme; bridge: win.bridge; host: win; cardHost: win.cardHost
     }
 }

@@ -6,9 +6,14 @@ import "settings"
 // Images: local image generation (design: "Image generation A · Gallery and
 // inspector"). Describe a picture, choose a shape and a style, and Nexus makes
 // it on this computer's GPU with the local image model (ImageStudio.cs).
-// Results go to ~/Pictures/Nexus; nothing is uploaded. Opened from Studio,
-// Super+G, or `nexus-shell-ipc call images open`.
-FloatingWindow {
+// Results go to ~/Pictures/Nexus; nothing is uploaded. Two views of the same
+// pictures, chosen in the options row and remembered per person
+// (~/.config/nexusos/images.json): Gallery, a grid with an inspector, and
+// Orbit (design: "Image generation B · Orbit"), the pictures around Nexus
+// with the prompt at the centre and the chosen one beside it. Both views show
+// win.shown and call the same functions (openImage, moreLike, remix, remove).
+// Opened from Studio, Super+G, or `nexus-shell-ipc call images open`.
+NexusWindow {
     id: win
     property var theme
     property var bridge
@@ -35,7 +40,33 @@ FloatingWindow {
     property int statusId: -1
     property int listId: -1
     property int deleteId: -1
+    property var usage: null            // GET /images/usage: count, bytes, starred, keepDays, keepGb, due
+    property int usageId: -1
+    property int keepId: -1
+    property int cleanId: -1
+    property int starId: -1
+    property string notice: ""
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
+    readonly property string configDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nexusos"
+    // "gallery" or "orbit".
+    readonly property string view: prefs.view === "orbit" ? "orbit" : "gallery"
+    function setView(v) {
+        if (v !== "gallery" && v !== "orbit") return;
+        prefs.view = v;
+        prefsFile.writeAdapter();
+    }
+    FileView {
+        id: prefsFile
+        path: win.configDir + "/images.json"
+        adapter: JsonAdapter { id: prefs; property string view: "gallery" }
+    }
+    // What both views show: placeholders while making, else the latest batch, else the newest images.
+    readonly property var shown: working ? Array.from({ length: pendingCount }, (_, i) => null) : (batch.length ? batch : gallery.slice(0, 4))
+    // Ways to vary a picture: the chosen picture's prompt with a few words added.
+    readonly property var variations: [
+        { label: "Warmer light", words: "warm golden light" }, { label: "Wider view", words: "wide shot, more of the scene" },
+        { label: "More detail", words: "highly detailed" }, { label: "Night version", words: "at night" }
+    ]
 
     function open() {
         if (visible) Quickshell.execDetached([hyprctl, "dispatch", "focuswindow", "title:^(Images)$"]);
@@ -47,9 +78,29 @@ FloatingWindow {
         if (!bridge.online) return;
         statusId = bridge.send("images-status");
         listId = bridge.send("images-list");
+        usageId = bridge.api("GET", "/images/usage");
     }
+    // How long pictures are kept: 30, 90 or 365 days, and optionally up to 5 or 20 GB.
+    function setKeep(days, gb) { keepId = bridge.api("POST", "/images/settings", { keepDays: days, keepGb: gb }) }
+    function cleanUp() { cleanId = bridge.api("POST", "/images/cleanup") }
+    function star(image, on) { starId = bridge.api("POST", "/images/" + encodeURIComponent(image.name) + "/star", { starred: on }) }
+    function gb(bytes) { return (bytes / 1e9).toFixed(bytes >= 1e10 ? 0 : 1) + " GB" }
+    // While the model is missing, the download's progress and reason are polled.
+    Timer { interval: 5000; repeat: true; running: win.visible && !!win.status && !win.status.model
+            onTriggered: if (win.bridge.online) win.statusId = win.bridge.send("images-status") }
     // From Nexus (an action card, or `images make`): open and start on the description.
     function make(text) { open(); prompt.text = text; generate(text) }
+    // The actions on a picture, the same in both views.
+    function openImage(img) { if (img) Quickshell.execDetached(["xdg-open", img.path]) }
+    function showFolder(img) { if (img) Quickshell.execDetached(["xdg-open", img.path.slice(0, img.path.lastIndexOf("/"))]) }
+    function moreLike(img) { if (!img) return; prompt.text = img.prompt; style = img.style || ""; generate(img.prompt) }
+    function again(img) { if (!img) return; prompt.text = img.prompt; count = 1; generate(img.prompt, img.seed) }
+    function remix(img, words) {
+        if (!img) return;
+        const text = img.prompt.replace(/[\s,.]+$/, "") + ", " + words;
+        prompt.text = text; style = img.style || ""; generate(text);
+    }
+    function remove(img) { if (img) deleteId = bridge.send("images-delete", { name: img.name }) }
     function generate(text, seedOverride) {
         if (working || !text.trim()) return;
         error = ""; working = true; pendingCount = count; batch = [];
@@ -65,6 +116,18 @@ FloatingWindow {
             else if (id === win.genId) {
                 win.working = false; win.batch = data.images || []; win.selected = win.batch[0] || null;
                 win.listId = win.bridge.send("images-list");
+            } else if (id === win.usageId) win.usage = data;
+            else if (id === win.keepId) win.usageId = win.bridge.api("GET", "/images/usage");
+            else if (id === win.cleanId) {
+                win.notice = data && data.removed ? "Removed " + data.removed + (data.removed === 1 ? " picture" : " pictures") + " (" + win.gb(data.freedBytes) + ")."
+                                                  : "Nothing to remove.";
+                win.refresh();
+            } else if (id === win.starId) {
+                const starred = data;
+                const swap = list => list.map(i => i.name === starred.name ? starred : i);
+                win.batch = swap(win.batch); win.gallery = swap(win.gallery);
+                if (win.selected && win.selected.name === starred.name) win.selected = starred;
+                win.usageId = win.bridge.api("GET", "/images/usage");
             } else if (id === win.deleteId) {
                 win.batch = win.batch.filter(i => i.name !== win.selected.name);
                 win.selected = win.batch[0] || null;
@@ -73,22 +136,36 @@ FloatingWindow {
         }
         function onFailed(id, message) {
             if (id === win.genId) { win.working = false; win.error = message }
-            else if ([win.statusId, win.listId, win.deleteId].includes(id)) win.error = message;
+            else if ([win.statusId, win.listId, win.deleteId, win.keepId, win.cleanId, win.starId].includes(id)) win.error = message;
         }
     }
     IpcHandler {
         target: "images"
         function open(): void { win.open() }
         function make(text: string): void { win.make(text) }
+        // "gallery" or "orbit", as the View choice.
+        function view(name: string): void { win.setView(name) }
         function state(): string {
-            return JSON.stringify({ visible: win.visible, working: win.working, status: win.status, batch: win.batch.map(i => i.name),
+            return JSON.stringify({ visible: win.visible, view: win.view, working: win.working, status: win.status, batch: win.batch.map(i => i.name),
                                     gallery: win.gallery.length, error: win.error })
         }
     }
     function fileUrl(p) { return "file://" + p.split("/").map(encodeURIComponent).join("/") }
 
+    readonly property var download: status && status.download ? status.download : null
     readonly property string modelLabel: !status ? "…" : status.model ? status.model
+        : download && download.state === "downloading" && download.percent !== null ? "Downloading the image model, " + download.percent + "%"
         : status.downloading ? "Downloading the image model…" : "No image model yet"
+    // Why there is no model yet, from the download service (nexus_image_model.py).
+    readonly property string waitingText: {
+        if (!download) return status && status.downloading
+            ? "The image model (about 7 GB) is downloading in the background. Images can be made once it has finished."
+            : "The image model downloads once this computer is online. Until then, nothing can be made here.";
+        let text = download.message || "The image model downloads once this computer is online.";
+        if (download.total) text += " " + gb(download.bytes) + " of " + gb(download.total) + ".";
+        if (download.nextTry) text += " Next try at " + Qt.formatDateTime(new Date(download.nextTry), "ddd HH:mm") + ".";
+        return text;
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -136,6 +213,9 @@ FloatingWindow {
                      options: [1, 2, 4].map(n => ({ value: n, label: n + "" })); onChose: v => win.count = v }
             Text { anchors.verticalCenter: parent.verticalCenter; leftPadding: 6; font.pixelSize: 12; color: win.theme.inkSecondary
                    text: "Model: " + win.modelLabel + " · runs on this computer" }
+            Choice { theme: win.theme; name: "View"; current: win.view
+                     options: [{ value: "gallery", label: "Gallery" }, { value: "orbit", label: "Orbit" }]
+                     onChose: v => win.setView(v) }
             Text { anchors.verticalCenter: parent.verticalCenter; leftPadding: 16; font.pixelSize: 12; color: win.theme.focus
                    text: "Code"; TapHandler { onTapped: win.switchToCode() } }
         }
@@ -143,18 +223,24 @@ FloatingWindow {
             visible: win.error !== "" || (win.status && !win.status.model)
             width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText; font.pixelSize: 13
             color: win.error ? win.theme.error : win.theme.inkSecondary
-            text: win.error || (win.status && win.status.downloading
-                ? "The image model (about 7 GB) is downloading in the background. Images can be made once it has finished."
-                : "The image model downloads once this computer is online. Until then, nothing can be made here.")
+            text: win.error || win.waitingText
+        }
+        Rectangle {
+            visible: !win.error && !!win.download && win.download.percent !== null && !(win.status && win.status.model)
+            width: Math.min(parent.width, 480); height: 6; radius: 3; color: "#1B2647"
+            Rectangle { width: parent.width * ((win.download && win.download.percent) || 0) / 100; height: 6; radius: 3; color: win.theme.focus }
+            Accessible.role: Accessible.ProgressBar
+            Accessible.name: "Image model download, " + ((win.download && win.download.percent) || 0) + "%"
         }
     }
 
     // ---- results ----
     Item {
         id: results
+        visible: win.view === "gallery"
         x: 20; y: top.y + top.height + 14; width: parent.width - 40 - inspector.width - 16
         height: parent.height - y - history.height - 26
-        readonly property var shown: win.working ? Array.from({ length: win.pendingCount }, (_, i) => null) : (win.batch.length ? win.batch : win.gallery.slice(0, 4))
+        readonly property var shown: win.shown
         readonly property int cols: shown.length > 1 ? 2 : 1
         readonly property int rows: Math.ceil(shown.length / cols)
         Text {
@@ -208,9 +294,13 @@ FloatingWindow {
     // ---- inspector ----
     Rectangle {
         id: inspector
+        visible: win.view === "gallery"
         x: parent.width - width - 20; y: results.y; width: 280; height: results.height
         radius: 16; color: win.theme.glass; border.color: win.theme.glassBorder
+        // In a short window the keep choices give way to the picture's details.
+        readonly property bool compact: inspectorTop.implicitHeight + 240 > height   // about the keep box with its choices
         Column {
+            id: inspectorTop
             visible: !!win.selected
             x: 18; y: 18; width: parent.width - 36; spacing: 10
             Text { width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 4; elide: Text.ElideRight; textFormat: Text.PlainText
@@ -231,22 +321,179 @@ FloatingWindow {
             }
             Column {
                 width: parent.width; spacing: 8; topPadding: 6
-                Button { theme: win.theme; width: parent.width; label: "Open"
-                         onClicked: Quickshell.execDetached(["xdg-open", win.selected.path]) }
+                Button { theme: win.theme; width: parent.width; label: "Open"; onClicked: win.openImage(win.selected) }
                 Button { theme: win.theme; width: parent.width; label: "More like this"; enabled: !win.working
-                         onClicked: { prompt.text = win.selected.prompt; win.style = win.selected.style || ""; win.generate(win.selected.prompt) } }
+                         onClicked: win.moreLike(win.selected) }
                 Button { theme: win.theme; width: parent.width; label: "Same picture again (same seed)"; enabled: !win.working
-                         onClicked: { prompt.text = win.selected.prompt; win.count = 1; win.generate(win.selected.prompt, win.selected.seed) } }
+                         onClicked: win.again(win.selected) }
+                Button { theme: win.theme; width: parent.width; label: win.selected && win.selected.starred ? "Starred: kept" : "Star (keep it)"
+                         onClicked: win.star(win.selected, !win.selected.starred) }
                 Button { theme: win.theme; width: parent.width; label: "Use as wallpaper"
                          onClicked: win.useAsWallpaper(win.selected.path) }
-                Button { theme: win.theme; width: parent.width; danger: true; label: "Delete"
-                         onClicked: win.deleteId = win.bridge.send("images-delete", { name: win.selected.name }) }
+                Button { theme: win.theme; width: parent.width; label: "Show in folder"; onClicked: win.showFolder(win.selected) }
+                Button { theme: win.theme; width: parent.width; danger: true; label: "Delete"; onClicked: win.remove(win.selected) }
+                // A variation of the prompt, as in Orbit.
+                Flow {
+                    width: parent.width; spacing: 6
+                    Repeater {
+                        model: win.variations
+                        delegate: Button { required property var modelData; theme: win.theme; label: modelData.label; enabled: !win.working
+                                           implicitHeight: 28; onClicked: win.remix(win.selected, modelData.words) }
+                    }
+                }
             }
         }
-        Text {
+        // How long pictures are kept (ImageStudio's settings), and how much room they take.
+        Column {
+            id: keepBox
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 18 }
-            wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 12; lineHeight: 1.4
-            text: "Images stay in ~/Pictures/Nexus until you delete them. Nothing is uploaded."
+            spacing: 8
+            Text { width: parent.width; wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 12; lineHeight: 1.4
+                   text: (win.usage ? win.usage.count + " pictures, " + win.gb(win.usage.bytes) + (win.usage.starred ? ", " + win.usage.starred + " starred" : "") + ". " : "") +
+                         "Kept in ~/Pictures/Nexus for " + (win.usage ? win.usage.keepDays : 90) + " days" +
+                         (win.usage && win.usage.keepGb ? ", up to " + win.usage.keepGb + " GB" : "") +
+                         ", oldest removed first. Starred pictures, and ones you move elsewhere, are kept. Nothing is uploaded." }
+            Choice { visible: !inspector.compact; theme: win.theme; name: "Keep pictures for"; current: win.usage ? win.usage.keepDays : 90
+                     options: [30, 90, 365].map(n => ({ value: n, label: n + " days" }))
+                     onChose: v => win.setKeep(v, win.usage ? win.usage.keepGb : null) }
+            Choice { visible: !inspector.compact; theme: win.theme; name: "Keep at most"; current: win.usage ? (win.usage.keepGb || 0) : 0
+                     options: [{ value: 0, label: "Any size" }, { value: 5, label: "5 GB" }, { value: 20, label: "20 GB" }]
+                     onChose: v => win.setKeep(win.usage ? win.usage.keepDays : 90, v || null) }
+            Button { theme: win.theme; width: parent.width; enabled: !!win.usage && win.usage.due.count > 0
+                     label: win.usage && win.usage.due.count > 0 ? "Clean up now (" + win.usage.due.count + ", " + win.gb(win.usage.due.bytes) + ")" : "Nothing to clean up"
+                     onClicked: win.cleanUp() }
+            Text { visible: win.notice !== ""; text: win.notice; color: win.theme.inkSecondary; font.pixelSize: 12 }
+        }
+    }
+
+    // ---- orbit: the same pictures around Nexus, the chosen one beside it ----
+    Item {
+        id: orbitView
+        visible: win.view === "orbit"
+        x: 20; y: top.y + top.height + 14; width: parent.width - 40
+        height: parent.height - y - history.height - 26
+        readonly property real areaWidth: width - chosen.width - 24
+        readonly property real cx: areaWidth / 2
+        readonly property real cy: height / 2
+        readonly property real r: Math.max(80, Math.min(areaWidth, height) / 2 - 66)
+
+        Rectangle {
+            x: orbitView.cx - orbitView.r; y: orbitView.cy - orbitView.r; width: orbitView.r * 2; height: width; radius: width / 2
+            color: "transparent"; border.color: Qt.rgba(0.55, 0.62, 1.0, 0.2)
+        }
+        Rectangle {
+            x: orbitView.cx - orbitView.r * 0.92; y: orbitView.cy - 1; width: orbitView.r * 1.84; height: 2; opacity: 0.6
+            gradient: Gradient { orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: "transparent" }
+                GradientStop { position: 0.5; color: "#DCE4FF" }
+                GradientStop { position: 1; color: "transparent" } }
+        }
+        // Nexus at the centre, with the prompt the pictures came from.
+        Rectangle {
+            id: orbitCore
+            x: orbitView.cx - width / 2; y: orbitView.cy - height / 2; width: 140; height: 140; radius: 70
+            gradient: Gradient {
+                GradientStop { position: 0; color: win.working ? "#FFE3B8" : "#FFD9B0" }
+                GradientStop { position: 0.4; color: win.working ? "#FFA65C" : "#D66840" }
+                GradientStop { position: 0.75; color: "#5A3C9A" }
+                GradientStop { position: 1; color: "#05071A" }
+            }
+            SequentialAnimation on opacity {
+                running: win.working; loops: Animation.Infinite
+                NumberAnimation { from: 1; to: 0.7; duration: 900 }
+                NumberAnimation { from: 0.7; to: 1; duration: 900 }
+            }
+        }
+        Column {
+            x: orbitView.cx - width / 2; y: orbitCore.y + orbitCore.height + 10; width: Math.min(260, orbitView.r * 1.3); spacing: 4
+            Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight
+                   textFormat: Text.PlainText; color: win.theme.ink; font.pixelSize: 13
+                   text: win.working ? prompt.text : win.shown.length && win.shown[0] ? win.shown[0].prompt : "" }
+            Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; color: win.theme.inkSecondary; font.pixelSize: 12
+                   text: win.working ? "Making " + win.pendingCount + "…"
+                       : win.shown.length === 0 ? "Your images appear here." : win.shown.length + (win.shown.length === 1 ? " picture" : " pictures") }
+        }
+        Repeater {
+            model: win.shown
+            delegate: Rectangle {
+                id: moon
+                required property var modelData
+                required property int index
+                readonly property bool on: !!modelData && !!win.selected && modelData.name === win.selected.name
+                readonly property real angle: -Math.PI / 2 + index * Math.PI * 2 / Math.max(1, win.shown.length)
+                width: on ? 124 : 96; height: width; radius: 22; clip: true; color: "#0B1430"
+                x: orbitView.cx + orbitView.r * Math.cos(angle) - width / 2
+                y: orbitView.cy + orbitView.r * Math.sin(angle) - height / 2
+                border.color: on ? "#86A8FF" : "#2A3A66"; border.width: 2
+                Image {
+                    anchors { fill: parent; margins: 2 }
+                    visible: !!moon.modelData
+                    source: moon.modelData ? win.fileUrl(moon.modelData.path) : ""
+                    sourceSize: Qt.size(256, 256); fillMode: Image.PreserveAspectCrop; asynchronous: true
+                }
+                Text { visible: !moon.modelData; anchors.centerIn: parent; color: win.theme.inkSecondary; font.pixelSize: 12
+                       text: moon.index === 0 ? "Making…" : "Waiting" }
+                TapHandler { enabled: !!moon.modelData; onTapped: win.selected = moon.modelData }
+                Accessible.role: Accessible.Button
+                Accessible.name: moon.modelData ? "Image " + (moon.index + 1) + ": " + moon.modelData.prompt : "Being made"
+                Accessible.selected: on
+            }
+        }
+
+        // The chosen picture, with what can be done with it.
+        Rectangle {
+            id: chosen
+            anchors.right: parent.right; width: Math.min(460, parent.width * 0.42); height: chosenColumn.implicitHeight + 36
+            anchors.verticalCenter: parent.verticalCenter
+            radius: 20; color: win.theme.glass; border.color: win.selected ? Qt.rgba(0.53, 0.66, 1, 0.55) : win.theme.glassBorder
+            Column {
+                id: chosenColumn
+                x: 18; y: 18; width: parent.width - 36; spacing: 12
+                Rectangle {
+                    width: parent.width; height: Math.min(260, orbitView.height - 230); radius: 14; clip: true; color: "#0B1430"
+                    Image { anchors.fill: parent; visible: !!win.selected; source: win.selected ? win.fileUrl(win.selected.path) : ""
+                            fillMode: Image.PreserveAspectFit; asynchronous: true; smooth: true }
+                    Text { visible: !win.selected; anchors.centerIn: parent; color: win.theme.inkSecondary; font.pixelSize: 13
+                           text: "Choose a picture on the orbit." }
+                }
+                Text { width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; textFormat: Text.PlainText
+                       text: win.selected ? win.selected.prompt : ""; color: win.theme.ink; font.pixelSize: 15; font.weight: 600 }
+                Text { visible: !!win.selected; color: win.theme.inkSecondary; font.pixelSize: 12
+                       text: win.selected ? win.selected.width + " × " + win.selected.height + " · seed " + win.selected.seed + " · saved in Pictures/Nexus" : "" }
+                // A variation of the prompt: the chosen picture's words plus a few more.
+                Flow {
+                    visible: !!win.selected
+                    width: parent.width; spacing: 8
+                    Repeater {
+                        model: win.variations
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: chip.implicitWidth + 24; height: 30; radius: 15
+                            color: ch.hovered ? Qt.rgba(0.49, 0.42, 1.0, 0.22) : "#0E1630"; border.color: "#2A3A66"
+                            opacity: win.working ? 0.5 : 1
+                            Text { id: chip; anchors.centerIn: parent; text: modelData.label; color: win.theme.ink; font.pixelSize: 12 }
+                            HoverHandler { id: ch; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { enabled: !win.working; onTapped: win.remix(win.selected, modelData.words) }
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "Variation: " + modelData.label
+                        }
+                    }
+                }
+                Row {
+                    visible: !!win.selected
+                    spacing: 8
+                    Button { theme: win.theme; primary: true; label: "Open"; onClicked: win.openImage(win.selected) }
+                    Button { theme: win.theme; label: "More like this"; enabled: !win.working; onClicked: win.moreLike(win.selected) }
+                    Button { theme: win.theme; label: "Same seed"; enabled: !win.working; onClicked: win.again(win.selected) }
+                }
+                Row {
+                    visible: !!win.selected
+                    spacing: 8
+                    Button { theme: win.theme; label: "Show in folder"; onClicked: win.showFolder(win.selected) }
+                    Button { theme: win.theme; label: "Use as wallpaper"; onClicked: win.useAsWallpaper(win.selected.path) }
+                    Button { theme: win.theme; danger: true; label: "Delete"; onClicked: win.remove(win.selected) }
+                }
+            }
         }
     }
 

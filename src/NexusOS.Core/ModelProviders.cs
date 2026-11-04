@@ -131,14 +131,16 @@ public static class ProviderHttp
     // Starts a turn with tools; if the backend refuses them before answering
     // (a model without tool support, llama-server without --jinja), the same
     // turn is asked again without tools.
+    // refused, if given, is told, so the provider can stop sending tools for a while.
     public static async IAsyncEnumerable<TurnPiece> WithToolFallback(Func<bool, IAsyncEnumerable<TurnPiece>> start, bool tools,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct, Action? refused = null)
     {
         var pieces = start(tools).GetAsyncEnumerator(ct);
         bool more;
         try { more = await pieces.MoveNextAsync(); }
         catch (ToolsRefusedException)
         {
+            refused?.Invoke();
             await pieces.DisposeAsync();
             pieces = start(false).GetAsyncEnumerator(ct);
             more = await pieces.MoveNextAsync();
@@ -413,16 +415,26 @@ public sealed class LlamaCppProvider : IModelProvider
             yield return piece;
     }
 
-    // llama-server takes OpenAI-style tools when started with --jinja; without it
-    // the request is refused and the turn falls back to text only.
+    // llama-server takes OpenAI-style tools when started with --jinja (Core's
+    // managed server is, LlamaServerProcess). Without it the request is refused
+    // and the turn falls back to text only; tools are then left out for a while
+    // (ToolsRetry), so an older server is not asked twice for every question.
+    // A managed server that could not take --jinja is never sent tools.
+    public static readonly TimeSpan ToolsRetry = TimeSpan.FromMinutes(10);
+    private DateTimeOffset _toolsRefusedAt = DateTimeOffset.MinValue;
+
+    public bool ToolsLikely => (_process is null || _process.ToolCalling) && DateTimeOffset.UtcNow - _toolsRefusedAt > ToolsRetry;
+
     public async IAsyncEnumerable<TurnPiece> StreamTurnAsync(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools,
         InferenceTokenBudget budget, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         if (_process is not null) await _process.EnsureRunningAsync(ct);
+        if (!ToolsLikely) tools = [];
         await foreach (var piece in ProviderHttp.WithToolFallback(withTools => ProviderHttp.StreamTurnAsync("Local llama.cpp server",
                            token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"), Endpoint + "/v1/chat/completions",
                                OpenAiTurnBody(Model, messages, withTools ? tools : [], budget), token),
-                           new OpenAiTurnParser(), withTools, ct), tools.Count > 0, ct))
+                           new OpenAiTurnParser(), withTools, ct), tools.Count > 0, ct,
+                           refused: () => _toolsRefusedAt = DateTimeOffset.UtcNow))
             yield return piece;
     }
 

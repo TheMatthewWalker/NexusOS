@@ -171,6 +171,46 @@ public sealed partial class ActivityJournal
         return Task.FromResult<(JournalEntry?, string?)>((entry with { UndoneAt = now }, null));
     }
 
+    // One entry within the age limit, or null.
+    public Task<JournalEntry?> GetAsync(long id, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        using var db = _database.Open();
+        using var find = db.CreateCommand();
+        find.CommandText = $"SELECT {Columns} FROM journal WHERE id=$id AND timestamp >= $cutoff AND timestamp <= $future";
+        find.Parameters.AddWithValue("$id", id);
+        find.Parameters.AddWithValue("$cutoff", Stamp(DateTimeOffset.UtcNow.Subtract(_maxAge)));
+        find.Parameters.AddWithValue("$future", Stamp(DateTimeOffset.UtcNow.AddMinutes(5)));
+        return Task.FromResult(ReadAll(find).SingleOrDefault());
+    }
+
+    // The newest entry of a kind about the same thing (an app in one place), so
+    // an Undo can refuse when a later change followed.
+    public Task<long?> LatestRefAsync(string kind, string reference, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        using var db = _database.Open();
+        using var find = db.CreateCommand();
+        find.CommandText = "SELECT MAX(id) FROM journal WHERE kind=$kind AND ref=$ref AND timestamp >= $cutoff";
+        find.Parameters.AddWithValue("$kind", kind);
+        find.Parameters.AddWithValue("$ref", reference);
+        find.Parameters.AddWithValue("$cutoff", Stamp(DateTimeOffset.UtcNow.Subtract(_maxAge)));
+        return Task.FromResult(find.ExecuteScalar() is long id ? (long?)id : null);
+    }
+
+    // App entries are marked undone once the opposite change has been reported
+    // (AppChanges), not when Undo is asked for. False if it already was.
+    public Task<bool> MarkUndoneAsync(long id, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        using var db = _database.Open();
+        using var mark = db.CreateCommand();
+        mark.CommandText = "UPDATE journal SET undone_at=$now WHERE id=$id AND undone_at IS NULL";
+        mark.Parameters.AddWithValue("$now", Stamp(DateTimeOffset.UtcNow));
+        mark.Parameters.AddWithValue("$id", id);
+        return Task.FromResult(mark.ExecuteNonQuery() == 1);
+    }
+
     // "Forget today": deletes the day's entries with secure_delete on (set by
     // SqliteStateDatabase.Open), and checks none remain before committing.
     public Task<long> ForgetDayAsync(DateOnly day, CancellationToken ct)

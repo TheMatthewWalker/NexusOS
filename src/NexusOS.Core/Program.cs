@@ -65,6 +65,9 @@ builder.Services.AddSingleton<InferenceTokenSettings>();
 builder.Services.AddSingleton<AssistantContextBuilder>();
 builder.Services.AddSingleton<CodingAgent>();
 builder.Services.AddSingleton<ImageStudio>();
+// Describe this and voice control, on this computer only (Vision.cs, Voice.cs).
+builder.Services.AddSingleton<VisionDescriber>();
+builder.Services.AddSingleton<VoiceControl>();
 // Automations in plain words: rule store, engine, parser and timer (RuleEndpoints.cs).
 builder.Services.AddRules();
 builder.Services.AddHostedService<IdleModelEvictionService>();
@@ -79,17 +82,19 @@ builder.Services.AddSingleton<LocalApiToken>();
 builder.Services.AddFixIt();
 builder.Services.AddNexusSearch(); // Private search (M8): SearchEndpoints.cs
 builder.Services.AddWorkspaces(); // Workspaces that remember: Workspaces.cs
+builder.Services.AddMoveIn(); // Move in: bookmarks and apps from the old drive, MoveIn.cs
 builder.Services.AddNexusActions(); // What Nexus can do from the chat: NexusActions.cs, NexusChat.cs
+builder.Services.AddSingleton<FlathubDetails>(); // Installing apps, with Undo: AppChanges.cs, FlathubDetails.cs
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddPolicy("ai", _ => RateLimitPartition.GetFixedWindowLimiter("single-user", __ => new FixedWindowRateLimiterOptions
     {
-        PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+        PermitLimit = CoreLimits.AiPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
     }));
     options.AddPolicy("journal", _ => RateLimitPartition.GetFixedWindowLimiter("single-user", __ => new FixedWindowRateLimiterOptions
     {
-        PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+        PermitLimit = CoreLimits.JournalPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
     }));
 });
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65536);
@@ -131,8 +136,8 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
-    using var slot = await concurrency.TryEnterAsync(ct);
-    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    using var slot = await concurrency.EnterAsync(ct);
+    if (slot is null) return Results.Problem("Nexus is still busy with an earlier request; it will take this one as soon as that finishes.", statusCode: StatusCodes.Status503ServiceUnavailable);
     try
     {
         activity.BeginRequest();
@@ -162,8 +167,8 @@ app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, NexusC
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
-    using var slot = await concurrency.TryEnterAsync(ct);
-    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    using var slot = await concurrency.EnterAsync(ct);
+    if (slot is null) return Results.Problem("Nexus is still busy with an earlier request; it will take this one as soon as that finishes.", statusCode: StatusCodes.Status503ServiceUnavailable);
     var started = false;
     async Task WriteEvent(object value)
     {
@@ -179,7 +184,7 @@ app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, NexusC
     activity.BeginRequest();
     try
     {
-        var context = await assistant.BuildAsync(request.Prompt, ct, chat.ReservedChars);
+        var context = await assistant.BuildAsync(request.Prompt, ct, chat.ReservedCharsFor(request.Prompt));
         var turn = await chat.RunAsync(request.Prompt, context, WriteEvent, ct);
         await history.AppendAsync(new ConversationEntry(DateTimeOffset.UtcNow, turn.Provider, request.Prompt, turn.ForHistory), ct);
         await WriteEvent(new { type = "done", provider = turn.Provider });
@@ -207,9 +212,12 @@ app.MapPost("/suggest/model", async (SuggestRequest request, AppSuggester sugges
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > AppSuggester.MaxPromptLength)
         return Results.BadRequest(new { error = $"Prompt must be 1-{AppSuggester.MaxPromptLength} characters." });
-    using var slot = await concurrency.TryEnterAsync(ct);
-    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
-    return Results.Ok(await suggester.SuggestAsync(request.Prompt, true, ct));
+    // Background: the model only when it is free, and never in the way of a question.
+    using var slot = concurrency.TryEnterBackground(ct);
+    if (slot is null) return Results.Ok(await suggester.SuggestAsync(request.Prompt, false, ct));
+    try { return Results.Ok(await suggester.SuggestAsync(request.Prompt, true, slot.Token)); }
+    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+    { return Results.Ok(await suggester.SuggestAsync(request.Prompt, false, ct)); }
 }).RequireRateLimiting("ai");
 app.MapGet("/apps", () => Results.Ok(AppCatalogue.Roles.Select(r => new { id = r.Id, label = r.Label, detail = r.Detail })));
 app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
@@ -226,8 +234,8 @@ app.MapPost("/guardian/propose", async (GuardianProposeRequest request, Guardian
 {
     if (string.IsNullOrWhiteSpace(request.Request) || request.Request.Length > GuardianProposer.MaxRequestLength)
         return Results.BadRequest(new { error = $"Request must be 1-{GuardianProposer.MaxRequestLength} characters." });
-    using var slot = await concurrency.TryEnterAsync(ct);
-    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    using var slot = await concurrency.EnterAsync(ct);
+    if (slot is null) return Results.Problem("Nexus is still busy with an earlier request; it will take this one as soon as that finishes.", statusCode: StatusCodes.Status503ServiceUnavailable);
     try
     {
         var proposal = await proposer.ProposeAsync(request.Request, ct);
@@ -346,6 +354,14 @@ app.MapGet("/journal/today/summary", async (ActivityJournal journal, Cancellatio
     Results.Ok(await journal.SummaryAsync(ActivityJournal.Today, ct)));
 app.MapPost("/journal/{id:long}/undo", async (long id, ActivityJournal journal, CancellationToken ct) =>
 {
+    // An app install or removal: the desktop runs the opposite change, and reports it with "undoes" (AppChanges.cs).
+    if (await journal.GetAsync(id, ct) is { Kind: JournalKinds.App })
+    {
+        var plan = await AppChanges.PlanUndoAsync(journal, id, ct);
+        if (plan.Conflict is not null) return Results.Conflict(new { error = plan.Conflict });
+        return Results.Ok(new { id, undone = false, perform = plan.Perform, summary = plan.Description, @ref = plan.Entry!.Ref,
+                                instruction = "Run 'perform' on the desktop; the entry is marked undone when the change is reported." });
+    }
     var (entry, conflict) = await journal.UndoAsync(id, ct);
     if (entry is null) return Results.NotFound(new { error = "No such journal entry." });
     if (conflict is not null) return Results.Conflict(new { error = conflict });
@@ -360,6 +376,7 @@ app.MapDelete("/journal", async (string? day, ActivityJournal journal, Cancellat
     return Results.Ok(new { day, erased = await journal.ForgetDayAsync(date, ct) });
 }).RequireRateLimiting("journal");
 app.MapTryApps();
+app.MapAppChanges();
 app.MapGuardianProposals();
 app.MapGet("/inference/telemetry", async (MemoryTelemetry telemetry, CancellationToken ct) =>
     Results.Ok(await telemetry.ReadAsync(ct)));
@@ -371,8 +388,11 @@ app.MapGet("/inference/status", async (ModelRouter router, CancellationToken ct)
     return Results.Ok(new { backend = provider.Name, model = provider.Model, available = await provider.IsAvailableAsync(ct),
                             unloadSupported = provider.SupportsUnload });
 });
-app.MapPost("/inference/unload", async (ModelRouter router, CancellationToken ct) =>
+app.MapPost("/inference/unload", async (ModelRouter router, VisionDescriber vision, VoiceControl voice, CancellationToken ct) =>
 {
+    // Game mode frees everything: the vision model and any speech work too, whatever answers the chat.
+    voice.Stop();
+    await vision.UnloadAsync(ct);
     try { await router.Current.UnloadAsync(ct); return Results.Ok(new { unloadRequested = true }); }
     catch (ProviderException ex) { return Results.Problem(ex.Message, statusCode: ex.StatusCode); }
     catch (HttpRequestException) { return Results.Problem("Local inference backend unavailable", statusCode: 502); }
@@ -389,8 +409,12 @@ app.MapGet("/system", () => Results.Ok(new
 app.MapFixIt();
 app.MapNexusSearch();
 app.MapWorkspaces();
+app.MapMoveIn();
 app.MapCoding();
 app.MapImages();
+app.MapExplain();
+app.MapVision();
+app.MapVoice();
 app.MapNexusActions();
 app.Run();
 

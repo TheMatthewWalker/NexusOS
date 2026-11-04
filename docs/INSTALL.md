@@ -81,6 +81,11 @@ Open **Settings, Network**: click the Wi-Fi icon in the top bar, the Network pla
 
 - **Windows** float, like on Windows or macOS: drag the title bar to move, drag an edge to resize, and use the buttons on the left of the title bar to close, minimise or maximise. A minimised window comes back from its planet around the Nexus core at the bottom. **Settings, Desktop** switches to tiling, where windows fill the screen side by side; Super+T switches a single window.
 - **Settings** (Super+I) has Network, Bluetooth, Sound, Display, Power, Desktop, Privacy and AI, and About. Type in its search box to find a setting, or to ask Nexus.
+- **Adding software** (Super+A, **Apps**):
+  - **Get apps** installs from Flathub, just for you and with no password. Before anything is installed, it shows who publishes the app, whether Flathub has verified them, its licence, the download size and what it may reach outside its sandbox in plain words (for example "Can read and change all your files"), with a warning for wide access. `nexus apps details <id>` shows the same in a terminal.
+  - **Ubuntu (apt)**: `apt install <package>` runs apt in an Ubuntu container. **Ubuntu software runs as you and can read your home folder**: the container shares it (and can see the rest of the computer's files), so it is not a sandbox. Install only software you trust there. For anything else use `apt --isolated install <package>` (or **Install isolated**): a separate container with its own home folder (`~/.local/share/nexus-apt/ubuntu-isolated-home`) that cannot see your files; it is for command-line tools (`apt --isolated run <program>`), not desktop apps.
+  - Every install and removal, from Flathub or apt, is listed in **Settings, Timeline** with **Undo**: Undo removes what was installed, or reinstalls what was removed in the same place (just for you, or for everyone) and at the same version when it is still offered. Nexus can do the same when you ask it.
+  - Removing a Flathub app keeps its settings and files (`~/.var/app/<id>`), so reinstalling brings them back. Apps then offers to delete them; it never does so unless you choose **Delete its data**, which cannot be undone.
 - **Shortcuts**: Super+Space Nexus, Super+Return terminal, Super+E files, Super+Q close, Super+M maximise, Super+F fullscreen, Super+1 to 5 workspaces, Super+L lock.
 
 ## Teaching Nexus about you

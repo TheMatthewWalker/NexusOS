@@ -86,6 +86,8 @@ public static class NexusActions
         new("get_today_summary", ActionSafety.Read, "Today in the activity journal: changes, installs, what left the computer.", [],
             Private: true),
         new("get_settings", ActionSafety.Read, "Current desktop settings and the AI model in use.", []),
+        new("get_app_details", ActionSafety.Read, "A Flathub app before install: publisher, verified, licence, size, permissions.",
+            [new("app_id", "string", "Flathub id.", MaxLength: 128, Pattern: FlathubId)]),
         new("get_system_updates", ActionSafety.Read, "System security updates: last check, and whether any wait for approval.", []),
         new("get_picture_usage", ActionSafety.Read, "Room taken by pictures in ~/Pictures/Nexus, how long they are kept, what a clean-up would remove.", []),
 
@@ -105,8 +107,11 @@ public static class NexusActions
             [new("app_id", "string", "Flathub id, e.g. com.spotify.Client.", MaxLength: 128, Pattern: FlathubId)]),
         new("remove_app", ActionSafety.Personal, "Remove a Flathub app this person installed.",
             [new("app_id", "string", "Flathub id.", MaxLength: 128, Pattern: FlathubId)]),
-        new("apt_install", ActionSafety.Personal, "Install an Ubuntu apt package in the Ubuntu container, in a visible terminal.",
-            [new("package", "string", "apt package, e.g. htop.", MaxLength: 100, Pattern: @"[a-z0-9][a-z0-9+.-]{0,99}")]),
+        new("apt_install", ActionSafety.Personal, "Install an Ubuntu apt package in a visible terminal. Not a sandbox: runs as them, reads their home.",
+            [new("package", "string", "apt package, e.g. htop.", MaxLength: 100, Pattern: @"[a-z0-9][a-z0-9+.-]{0,99}"),
+             new("isolated", "boolean", "true for untrusted software: separate container, own home, command-line only.", Required: false)]),
+        new("undo_app_change", ActionSafety.Personal, "Undo an app install or removal (entry id from get_today_summary).",
+            [new("entry", "integer", "", Min: 1, Max: int.MaxValue)]),
         new("create_automation", ActionSafety.Personal, "Create an automation from one sentence.",
             [new("sentence", "string", "e.g. At 22:00 every day, turn on night light.", MaxLength: RuleParser.MaxSentenceLength)]),
         new("make_image", ActionSafety.Personal, "Make a picture from a description (opens Images).",
@@ -247,9 +252,10 @@ public static class NexusActions
 // Detail is the text the action carries in full (a coding task, a picture's
 // description, a problem), shown whole on the card rather than cut short in
 // the summary; it is still the validated argument, not the model's prose.
+// Details are facts Core looked up for the card (a Flathub app's publisher and permissions): { lines, warning }.
 public sealed record PendingAction(string Id, NexusAction Action, JsonObject Args, string Summary, DateTimeOffset Expires,
     JsonObject? Perform = null, RuleDefinition? Rule = null, string? FixToken = null, GuardianPlan? Plan = null,
-    string? Detail = null)
+    string? Detail = null, object? Details = null)
 {
     // The most a card shows; longer text is cut and the card says so.
     public const int MaxCardDetail = 1000;
@@ -264,7 +270,7 @@ public sealed record PendingAction(string Id, NexusAction Action, JsonObject Arg
         type = "action", id = Id, actionId = Id, action = Action.Name, args = Args, safety = Action.SafetyName, summary = Summary,
         detail = Detail is null ? null : Detail.Length <= MaxCardDetail ? Detail : Detail[..(MaxCardDetail - 1)] + "…",
         detailTruncated = Detail is { Length: > MaxCardDetail },
-        detailLength = Detail?.Length ?? 0,
+        detailLength = Detail?.Length ?? 0, details = Details,
         plan = Plan is null ? null : new { id = Plan.Id, description = Plan.Description, changes = Plan.Changes, packages = Plan.Packages,
                                            nixPreview = Plan.NixPreview, risk = Plan.Risk, riskLevel = Plan.RiskLevel }
     };
@@ -281,13 +287,13 @@ public sealed class PendingActions(TimeProvider time)
     public static bool IsValidId(string? id) => id is { Length: 24 } && id.All(ch => ch is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     public PendingAction Add(NexusAction action, JsonObject args, string summary, JsonObject? perform = null,
-        RuleDefinition? rule = null, string? fixToken = null, GuardianPlan? plan = null, string? detail = null)
+        RuleDefinition? rule = null, string? fixToken = null, GuardianPlan? plan = null, string? detail = null, object? details = null)
     {
         var now = time.GetUtcNow();
         foreach (var old in _items.Values.Where(x => x.Expires <= now)) _items.TryRemove(old.Id, out _);
         while (_items.Count >= MaxPending && _items.Values.MinBy(x => x.Expires) is { } oldest) _items.TryRemove(oldest.Id, out _);
         var item = new PendingAction(Convert.ToHexString(RandomNumberGenerator.GetBytes(12)).ToLowerInvariant(), action, args,
-            summary, now + Lifetime, perform, rule, fixToken, plan, detail);
+            summary, now + Lifetime, perform, rule, fixToken, plan, detail, details);
         _items[item.Id] = item;
         return item;
     }

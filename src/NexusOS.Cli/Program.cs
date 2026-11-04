@@ -100,6 +100,26 @@ try
                 else { Usage(); return 2; }
             }
             return await PrintGet("/journal" + (query.Count > 0 ? "?" + string.Join('&', query) : ""));
+        // `nexus apps details <flathub id>`: publisher, licence, size and permissions before installing.
+        case "apps" when args.Length == 3 && args[1] == "details":
+            return await PrintGet("/apps/flathub/" + Uri.EscapeDataString(args[2]));
+        // `nexus apps record --source apt --op install --id htop [--version V] [--box B] [--isolated] [--undoes N]`:
+        // the apt command reports what it changed, for the timeline and its Undo. Core checks every value.
+        case "apps" when args.Length > 2 && args[1] == "record":
+        {
+            var change = new Dictionary<string, object?>();
+            for (var i = 2; i < args.Length; i++)
+            {
+                var key = args[i].StartsWith("--", StringComparison.Ordinal) ? args[i][2..] : "";
+                if (key == "isolated") { change["isolated"] = true; continue; }
+                if (key is not ("source" or "op" or "id" or "name" or "version" or "box" or "scope" or "origin" or "branch" or "commit" or "undoes")
+                    || i + 1 >= args.Length) { Usage(); return 2; }
+                change[key] = key == "undoes" ? long.TryParse(args[++i], out var n) ? n : null : args[++i];
+            }
+            using var res = await http.PostAsJsonAsync("/apps/changes", change);
+            await PrintResponse(res);
+            return res.IsSuccessStatusCode ? 0 : 1;
+        }
         case "use" when args.Length == 2:
             using (var res = await http.PostAsJsonAsync("/providers/select", new { name = args[1] }))
             { await PrintResponse(res); return res.IsSuccessStatusCode ? 0 : 1; }
@@ -586,6 +606,7 @@ static int RunTrial(string[] trialArgs)
 static void Usage()
 {
     Console.WriteLine("nexus [health [report]|fixit <problem>|fixit apply <fix id> <token>|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge|journal [--today] [--kind K]|journal forget-today|try <app> [-- args]|try keep <app>]");
+    Console.WriteLine("nexus apps details <flathub id> | apps record --source flathub|apt --op install|remove --id <id> [--version V] [--box B] [--isolated] [--undoes N]");
     Console.WriteLine(RulesCommand.Usage);
     Console.WriteLine(ActionsCommand.Usage);
     Console.WriteLine("nexus search <query> | search status | search formats | search reindex | search erase");
@@ -598,7 +619,7 @@ static class BridgeApi
     private static readonly string[] Prefixes =
         ["/journal", "/fixit", "/health/report", "/search", "/rules", "/events", "/guardian/propose", "/guardian/preview",
          "/guardian/proposals", "/guardian/review", "/guardian/stage",
-         "/try/keep", "/settings/plan", "/workspaces", "/history", "/system", "/images", "/explain/keep", "/actions"];
+         "/try/keep", "/apps", "/settings/plan", "/workspaces", "/history", "/system", "/images", "/explain/keep", "/actions"];
 
     public static bool Allowed(string method, string path) =>
         method is "GET" or "POST" or "DELETE" && path.StartsWith('/') && !path.Contains("..") &&

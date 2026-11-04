@@ -178,6 +178,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
         "get_settings" => "Looking at your settings",
         "get_system_updates" => "Looking for security updates",
         "get_picture_usage" => "Looking at your pictures",
+        "get_app_details" => "Looking the app up on Flathub",
         _ => "Working"
     };
 
@@ -273,14 +274,17 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 return new
                 {
                     leftTheComputer = summary.LeftTheComputer, aiReads = summary.AiReads, deviceUses = summary.DeviceUses,
-                    entries = entries.Select(e => new { time = e.Time.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture),
-                                                        kind = e.Kind, who = e.Actor, what = e.Summary, undone = e.UndoneAt is not null })
+                    entries = entries.Select(e => new { id = e.Id, time = e.Time.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture),
+                                                        kind = e.Kind, who = e.Actor, what = e.Summary, undone = e.UndoneAt is not null,
+                                                        canUndoApp = e.UndoneAt is null && e.Reversible == true && AppChanges.Read(e) is not null })
                 };
             }
             case "get_system_updates":
                 return await services.GetRequiredService<GuardianProposals>().UpdatesAsync(ct);
             case "get_picture_usage":
                 return services.GetRequiredService<ImageStudio>().Usage();
+            case "get_app_details":
+                return await services.GetRequiredService<FlathubDetails>().GetAsync(Str(args, "app_id"), ct);
             default: // get_settings
             {
                 var router = services.GetRequiredService<ModelRouter>();
@@ -355,8 +359,13 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 return ChangeSetting(action, args);
             case "install_app":
             {
+                // The card says who publishes it and what it may reach before "Do it" (FlathubDetails.cs).
                 var id = Str(args, "app_id");
-                return pending.Add(action, args, $"Install {id} from Flathub, just for you", Perform("flathub.install", ("appId", id)));
+                var found = await services.GetRequiredService<FlathubDetails>().GetAsync(id, ct);
+                var name = found.Name is { } n ? $"{n} ({id})" : id;
+                return pending.Add(action, args, $"Install {name} from Flathub, just for you",
+                    Perform("flathub.install", ("appId", id), ("name", found.Name ?? id)),
+                    details: new { lines = found.Lines, warning = found.Warning });
             }
             case "remove_app":
             {
@@ -366,7 +375,22 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             case "apt_install":
             {
                 var package = Str(args, "package");
-                return pending.Add(action, args, $"Install {package} with apt, in the Ubuntu container", Perform("apt.install", ("package", package)));
+                var isolated = args["isolated"]?.GetValue<bool>() == true;
+                return pending.Add(action, args,
+                    isolated ? $"Install {package} with apt, in the isolated Ubuntu container" : $"Install {package} with apt, in the Ubuntu container",
+                    Perform("apt.install", ("package", package), ("isolated", isolated)),
+                    details: isolated
+                        ? new { lines = new[] { "Isolated: it gets its own home folder and cannot see your files. Command-line tools only." }, warning = (string?)null }
+                        : new { lines = new[] { "Ubuntu software runs as you and can read your home folder. The Ubuntu container is not a sandbox." },
+                                warning = (string?)"Install it only if you trust it, or ask for the isolated container instead." });
+            }
+            case "undo_app_change":
+            {
+                var plan = await AppChanges.PlanUndoAsync(journal, args["entry"]!.GetValue<int>(), ct);
+                if (plan.Entry is null) throw new ActionRejectedException("There is no such journal entry. Use get_today_summary for the ids.");
+                if (plan.Conflict is not null) throw new ActionRejectedException(plan.Conflict);
+                return pending.Add(action, args, "Undo: " + plan.Description, plan.Perform,
+                    details: new { lines = new[] { "Was: " + plan.Entry.Summary }, warning = (string?)null });
             }
             case "create_automation":
             {
@@ -573,7 +597,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
         {
             // Desktop settings and volume are journalled by the shell with their old value, so they can be undone there.
             var op = perform["op"]!.GetValue<string>();
-            if (op is "app.open" or "flathub.install" or "flathub.remove" or "apt.install")
+            if (op is "app.open" or "flathub.install" or "flathub.remove" or "apt.install" or "apt.remove")
                 await Journal(JournalKinds.App, action, ct);
             return new ConfirmResult("perform", action.Line, perform);
         }

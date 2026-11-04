@@ -28,8 +28,15 @@ Column {
         function onResult(id, type, data) {
             if (id === page.listId) page.entries = data || [];
             else if (id === page.undoId) {
-                page.host.restore(data.ref, data.restore);
-                page.message = "Undone: " + page.undoing.summary;
+                // An app install or removal: Apps (or apt in a terminal) runs the opposite change and
+                // reports it, which marks this entry undone (Core: AppChanges.cs).
+                if (data.perform) {
+                    page.host.appChange(data.perform);
+                    page.message = (data.summary || "Undoing") + ". It is marked undone here once it has finished.";
+                } else {
+                    page.host.restore(data.ref, data.restore);
+                    page.message = "Undone: " + page.undoing.summary;
+                }
                 page.refresh();
             }
         }
@@ -58,7 +65,7 @@ Column {
     }
 
     PageHeader { theme: page.theme; title: "Timeline"
-                 summary: "Everything that changed, newest first. Personal settings can be undone; your files are never touched here." }
+                 summary: "Everything that changed, newest first. Personal settings and app installs and removals can be undone; your files are never touched here." }
 
     Text { visible: page.message !== ""; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
            text: page.message; color: page.theme.inkSecondary; font.pixelSize: 13 }
@@ -92,7 +99,8 @@ Column {
                 Button {
                     anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
                     theme: page.theme; label: "Undo"
-                    visible: modelData.reversible === true && !modelData.undoneAt && modelData.before !== null && modelData.before !== undefined
+                    visible: modelData.reversible === true && !modelData.undoneAt &&
+                             (modelData.kind === "app" || (modelData.before !== null && modelData.before !== undefined))
                     onClicked: { page.undoing = modelData; page.undoId = page.bridge.api("POST", "/journal/" + modelData.id + "/undo") }
                 }
             }

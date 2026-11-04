@@ -116,6 +116,8 @@ NexusWindow {
     }
     function hypr(args) { Quickshell.execDetached([hyprctl].concat(args)) }
     // Undo from the Timeline: Core hands back the old value and where it belongs.
+    // Undo of an app install or removal: shell.qml hands it to Apps (Apps.perform).
+    signal appChange(var perform)
     function restore(ref, value) {
         if (typeof ref === "string" && ref.startsWith("desktop:") && value && "value" in value) desktop.set(ref.slice(8), value.value, true);
         // The volume, when Nexus changed it (ActionCards.qml).

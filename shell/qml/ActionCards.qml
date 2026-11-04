@@ -56,7 +56,7 @@ Column {
         // actionId: the bridge's own request id replaces "id" on every event.
         cardList = cardList.concat([{ id: ev.actionId, action: ev.action, safety: ev.safety, summary: ev.summary,
                                       detail: ev.detail || "", detailTruncated: !!ev.detailTruncated, detailLength: ev.detailLength || 0,
-                                      plan: ev.plan || null, state: "offered", message: "" }]);
+                                      plan: ev.plan || null, details: ev.details || null, state: "offered", message: "" }]);
     }
     function update(id, change) {
         cardList = cardList.map(c => c.id === id ? Object.assign({}, c, change) : c);
@@ -149,12 +149,12 @@ Column {
                                                  after: { value: p.value }, reversible: true, ref: "sound:volume" });
             return { ok: true, message: "Done. Undo it in Settings, Timeline." };
         }
-        case "flathub.install": appsWin.open("get"); appsWin.install(p.appId); cards.opened(); return { ok: true, message: "Installing in Apps…" };
-        case "flathub.remove": appsWin.open("all"); appsWin.uninstall(p.appId); cards.opened(); return { ok: true, message: "Removing in Apps…" };
-        case "apt.install":
-            Quickshell.execDetached([terminal, "sh", "-c", "apt install \"$1\"; echo; printf 'Press Enter to close. '; read -r _", "sh", p.package]);
-            cards.opened();
-            return { ok: true, message: "Installing in a terminal." };
+        // Installs, removals and their Undo run in Apps, which journals them (Apps.perform); apt in a terminal.
+        case "flathub.install": case "flathub.remove": case "apt.install": case "apt.remove": {
+            const said = appsWin.perform(p);
+            if (said.ok) cards.opened();
+            return said;
+        }
         case "images.make": imagesWin.make(p.prompt); cards.opened(); return { ok: true, message: "Making it in Images…" };
         case "code.start": codeWin.start(p.folder, p.task); cards.opened(); return { ok: true, message: "Opened in Code with the task filled in; press Enter there to send it." };
         case "fixit.open": fixItWin.open(p.problem); cards.opened(); return { ok: true, message: "Checking in Fix it…" };
@@ -226,6 +226,21 @@ Column {
                     width: parent.width; wrapMode: Text.Wrap
                     text: "Shortened here: showing the first " + modelData.detail.length + " of " + modelData.detailLength + " characters."
                     font.pixelSize: 12; font.italic: true; color: cards.theme.inkSecondary
+                }
+                // Facts Core looked up for this card: a Flathub app's publisher, licence and permissions; what apt is.
+                Text {
+                    width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                    visible: !!(modelData.details && modelData.details.warning)
+                    text: modelData.details && modelData.details.warning ? modelData.details.warning : ""
+                    font.pixelSize: 13; font.weight: 500; color: "#FFC48F"
+                }
+                Repeater {
+                    model: modelData.details && modelData.details.lines ? modelData.details.lines.slice(0, 12) : []
+                    delegate: Text {
+                        required property var modelData
+                        width: body.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                        text: "· " + modelData; font.pixelSize: 12; color: cards.theme.inkSecondary
+                    }
                 }
                 Row {
                     spacing: 8

@@ -80,6 +80,7 @@ builder.Services.AddFixIt();
 builder.Services.AddNexusSearch(); // Private search (M8): SearchEndpoints.cs
 builder.Services.AddWorkspaces(); // Workspaces that remember: Workspaces.cs
 builder.Services.AddNexusActions(); // What Nexus can do from the chat: NexusActions.cs, NexusChat.cs
+builder.Services.AddSingleton<FlathubDetails>(); // Installing apps, with Undo: AppChanges.cs, FlathubDetails.cs
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -349,6 +350,14 @@ app.MapGet("/journal/today/summary", async (ActivityJournal journal, Cancellatio
     Results.Ok(await journal.SummaryAsync(ActivityJournal.Today, ct)));
 app.MapPost("/journal/{id:long}/undo", async (long id, ActivityJournal journal, CancellationToken ct) =>
 {
+    // An app install or removal: the desktop runs the opposite change, and reports it with "undoes" (AppChanges.cs).
+    if (await journal.GetAsync(id, ct) is { Kind: JournalKinds.App })
+    {
+        var plan = await AppChanges.PlanUndoAsync(journal, id, ct);
+        if (plan.Conflict is not null) return Results.Conflict(new { error = plan.Conflict });
+        return Results.Ok(new { id, undone = false, perform = plan.Perform, summary = plan.Description, @ref = plan.Entry!.Ref,
+                                instruction = "Run 'perform' on the desktop; the entry is marked undone when the change is reported." });
+    }
     var (entry, conflict) = await journal.UndoAsync(id, ct);
     if (entry is null) return Results.NotFound(new { error = "No such journal entry." });
     if (conflict is not null) return Results.Conflict(new { error = conflict });
@@ -363,6 +372,7 @@ app.MapDelete("/journal", async (string? day, ActivityJournal journal, Cancellat
     return Results.Ok(new { day, erased = await journal.ForgetDayAsync(date, ct) });
 }).RequireRateLimiting("journal");
 app.MapTryApps();
+app.MapAppChanges();
 app.MapGuardianProposals();
 app.MapGet("/inference/telemetry", async (MemoryTelemetry telemetry, CancellationToken ct) =>
     Results.Ok(await telemetry.ReadAsync(ct)));

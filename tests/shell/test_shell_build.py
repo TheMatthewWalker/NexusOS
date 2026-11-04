@@ -522,6 +522,28 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('import "lib/describe.mjs" as D', controls)
         self.assertIn('"df", "-P", "-B1", "/", "/home"', about)
 
+    def test_app_windows_open_again_after_being_closed(self):
+        """Every app window is a NexusWindow, which marks itself hidden when Hyprland closes it."""
+        window = (self.out / "NexusWindow.qml").read_text()
+        self.assertIn("onClosed: visible = false", window)
+        for qml in sorted(self.out.glob("*.qml")):
+            if qml.name != "NexusWindow.qml":
+                self.assertNotRegex(qml.read_text(), r"(?m)^FloatingWindow \{", qml.name)
+
+    def test_live_session_offers_only_wifi_and_install(self):
+        live = (self.out / "live.qml").read_text()
+        self.assertIn('only: ["network"]', live)
+        self.assertIn("nexus-install-welcome", live)
+        self.assertIn("live: true", live)
+        for absent in ("CoreBridge", "FirstRun", "Apps {", "Code {", "Guardian {", "NovaCore"):
+            self.assertNotIn(absent, live)
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn('if cfg.live then "nexus-live-shell" else "nexus-shell"', desktop)
+        self.assertIn("lib.optionalString (!cfg.live) appBinds", desktop)
+        iso = (ROOT / "nix/installer/iso.nix").read_text()
+        self.assertIn("live = true;", iso)
+        self.assertIn("services.nexus-core.enable = false;", iso)
+
 
 if __name__ == "__main__":
     unittest.main()

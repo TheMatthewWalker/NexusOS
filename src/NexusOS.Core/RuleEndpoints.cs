@@ -42,8 +42,8 @@ public static class RuleEndpoints
             var sentence = RuleSchema.Clean(request.Sentence ?? "");
             if (sentence.Length is 0 || sentence.Length > RuleParser.MaxSentenceLength)
                 return Results.BadRequest(new { error = $"Sentence must be 1-{RuleParser.MaxSentenceLength} characters." });
-            using var slot = await concurrency.TryEnterAsync(ct);
-            if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            using var slot = await concurrency.EnterAsync(ct);
+            if (slot is null) return Results.Problem("Nexus is still busy with an earlier request; it will take this one as soon as that finishes.", statusCode: StatusCodes.Status503ServiceUnavailable);
             var result = await parser.ParseAsync(sentence, ct);
             return Results.Ok(result.Parsed
                 ? new { parsed = true, saved = false, source = result.Source, provider = result.Provider, rule = (object?)result.Rule,

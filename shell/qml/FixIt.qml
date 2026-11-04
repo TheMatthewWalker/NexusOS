@@ -9,7 +9,7 @@ import "settings"
 // personal fix runs on Apply; a system fix is a Guardian proposal. Nothing
 // runs until the person chooses. Opened from Settings, Health, Nexus, or
 // `nexus-shell-ipc call fixit open "<problem>"`.
-FloatingWindow {
+NexusWindow {
     id: win
     property var theme
     property var bridge

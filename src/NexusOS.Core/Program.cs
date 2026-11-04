@@ -88,11 +88,11 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddPolicy("ai", _ => RateLimitPartition.GetFixedWindowLimiter("single-user", __ => new FixedWindowRateLimiterOptions
     {
-        PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+        PermitLimit = CoreLimits.AiPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
     }));
     options.AddPolicy("journal", _ => RateLimitPartition.GetFixedWindowLimiter("single-user", __ => new FixedWindowRateLimiterOptions
     {
-        PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+        PermitLimit = CoreLimits.JournalPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
     }));
 });
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65536);
@@ -134,8 +134,8 @@ app.MapPost("/chat", async (ChatRequest request, ModelRouter router, Conversatio
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
-    using var slot = await concurrency.TryEnterAsync(ct);
-    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    using var slot = await concurrency.EnterAsync(ct);
+    if (slot is null) return Results.Problem("Nexus is still busy with an earlier request; it will take this one as soon as that finishes.", statusCode: StatusCodes.Status503ServiceUnavailable);
     try
     {
         activity.BeginRequest();
@@ -165,8 +165,8 @@ app.MapPost("/chat/stream", async (ChatRequest request, HttpContext http, NexusC
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32768)
         return Results.BadRequest(new { error = "Prompt must be between 1 and 32768 characters." });
-    using var slot = await concurrency.TryEnterAsync(ct);
-    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    using var slot = await concurrency.EnterAsync(ct);
+    if (slot is null) return Results.Problem("Nexus is still busy with an earlier request; it will take this one as soon as that finishes.", statusCode: StatusCodes.Status503ServiceUnavailable);
     var started = false;
     async Task WriteEvent(object value)
     {
@@ -210,9 +210,12 @@ app.MapPost("/suggest/model", async (SuggestRequest request, AppSuggester sugges
 {
     if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > AppSuggester.MaxPromptLength)
         return Results.BadRequest(new { error = $"Prompt must be 1-{AppSuggester.MaxPromptLength} characters." });
-    using var slot = await concurrency.TryEnterAsync(ct);
-    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
-    return Results.Ok(await suggester.SuggestAsync(request.Prompt, true, ct));
+    // Background: the model only when it is free, and never in the way of a question.
+    using var slot = concurrency.TryEnterBackground(ct);
+    if (slot is null) return Results.Ok(await suggester.SuggestAsync(request.Prompt, false, ct));
+    try { return Results.Ok(await suggester.SuggestAsync(request.Prompt, true, slot.Token)); }
+    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+    { return Results.Ok(await suggester.SuggestAsync(request.Prompt, false, ct)); }
 }).RequireRateLimiting("ai");
 app.MapGet("/apps", () => Results.Ok(AppCatalogue.Roles.Select(r => new { id = r.Id, label = r.Label, detail = r.Detail })));
 app.MapPost("/guardian/preview", (GuardianPreviewRequest request) =>
@@ -229,8 +232,8 @@ app.MapPost("/guardian/propose", async (GuardianProposeRequest request, Guardian
 {
     if (string.IsNullOrWhiteSpace(request.Request) || request.Request.Length > GuardianProposer.MaxRequestLength)
         return Results.BadRequest(new { error = $"Request must be 1-{GuardianProposer.MaxRequestLength} characters." });
-    using var slot = await concurrency.TryEnterAsync(ct);
-    if (slot is null) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    using var slot = await concurrency.EnterAsync(ct);
+    if (slot is null) return Results.Problem("Nexus is still busy with an earlier request; it will take this one as soon as that finishes.", statusCode: StatusCodes.Status503ServiceUnavailable);
     try
     {
         var proposal = await proposer.ProposeAsync(request.Request, ct);

@@ -56,7 +56,7 @@ public sealed partial class ImageStudio : IDisposable
         var pictures = Environment.GetEnvironmentVariable("XDG_PICTURES_DIR");
         Folder = config["NEXUS_IMAGES_DIR"] ?? Path.Combine(string.IsNullOrWhiteSpace(pictures)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Pictures") : pictures, "Nexus");
-        var configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") is { Length: > 0 } c ? c
+        var configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") is { Length: > 0 } xdg ? xdg
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
         _settingsPath = config["NEXUS_IMAGES_SETTINGS"] ?? Path.Combine(configHome, "nexusos", "images.json");
         _downloadState = config["NEXUS_SD_DOWNLOAD_STATE"] ?? (Model is null ? null : Path.Combine(Path.GetDirectoryName(Model) ?? "/", "download.json"));
@@ -102,7 +102,7 @@ public sealed partial class ImageStudio : IDisposable
                 state = "waiting";
                 message = "The download is paused. It resumes by itself in a few minutes.";
             }
-            var next = Number("nextTry") is > 0 and var n ? DateTimeOffset.FromUnixTimeSeconds(n.Value) : (DateTimeOffset?)null;
+            var next = Number("nextTry") is long n and > 0 ? DateTimeOffset.FromUnixTimeSeconds(n) : (DateTimeOffset?)null;
             return new
             {
                 state, reason = Text("reason") ?? "", message, bytes, total,

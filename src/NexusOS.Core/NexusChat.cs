@@ -496,9 +496,9 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             try { images.SaveSettings(action.Args["keep_days"]?.GetValue<int>() ?? current.KeepDays, gb); }
             catch (Exception ex) when (ex is ImageException or IOException or UnauthorizedAccessException)
             { return new ConfirmResult("failed", "The setting could not be saved: " + ex.Message); }
-            var result = await images.CleanupAsync(ct);
-            return new ConfirmResult("done", result.Removed == 0 ? "Nothing to remove: every picture is within the limit."
-                : $"Removed {result.Removed} picture{(result.Removed == 1 ? "" : "s")} ({result.FreedBytes / 1e6:0.#} MB).", Detail: result);
+            var cleaned = await images.CleanupAsync(ct);
+            return new ConfirmResult("done", cleaned.Removed == 0 ? "Nothing to remove: every picture is within the limit."
+                : $"Removed {cleaned.Removed} picture{(cleaned.Removed == 1 ? "" : "s")} ({cleaned.FreedBytes / 1e6:0.#} MB).", Detail: cleaned);
         }
         if (action.Perform is { } perform)
         {

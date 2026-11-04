@@ -337,6 +337,7 @@ async IAsyncEnumerable<JsonElement> StreamEvents(string path, object body)
 // one JSON event per stdout line, each tagged with the request's id. The shell
 // never holds the API token itself; this process reads it like any CLI call.
 //   {"id":1,"op":"chat","prompt":"..."}     -> delta, tool and action events, then done or error
+//   {"op":"explain","prompt":"..."}         -> Explain mode: delta events, then done or error (no actions, no history)
 //   (an action card's "Do it": {"op":"api","method":"POST","path":"/actions/<id>/confirm"})
 //   {"id":2,"op":"suggest","prompt":"...","model":false}
 //   {"id":3,"op":"apps"} | {"id":4,"op":"health"}
@@ -420,10 +421,15 @@ async Task<int> Bridge()
             });
             continue;
         }
-        if (op is "chat" or "code-send")
+        if (op is "chat" or "explain" or "code-send")
         {
-            var path = op == "chat" ? "/chat/stream" : $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/messages";
-            object body = op == "chat" ? new { prompt } : new { text = Arg("text") };
+            var path = op switch
+            {
+                "chat" => "/chat/stream",
+                "explain" => "/explain/stream",
+                _ => $"/code/sessions/{Uri.EscapeDataString(Arg("session"))}/messages"
+            };
+            object body = op == "code-send" ? new { text = Arg("text") } : new { prompt };
             _ = Task.Run(async () =>
             {
                 try { await foreach (var ev in StreamEvents(path, body)) Emit(id, ev); }
@@ -574,7 +580,7 @@ static class BridgeApi
     private static readonly string[] Prefixes =
         ["/journal", "/fixit", "/health/report", "/search", "/rules", "/events", "/guardian/propose", "/guardian/preview",
          "/guardian/proposals", "/guardian/review", "/guardian/stage",
-         "/try/keep", "/settings/plan", "/workspaces", "/history", "/system", "/actions", "/images", "/explain/keep"];
+         "/try/keep", "/settings/plan", "/workspaces", "/history", "/system", "/images", "/explain/keep", "/actions"];
 
     public static bool Allowed(string method, string path) =>
         method is "GET" or "POST" or "DELETE" && path.StartsWith('/') && !path.Contains("..") &&

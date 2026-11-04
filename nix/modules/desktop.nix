@@ -149,8 +149,9 @@ let
     ${cfg.extraHyprlandConfig}
   '';
   # The login screen: greeter.qml in cage, a kiosk compositor. If it cannot
-  # start (it exits within seconds without anyone logging in), the text
-  # greeter takes over, so a broken login screen never locks anyone out.
+  # start (it exits within seconds without anyone logging in), or it hangs
+  # (its heartbeat file stops changing), the text greeter takes over, so a
+  # broken login screen never locks anyone out.
   # Who the login screen shows lives in /etc/nexus/greeter.env, not in this
   # script: the script then ends up in greetd.toml the same on every computer,
   # so an install from the USB stick needs nothing built for it (building a
@@ -158,15 +159,45 @@ let
   greeter = pkgs.writeShellScript "nexus-greeter-session" ''
     set -a; . /etc/nexus/greeter.env; set +a
     export NEXUS_GREETER_SESSION=${lib.escapeShellArg hyprland}
-    export XDG_CACHE_HOME="''${XDG_RUNTIME_DIR:-/tmp}/cache"
+    runtime=''${XDG_RUNTIME_DIR:-$(${pkgs.coreutils}/bin/mktemp -d)}
+    export XDG_CACHE_HOME="$runtime/cache"
     export WLR_NO_HARDWARE_CURSORS=1
-    started=$(date +%s)
+    # greeter.qml rewrites this file every 5 seconds while it answers.
+    export NEXUS_GREETER_HEARTBEAT="$runtime/nexus-greeter.alive"
+    ${pkgs.coreutils}/bin/rm -f "$NEXUS_GREETER_HEARTBEAT"
+    started=$(${pkgs.coreutils}/bin/date +%s)
     # Its messages go to the journal: journalctl -t nexus-greeter
-    ${pkgs.systemd}/bin/systemd-cat -t nexus-greeter ${pkgs.cage}/bin/cage -s -m last -- ${cfg.shellPackage}/bin/nexus-greeter
-    if [ $(( $(date +%s) - started )) -gt 5 ]; then exit 0; fi
-    echo "nexus-greeter did not start; using the text login" >&2
+    ${pkgs.systemd}/bin/systemd-cat -t nexus-greeter ${pkgs.cage}/bin/cage -s -m last -- ${cfg.shellPackage}/bin/nexus-greeter &
+    pid=$!
+    # The watchdog: a first heartbeat within ${toString cfg.greeter.startLimit} seconds (software
+    # rendering in a virtual machine is slow), then one at least every 30.
+    hung=""
+    while kill -0 "$pid" 2>/dev/null; do
+      ${pkgs.coreutils}/bin/sleep 5
+      now=$(${pkgs.coreutils}/bin/date +%s)
+      if [ -e "$NEXUS_GREETER_HEARTBEAT" ]; then
+        last=$(${pkgs.coreutils}/bin/stat -c %Y "$NEXUS_GREETER_HEARTBEAT"); limit=30
+      else
+        last=$started; limit=${toString cfg.greeter.startLimit}
+      fi
+      if [ $(( now - last )) -gt "$limit" ] && kill -0 "$pid" 2>/dev/null; then
+        hung=1
+        echo "nexus-greeter stopped answering; using the text login" >&2
+        kill "$pid" 2>/dev/null; ${pkgs.coreutils}/bin/sleep 3; kill -9 "$pid" 2>/dev/null
+        break
+      fi
+    done
+    wait "$pid"
+    if [ -z "$hung" ] && [ $(( $(${pkgs.coreutils}/bin/date +%s) - started )) -gt 5 ]; then exit 0; fi
+    [ -n "$hung" ] || echo "nexus-greeter did not start; using the text login" >&2
     exec ${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd ${lib.escapeShellArg hyprland}
   '';
+  # greetd changes an expired password (PAM's chauthtok) instead of refusing
+  # the login; greeter.qml asks for the current and the new one. Upstream
+  # greetd 0.10 stops at "pam_acct_mgmt: NEW_AUTHTOK_REQD".
+  greetd = pkgs.greetd.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ../patches/greetd-expired-password.patch ];
+  });
   hyprlockConf = pkgs.writeText "nexus-hyprlock.conf" ''
     general {
       hide_cursor = false
@@ -273,6 +304,14 @@ in
         type = lib.types.nullOr lib.types.str;
         default = null;
         description = "The person the login screen offers. Unset, it asks for a user name.";
+      };
+      startLimit = lib.mkOption {
+        type = lib.types.ints.between 30 3600;
+        default = 240;
+        description = ''
+          Seconds the login screen may take to show itself before the text
+          login takes over. Once it is up it must answer every 30 seconds.
+        '';
       };
       fullName = lib.mkOption {
         type = lib.types.str;
@@ -387,6 +426,7 @@ in
 
     services.greetd = {
       enable = true;
+      package = greetd;
       settings = {
         default_session.command = if cfg.greeter.graphical then "${greeter}"
           else "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd '${hyprland}'";

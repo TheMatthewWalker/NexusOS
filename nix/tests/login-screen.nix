@@ -1,6 +1,7 @@
 # The NexusOS login screen (shell/qml/greeter.qml in cage, under greetd):
-# it shows, a wrong password is refused and says so, and the right one starts
-# the desktop. Typed with real kernel key events.
+# it shows, a wrong password is refused and says so, an expired one is changed
+# on the screen, and the login then starts the desktop. Typed with real kernel
+# key events.
 { pkgs, desktopModule }:
 pkgs.testers.runNixOSTest {
   name = "login-screen";
@@ -18,7 +19,8 @@ pkgs.testers.runNixOSTest {
       reducedMotion = true;
       blur = false;
       coreDetail = 16;
-      greeter = { user = "alice"; fullName = "Alice Example"; };
+      # Software rendering here takes minutes: the watchdog waits for it.
+      greeter = { user = "alice"; fullName = "Alice Example"; startLimit = 900; };
     };
   };
 
@@ -45,13 +47,24 @@ pkgs.testers.runNixOSTest {
         machine.succeed("pgrep -f '[q]uickshell.*greeter[.]qml'")
         machine.screenshot("02-wrong-password")
 
-    with subtest("the right password starts the desktop"):
+    with subtest("an expired password is changed on the login screen, then the desktop starts"):
+        machine.succeed("chage -d 0 alice")    # must change it at the next login
+        old_hash = machine.succeed("getent shadow alice | cut -d: -f2")
         machine.sleep(5)                        # the refused attempt hands the keyboard back to the password box
         machine.send_chars("nexus-login\n")
+        machine.wait_until_succeeds("journalctl -b -t nexus-greeter | grep -q 'the password has expired'", timeout=300)
+        machine.sleep(5)
+        machine.screenshot("03-expired")
+        # The current password is already in its box; the new one twice.
+        machine.send_chars("nexus-login-2026\n")
+        machine.sleep(2)
+        machine.send_chars("nexus-login-2026\n")
+        machine.wait_until_succeeds("journalctl -b -t nexus-greeter | grep -q 'password changed'", timeout=300)
+        assert machine.succeed("getent shadow alice | cut -d: -f2") != old_hash
         try:
             machine.wait_until_succeeds("pgrep -u alice -f '[s]tart-hyprland'", timeout=300)
         except Exception:
-            machine.screenshot("03-failed")
+            machine.screenshot("04-failed")
             journal()
             raise
         machine.wait_until_succeeds("pgrep -u alice -f '[n]exus-shell/shell[.]qml'", timeout=600)
@@ -62,6 +75,6 @@ pkgs.testers.runNixOSTest {
             journal()
             raise
         machine.sleep(30)
-        machine.screenshot("03-desktop")
+        machine.screenshot("04-desktop")
   '';
 }

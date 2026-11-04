@@ -358,6 +358,48 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('name: "overview"', shell)
         self.assertIn("bind = SUPER, Tab, global, nexus:overview", nix)
 
+    def test_workspaces_restore_files_tabs_and_conversation_from_cores_plan(self):
+        """Restore asks Core what can come back now, hands files to %F/%f, and says what it could not."""
+        ov = (self.out / "Overview.qml").read_text()
+        shell = (self.out / "shell.qml").read_text()
+        self.assertIn('bridge.api("GET", "/workspaces/restore?name="', ov)
+        self.assertIn('a === "%F" || a === "%U"', ov)
+        self.assertIn("conversation: conversation || null", ov)
+        self.assertIn("conversationRestored(plan.conversation.prompt, plan.conversation.answer)", ov)
+        self.assertNotIn("not kept yet", ov)
+        self.assertIn("onConversationRestored:", shell)
+
+    def test_settings_orbit_groups_every_page_once(self):
+        """The orbit shows four groups; each page is in exactly one, and deep links still name pages."""
+        settings = (self.out / "Settings.qml").read_text()
+        pages = re.findall(r'\{ id: "([a-z]+)", label:', settings)
+        members = re.findall(r'\{ key: "[a-z]+", label: "[^"]+", colour: "[^"]+", icon: "([a-z]+)", members: \[([^\]]*)\] \}', settings)
+        self.assertEqual(len(members), 4)
+        grouped = [m for _, body in members for m in re.findall(r'"([a-z]+)"', body)]
+        self.assertEqual(sorted(grouped), sorted(pages))
+        for icon, _ in members:
+            self.assertTrue((self.out / "icons" / f"{icon}.svg").exists(), icon)
+        self.assertIn("readonly property string expandedGroup: groupOf(page).key", settings)
+        self.assertIn("Keys.onRightPressed: stepFocus(1)", settings)
+        # The live installer's `only` filters the groups too.
+        self.assertIn("pages.some(p => p.id === m)", settings)
+
+    def test_greeter_changes_an_expired_password_and_has_a_watchdog(self):
+        """Expired: current, new, new again (10 or more), then the login carries on; a hung greeter gives way."""
+        greeter = (self.out / "greeter.qml").read_text()
+        nix = (ROOT / "nix/modules/desktop.nix").read_text()
+        patch = (ROOT / "nix/patches/greetd-expired-password.patch").read_text()
+        self.assertIn("Your password has expired", greeter)
+        self.assertIn("readonly property int minLength: 10", greeter)
+        self.assertIn("NEW_AUTHTOK_REQD", greeter)
+        self.assertNotIn("console.info(\"nexus-greeter: \" + root.held", greeter)    # answers are never logged
+        self.assertIn("heartbeat.setText(", greeter)
+        self.assertIn("pam.chauthtok(PamFlag::CHANGE_EXPIRED_AUTHTOK)?", patch)
+        self.assertIn("../patches/greetd-expired-password.patch", nix)
+        self.assertIn("package = greetd;", nix)
+        self.assertIn('export NEXUS_GREETER_HEARTBEAT="$runtime/nexus-greeter.alive"', nix)
+        self.assertIn("nexus-greeter stopped answering; using the text login", nix)
+
     def test_first_run_bundles_and_matching(self):
         self.run_node_test("firstrun.test.mjs")
 

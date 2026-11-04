@@ -151,6 +151,11 @@ class MoveInHelper(unittest.TestCase):
                 items = [(r[1], r[2]) for r in self.records(shell) if r[0] == "item"]
                 self.assertEqual(items, [("bob", "Documents")])
 
+    def skip_unless_nobody_can_reach(self):
+        # As root the tests run the helper as nobody, who must be able to get to the temporary folder.
+        if os.geteuid() == 0 and any(not os.stat(p).st_mode & 0o001 for p in self.tmp.parents):
+            self.skipTest(f"{self.tmp.parent} is not reachable by an unprivileged account (set TMPDIR)")
+
     def run_as_nobody(self, shell, *args):
         env = dict(os.environ, HOME=str(self.home))
         return subprocess.run(["setpriv", "--reuid=65534", "--regid=65534", "--clear-groups", shell, str(SCRIPT), *args],
@@ -159,11 +164,15 @@ class MoveInHelper(unittest.TestCase):
     @unittest.skipUnless(os.geteuid() != 0 or shutil.which("setpriv"), "needs an unprivileged account")
     def test_folders_private_to_the_old_account_are_reported_not_copied(self):
         # A Mac or Linux home folder keeps its old owner and mode 700: say so, and do not try to copy it.
+        self.skip_unless_nobody_can_reach()
         self.make("Users/alice/Documents/a.txt")
         self.make("Users/alice/Pictures/p.jpg")
-        os.chmod(self.drive / "Users/alice/Documents", 0o700)
         if os.geteuid() == 0:
+            # Everything else readable by the unprivileged account, whatever the umask.
             os.chmod(self.tmp, 0o755)
+            for path in [self.drive, *self.drive.rglob("*")]:
+                os.chmod(path, 0o755 if path.is_dir() else 0o644)
+            os.chmod(self.drive / "Users/alice/Documents", 0o700)
             os.chown(self.home, 65534, 65534)
             os.chown(self.drive / "Users/alice/Documents", 0, 0)
             run_helper = self.run_as_nobody
@@ -188,6 +197,7 @@ class MoveInHelper(unittest.TestCase):
     @unittest.skipUnless(os.geteuid() != 0 or shutil.which("setpriv"), "needs an unprivileged account")
     def test_an_unreadable_volume_is_reported(self):
         # An encrypted Mac volume that mounts but cannot be listed.
+        self.skip_unless_nobody_can_reach()
         os.chmod(self.tmp, 0o755)
         os.chmod(self.drive, 0)
         try:

@@ -77,7 +77,7 @@ record() {
 scan() {
     [ -d "$1" ] || die "missing"
     r=$(volume_of "$1")
-    ls -A -- "$r" >/dev/null 2>&1 || { printf 'unreadable\0'; return 0; }
+    { readable "$r" && listing=$(ls -A -- "$r" 2>&1); } || { printf 'unreadable\0'; return 0; }
     if [ -d "$r/Windows/System32" ] || { [ -d "$r/Users" ] && [ -d "$r/ProgramData" ]; }; then printf 'os\tWindows\0'
     elif [ -d "$r/System/Library" ] || { [ -d "$r/Users" ] && { [ -d "$r/Applications" ] || [ -d "$r/Library" ]; }; }; then printf 'os\tMac\0'
     elif [ -f "$r/etc/os-release" ] || { [ -d "$r/home" ] && [ -d "$r/etc" ]; }; then printf 'os\tLinux\0'; fi

@@ -79,6 +79,7 @@ builder.Services.AddSingleton<LocalApiToken>();
 builder.Services.AddFixIt();
 builder.Services.AddNexusSearch(); // Private search (M8): SearchEndpoints.cs
 builder.Services.AddWorkspaces(); // Workspaces that remember: Workspaces.cs
+builder.Services.AddMoveIn(); // Move in: bookmarks and apps from the old drive, MoveIn.cs
 builder.Services.AddNexusActions(); // What Nexus can do from the chat: NexusActions.cs, NexusChat.cs
 builder.Services.AddRateLimiter(options =>
 {
@@ -392,6 +393,7 @@ app.MapGet("/system", () => Results.Ok(new
 app.MapFixIt();
 app.MapNexusSearch();
 app.MapWorkspaces();
+app.MapMoveIn();
 app.MapCoding();
 app.MapImages();
 app.MapNexusActions();

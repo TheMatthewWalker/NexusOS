@@ -296,7 +296,11 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             default: // get_settings
             {
                 var router = services.GetRequiredService<ModelRouter>();
+                var large = services.GetRequiredService<LargeModel>();
                 return new { desktop = DesktopSettings(), model = new { provider = router.Current.Name, name = router.Current.Model },
+                             // The mixture-of-experts model, if this computer has one set up (use_large_model switches).
+                             largeModel = large.Configured ? LargeModelEndpoints.View(large, services.GetRequiredService<ProviderStore>(),
+                                 services.GetRequiredService<LlamaServerProcess>()) : null,
                              cloudAllowed = CloudEgressPolicy.IsExplicitlyAllowed(config) };
             }
         }
@@ -494,6 +498,14 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 return pending.Add(action, args, "Open the welcome setup", Perform("welcome.open"));
             case "check_for_updates":
                 return pending.Add(action, args, "Check for system security updates now");
+            case "use_large_model":
+            {
+                var large = services.GetRequiredService<LargeModel>();
+                if (!large.Configured) throw new ArgumentException("This computer has no large model set up; it needs 16 GB of memory.");
+                var on = args["on"]!.GetValue<bool>();
+                if (on && !large.Downloaded) throw new ArgumentException($"{large.Name} is not downloaded yet; it downloads when the computer is online.");
+                return pending.Add(action, args, on ? $"Answer with the large model, {large.Name} ({large.Split().Where})" : "Answer with the standard model");
+            }
             case "open_fix_it":
             {
                 var problem = Str(args, "problem");
@@ -632,6 +644,24 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             if (requested) await Journal(JournalKinds.System, action, ct);
             return new ConfirmResult(requested ? "done" : "failed",
                 requested ? "Checking for updates. If there are any, Guardian builds and tests them, then asks for your approval." : message);
+        }
+        if (action.Action.Name == "use_large_model")
+        {
+            var large = services.GetRequiredService<LargeModel>();
+            var on = action.Args["on"]!.GetValue<bool>();
+            if (on && !large.Downloaded) return new ConfirmResult("failed", $"{large.Name} is not downloaded yet.");
+            services.GetRequiredService<ProviderStore>().Select(on ? ProviderNames.LlamaCpp : ProviderNames.Local);
+            // One model in memory at a time: the other leaves now.
+            try
+            {
+                if (on) await services.GetServices<IModelProvider>().First(p => p.Name == ProviderNames.Local).UnloadAsync(ct);
+                else await services.GetRequiredService<LlamaServerProcess>().StopAsync(ct);
+            }
+            catch (Exception ex) when (ex is ProviderException or HttpRequestException) { }
+            await Journal(JournalKinds.Setting, action, ct);
+            return new ConfirmResult("done", on
+                ? $"Nexus now answers with {large.Name}. The first answer takes longer while it loads; if memory runs short, the standard model answers instead."
+                : "Nexus now answers with the standard model.");
         }
         if (action.Action.Name == "clean_up_pictures")
         {

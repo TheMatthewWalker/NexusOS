@@ -14,6 +14,9 @@ parser.add_argument("--n-gpu-layers", type=int, required=True)
 # FAKE_LLAMA_OLD=1 stands in for a llama-server too old to know --jinja: argparse exits on it.
 if os.environ.get("FAKE_LLAMA_OLD") != "1":
     parser.add_argument("--jinja", action="store_true")
+# FAKE_LLAMA_NO_MOE=1: a llama-server from before --n-cpu-moe.
+if os.environ.get("FAKE_LLAMA_NO_MOE") != "1":
+    parser.add_argument("--n-cpu-moe", type=int, default=0)
 args = parser.parse_args()
 if args.host != "127.0.0.1":
     raise SystemExit("refusing non-loopback bind")
@@ -71,7 +74,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_body(200, body.encode(), "text/event-stream")
             return
         text = request["messages"][0]["content"]
-        self.reply({"choices": [{"message": {"content": f"managed ctx={args.ctx_size} ngl={args.n_gpu_layers}: {text}"}}]})
+        moe = getattr(args, "n_cpu_moe", 0)
+        extra = (f" moe={moe}" if moe else "") + (f" effort={request['chat_template_kwargs']['reasoning_effort']}"
+                                                  if request.get("chat_template_kwargs") else "")
+        self.reply({"choices": [{"message": {"content": f"managed ctx={args.ctx_size} ngl={args.n_gpu_layers}{extra}: {text}"}}]})
 
 
 ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()

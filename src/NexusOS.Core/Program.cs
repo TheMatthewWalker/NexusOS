@@ -52,11 +52,15 @@ builder.Services.AddSingleton<ConversationStore>(sp => new ConversationStore(
     sp.GetRequiredService<SqliteStateDatabase>(), sp.GetRequiredService<IConfiguration>()));
 builder.Services.AddSingleton<ActivityJournal>();
 builder.Services.AddSingleton<IProviderCredentialStore, LinuxSecretToolStore>();
+builder.Services.AddSingleton<LargeModel>(); // The mixture-of-experts model on Core's llama.cpp server: LargeModel.cs
 builder.Services.AddSingleton<LlamaServerProcess>();
 builder.Services.AddSingleton<IModelProvider, OllamaProvider>();
 builder.Services.AddSingleton<IModelProvider>(sp => new LlamaCppProvider(
     sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<IConfiguration>(),
-    sp.GetRequiredService<LlamaServerProcess>()));
+    sp.GetRequiredService<LlamaServerProcess>(),
+    // With the large model set up: the standard model leaves memory before the large one loads.
+    sp.GetRequiredService<LargeModel>().Configured
+        ? ct => sp.GetServices<IModelProvider>().First(p => p.Name == ProviderNames.Local).UnloadAsync(ct) : null));
 builder.Services.AddSingleton<IModelProvider, OpenAiCompatibleProvider>();
 builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceActivity>();
@@ -123,9 +127,11 @@ app.UseRateLimiter();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "NexusOS.Core", version = "0.2.0-dev" }));
 app.MapGet("/providers", (ProviderStore store) => Results.Ok(new { selected = store.Selected, providers = store.Names }));
-app.MapPost("/providers/select", (SelectRequest request, ProviderStore store) =>
+app.MapPost("/providers/select", async (SelectRequest request, ProviderStore store, LlamaServerProcess llama, CancellationToken ct) =>
 {
     if (!store.Select(request.Name)) return Results.BadRequest(new { error = "Unknown provider" });
+    // Leaving the large model frees its memory at once.
+    if (store.Selected != ProviderNames.LlamaCpp && llama.IsConfigured) await llama.StopAsync(ct);
     return Results.Ok(new { selected = store.Selected });
 });
 app.MapDelete("/history", async (ConversationStore history, RuleStore rules, CancellationToken ct) =>
@@ -388,6 +394,7 @@ app.MapGet("/inference/status", async (ModelRouter router, CancellationToken ct)
     return Results.Ok(new { backend = provider.Name, model = provider.Model, available = await provider.IsAvailableAsync(ct),
                             unloadSupported = provider.SupportsUnload });
 });
+app.MapLargeModel();
 app.MapPost("/inference/unload", async (ModelRouter router, VisionDescriber vision, VoiceControl voice, CancellationToken ct) =>
 {
     // Game mode frees everything: the vision model and any speech work too, whatever answers the chat.

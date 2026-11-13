@@ -70,6 +70,8 @@ public static class ActionSelection
         G("system", @"system|everyone|every (?:account|user)|all (?:users|accounts)|services?|ssh|remote|printers?|printing|print|" +
                     @"cups|flatpak|networkmanager|drivers?|guardian|server",
             "install_system_software", "change_system_option"),
+        G("model", @"models?|large|bigger|smarter|cleverer|standard|gpt-?oss|qwen|experts?|\bai\b|llm|brain",
+            "use_large_model", "get_settings"),
     ];
 
     // Offered once a look-up has run, because only then are they useful: a fix

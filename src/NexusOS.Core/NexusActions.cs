@@ -146,6 +146,9 @@ public static class NexusActions
         new("show_old_apps", ActionSafety.Personal, "Show apps matched to the old computer's programs in Apps, to install with a click.", []),
         new("open_welcome", ActionSafety.Personal, "Open the welcome setup (apps and settings for what the person does).", []),
         new("check_for_updates", ActionSafety.Personal, "Ask Guardian to check for security updates now.", []),
+        new("use_large_model", ActionSafety.Personal,
+            "Switch Nexus between the large model (smarter, slower, needs most of the memory) and the standard one; get_settings says which is in use.",
+            [new("on", "boolean", "true: large model; false: standard.")]),
         new("apply_fix", ActionSafety.Personal, "Apply a personal fix diagnose_problem offered.",
             [new("fix_id", "string", "", MaxLength: 64, Pattern: @"[a-z0-9][a-z0-9._-]{0,63}")]),
 

@@ -131,9 +131,31 @@ The installer looks at the computer and sets it up; you do not pick drivers. The
 | A graphics card for AI (NVIDIA, or AMD as above) | Local model `qwen3:8b` |
 | No such card, 8 GB of memory or more | `qwen3:4b` on the processor: about twice as fast there as the 8B model |
 | Less than 8 GB of memory | `qwen3:1.7b` |
+| 16 GB of memory or more | The large model as well (see "The large model" below) |
 | No graphics card for AI and less than 16 GB of memory | Image generation is off (it needs about 8 GB of memory and a 7 GB download) |
 
 What it found is in `/etc/nixos/local.nix` under `nexusos.hardware`. To use another model, run `sudo nexus-install --model qwen3:8b`, or later set `services.nexus-core.ollamaModel` in `local.nix` and rebuild.
+
+## The large model
+
+On a computer with 16 GB of memory, NexusOS also downloads a much bigger model once it is online: by default `DavidAU/OpenAi-GPT-oss-20b-HERETIC-uncensored-NEO-Imatrix-gguf` at `Q8_0`, a 21-billion-parameter *mixture-of-experts* model. Such a model is split into many "experts" and uses only a few of them for each word (about 3.6 billion parameters' worth), so it does the work of a small model while knowing as much as a big one. NexusOS runs it with llama.cpp, which keeps the experts in ordinary memory and puts the part every word needs on the graphics card (`--n-cpu-moe`); the split is worked out from the graphics memory the computer has. Without a graphics card the whole model runs from memory on the processor.
+
+| | |
+|---|---|
+| Which version | The quantisation asked for, if this computer can hold it: its memory beside the desktop (4 GB kept back) plus what a graphics card takes. If it cannot (Q8_0 may be too big for 16 GB), the biggest version in the repository that fits is downloaded instead, and Settings says which and why |
+| Download | Once online, with room checked first (the file plus 2 GB), resumed if interrupted, and kept only if it matches the SHA-256 in the repository's file list |
+| Using it | With a graphics card for AI, Nexus answers with it as soon as it is downloaded. Otherwise turn it on in **Settings, Privacy and AI, Large model**, or ask Nexus ("use the large model") |
+| Memory | One model is in memory at a time. Before the large model loads, NexusOS checks there is enough free memory; if not, it says how much is short and the standard model answers. The same happens if it fails to start |
+
+To choose another model or version, set in `/etc/nixos/local.nix` (a system change):
+
+```nix
+nexusos.largeModel.repo = "unsloth/gpt-oss-20b-GGUF";
+nexusos.largeModel.quant = "Q4_K_M";
+nexusos.largeModel.exact = true;   # never a smaller version than the one named
+```
+
+`nexusos.largeModel.enable = false;` leaves it out.
 
 ## NVIDIA graphics
 

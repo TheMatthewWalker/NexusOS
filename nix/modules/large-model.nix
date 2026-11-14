@@ -6,13 +6,20 @@
 # works out the split from the graphics memory that is there, and without a
 # card the model runs from memory on the processor.
 #
-# The default, gpt-oss-20b at 4 bits, is about 12 GB with 3.6 billion of its
-# 21 billion parameters active per word: it fits a 16 GB computer, where
-# nothing bigger does. It is downloaded once the machine is online (too big
-# for the installer image) by the same careful script as the image model:
-# room for the file plus 2 GiB, resume, back-off, and kept only if it matches
-# its SHA-256. Until it is there, and whenever memory is short, the standard
-# model answers.
+# The model is named as for `llama-server -hf`: a Hugging Face repository of
+# GGUF files and a quantisation. The default is a gpt-oss-20b variant (21
+# billion parameters, about 3.6 billion active per word) at Q8_0. It is
+# downloaded once the machine is online (too big for the installer image) by
+# the same careful script as the image model: room for the file plus 2 GiB,
+# resume, back-off, and kept only if it matches the SHA-256 in the
+# repository's own file list.
+#
+# A version is only fetched if this computer can hold it: its memory beside
+# the desktop, plus what a graphics card takes. If the quantisation asked for
+# cannot fit (Q8_0 on a 16 GB laptop may not), the biggest version in the
+# repository that does is used instead, and Settings says so; `exact` turns
+# that off. Until the model is there, and whenever memory is short, the
+# standard model answers.
 { config, lib, pkgs, ... }:
 let
   cfg = config.nexusos.largeModel;
@@ -34,25 +41,21 @@ in
         chose otherwise in Settings. Off: it is there to switch to.
       '';
     };
-    name = lib.mkOption { type = lib.types.str; default = "gpt-oss-20b"; description = "What Settings and Nexus call the model."; };
-    url = lib.mkOption {
-      type = lib.types.str;
-      default = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q4_K_M.gguf";
-      description = "Where the GGUF model file is downloaded from.";
+    name = lib.mkOption { type = lib.types.str; default = "GPT-OSS 20B Heretic"; description = "What Settings and Nexus call the model."; };
+    repo = lib.mkOption {
+      type = lib.types.strMatching "[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*";
+      default = "DavidAU/OpenAi-GPT-oss-20b-HERETIC-uncensored-NEO-Imatrix-gguf";
+      description = "The Hugging Face repository of GGUF files, as given to `llama-server -hf`.";
     };
-    sha256 = lib.mkOption {
-      type = lib.types.nullOr (lib.types.strMatching "[0-9a-f]{64}");
-      default = null;
-      description = ''
-        SHA-256 of the model file; a download that does not match is deleted.
-        null uses the hash the host publishes for the file (Hugging Face's
-        X-Linked-Etag) and refuses the download if there is none.
-      '';
+    quant = lib.mkOption {
+      type = lib.types.strMatching "[A-Za-z0-9_]{2,16}";
+      default = "Q8_0";
+      description = "The quantisation wanted from the repository (the part after the colon in `-hf repo:Q8_0`).";
     };
-    size = lib.mkOption {
-      type = lib.types.ints.positive;
-      default = 11600000000;
-      description = "Size of the model file in bytes, about: for the free-space check, progress, and the memory split.";
+    exact = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Never use a smaller version than `quant`, even when it cannot fit this computer (then nothing is downloaded).";
     };
     layers = lib.mkOption {
       type = lib.types.ints.between 1 512;
@@ -81,7 +84,6 @@ in
       # Reading 12 GB from a laptop's disk takes a while the first time.
       NEXUS_LLAMA_START_TIMEOUT_SECONDS = "420";
       NEXUS_LARGE_MODEL_NAME = cfg.name;
-      NEXUS_LARGE_MODEL_BYTES = toString cfg.size;
       NEXUS_LARGE_MODEL_LAYERS = toString cfg.layers;
       NEXUS_LARGE_MODEL_PREFERRED = lib.boolToString cfg.preferred;
       NEXUS_LARGE_MODEL_STATUS = "${dir}/download.json";
@@ -91,7 +93,8 @@ in
       description = "Download the large Nexus model";
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
-      path = [ pkgs.curl ];
+      # nvidia-smi, where there is an NVIDIA card: the graphics memory counts towards what fits.
+      path = [ pkgs.curl "/run/current-system/sw" ];
       serviceConfig = {
         Type = "oneshot";
         TimeoutStartSec = "infinity";
@@ -100,8 +103,8 @@ in
         # %% so systemd does not read % in a URL as one of its specifiers.
         ExecStart = lib.replaceStrings [ "%" ] [ "%%" ] (lib.escapeShellArgs ([
           "${pkgs.python3.interpreter}" "${../../scripts/images/nexus_image_model.py}"
-          "--dir" dir "--file" cfg.file "--url" cfg.url "--size" (toString cfg.size) "--what" "large model"
-        ] ++ lib.optionals (cfg.sha256 != null) [ "--sha256" cfg.sha256 ]));
+          "--dir" dir "--file" cfg.file "--hf-repo" cfg.repo "--hf-quant" cfg.quant "--what" "large model"
+        ] ++ lib.optional cfg.exact "--exact"));
       };
     };
     systemd.timers.nexus-large-model = {

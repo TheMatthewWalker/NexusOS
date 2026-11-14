@@ -37,12 +37,13 @@ Column {
         const l = large, d = l.download;
         if (!l.downloaded) {
             if (d && d.state === "downloading") return "Downloading " + l.name + ": " + d.percent + "% of " + l.sizeGb + " GB.";
-            return (d && d.message) || (l.name + " (" + l.sizeGb + " GB) downloads once this computer is online.");
+            return ((d && d.message) || (l.name + " downloads once this computer is online.")) + (d && d.note ? " " + d.note : "");
         }
         const how = l.name + " runs " + l.where + " and needs about " + l.memoryGb + " GB of free memory.";
         if (l.selected && l.blocked) return l.blocked + " The standard model answers meanwhile.";
-        return l.selected ? how + (l.running ? " Loaded." : " It loads with your next question.")
-                          : how + " Smarter than the standard model, and slower.";
+        const which = d && d.note ? " " + d.note : "";
+        return (l.selected ? how + (l.running ? " Loaded." : " It loads with your next question.")
+                           : how + " Smarter than the standard model, and slower.") + which;
     }
     property bool confirmForget: false
     readonly property string todayDate: Qt.formatDate(new Date(), "yyyy-MM-dd")

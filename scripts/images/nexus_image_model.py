@@ -85,6 +85,8 @@ class Downloader:
                  reserve=RESERVE_BYTES, runner=run, clock=time.time, free=free_bytes, what="image model"):
         # What the messages call the file: the same script fetches the large chat model (--what).
         self.what = what
+        # Written into the state file with everything else: which file was chosen, and why (resolve_hf).
+        self.extra = {}
         self.dir = Path(directory)
         self.model = self.dir / file
         self.part = self.dir / (file + ".part")
@@ -107,7 +109,7 @@ class Downloader:
     def save(self, record, **fields):
         if isinstance(fields.get("message"), str):
             fields["message"] = fields["message"].replace("image model", self.what)
-        record.update(fields, updatedAt=int(self.clock()))
+        record.update(fields, updatedAt=int(self.clock()), **self.extra)
         path = self.dir / STATE_FILE
         temporary = path.with_suffix(".new")
         temporary.write_text(json.dumps(record, sort_keys=True), encoding="utf-8")
@@ -197,18 +199,163 @@ class Downloader:
         return 0
 
 
+# --- a model named as on Hugging Face: repo and quantisation ("-hf owner/repo:Q8_0") ---
+
+GIB = 1024 ** 3
+OS_RESERVE = 4 * GIB          # memory left for the desktop and apps
+GPU_RESERVE = 3 * GIB // 2    # graphics memory left for the desktop and the model's working memory
+
+
+def memory_bytes(meminfo="/proc/meminfo"):
+    try:
+        for line in Path(meminfo).read_text(encoding="utf-8").splitlines():
+            if line.startswith("MemTotal:"):
+                return int(line.split()[1]) * 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0
+
+
+def vram_bytes(runner=run, drm="/sys/class/drm"):
+    """The graphics card's own memory: NVIDIA's from nvidia-smi, AMD's from the kernel; 0 without one."""
+    best = 0
+    status, out = runner(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"])
+    if status == 0:
+        best = max([int(v) * 1024 ** 2 for v in out.split() if v.isdigit()] or [0])
+    for file in Path(drm).glob("card*/device/mem_info_vram_total"):
+        try:
+            best = max(best, int(file.read_text().strip()))
+        except (OSError, ValueError):
+            pass
+    return best
+
+
+def fit_bytes(memory, vram):
+    """The biggest model file this computer can hold: in memory beside the desktop, plus what the card takes."""
+    on_card = max(0, vram - GPU_RESERVE) if vram >= 3 * GIB else 0
+    return max(0, memory - OS_RESERVE) + on_card
+
+
+def api_json(url, runner):
+    status, out = runner(["curl", "-sfL", "--max-time", "60", "-A", "llama-cpp", "-H", "Accept: application/json", url])
+    if status != 0:
+        return None
+    try:
+        return json.loads(out)
+    except ValueError:
+        return None
+
+
+SAFE_PATH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*(/[A-Za-z0-9][A-Za-z0-9._+-]*)*\.gguf\Z")
+REPO = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+QUANT = re.compile(r"[A-Za-z0-9_]{2,16}\Z")
+
+
+def resolve_hf(repo, quant, fit, runner=run, allow_smaller=True):
+    """Which file to fetch: {url, sha256, size, file, note} or {error}.
+
+    The file the quantisation tag names (as llama.cpp's -hf resolves it, falling
+    back to the tag in the file name). If it cannot fit this computer and
+    allow_smaller is set, the biggest model file in the repository that does.
+    Sizes and SHA-256s come from the repository's own file list.
+    """
+    if not REPO.fullmatch(repo) or not QUANT.fullmatch(quant):
+        return {"error": "The model's repository or quantisation is not written correctly."}
+    tree = api_json(f"https://huggingface.co/api/models/{repo}/tree/main?recursive=true", runner)
+    if not isinstance(tree, list):
+        return {"error": "Could not read the model's file list from Hugging Face. It is tried again later."}
+    files = {}
+    for entry in tree:
+        if not isinstance(entry, dict) or entry.get("type") != "file":
+            continue
+        path, lfs = entry.get("path"), entry.get("lfs")
+        if not isinstance(path, str) or not SAFE_PATH.fullmatch(path) or "mmproj" in path.lower() or not isinstance(lfs, dict):
+            continue
+        sha, size = str(lfs.get("oid", "")).lower(), lfs.get("size", entry.get("size"))
+        if HASH.fullmatch(sha) and isinstance(size, int) and size > 0:
+            files[path] = (sha, size)
+    if not files:
+        return {"error": "The model's repository lists no model files with checksums."}
+
+    wanted = None
+    manifest = api_json(f"https://huggingface.co/v2/{repo}/manifests/{quant}", runner)
+    if isinstance(manifest, dict) and isinstance(manifest.get("ggufFile"), dict):
+        name = manifest["ggufFile"].get("rfilename")
+        wanted = name if name in files else None
+    if wanted is None:
+        tagged = sorted(p for p in files if re.search(r"(?<![A-Za-z0-9])" + re.escape(quant) + r"(?![A-Za-z0-9])", p, re.I))
+        wanted = tagged[0] if tagged else None
+    if wanted is None:
+        return {"error": f"The model's repository has no {quant} file."}
+
+    chosen, note = wanted, ""
+    if fit and files[wanted][1] > fit:
+        fitting = sorted((size, path) for path, (_, size) in files.items() if size <= fit)
+        if not allow_smaller or not fitting:
+            return {"error": f"{quant} is {gb(files[wanted][1])}, more than this computer can hold ({gb(fit)} of memory "
+                             "and graphics memory to spare), and the repository has nothing smaller that fits."
+                    if allow_smaller else
+                    f"{quant} is {gb(files[wanted][1])}, more than this computer can hold ({gb(fit)} to spare)."}
+        chosen = fitting[-1][1]
+        note = (f"{quant} is {gb(files[wanted][1])}, more than this computer can hold ({gb(fit)} of memory and graphics "
+                f"memory to spare), so the biggest version that fits is used: {Path(chosen).name} ({gb(files[chosen][1])}).")
+    sha, size = files[chosen]
+    return {"url": f"https://huggingface.co/{repo}/resolve/main/{chosen}", "sha256": sha, "size": size,
+            "file": Path(chosen).name, "note": note}
+
+
+def resolved_for(directory, repo, quant, allow_smaller, runner=run, memory=None, vram=None):
+    """resolve_hf once, remembered in <dir>/resolved.json until the repository or quantisation asked for changes."""
+    record = Path(directory) / "resolved.json"
+    key = f"{repo}:{quant}:{int(allow_smaller)}"
+    try:
+        saved = json.loads(record.read_text(encoding="utf-8"))
+        if saved.get("key") == key and HASH.fullmatch(saved.get("sha256", "")):
+            return saved
+    except (OSError, ValueError):
+        pass
+    fit = fit_bytes(memory if memory is not None else memory_bytes(), vram if vram is not None else vram_bytes(runner))
+    found = resolve_hf(repo, quant, fit, runner, allow_smaller)
+    if "error" not in found:
+        found["key"] = key
+        Path(directory).mkdir(parents=True, exist_ok=True)
+        record.write_text(json.dumps(found, sort_keys=True), encoding="utf-8")
+        os.chmod(record, 0o644)
+    return found
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dir", required=True)
     parser.add_argument("--file", required=True)
-    parser.add_argument("--url", required=True)
+    parser.add_argument("--url", default="")
+    parser.add_argument("--hf-repo", default="", help="a Hugging Face repository of GGUF files, in place of --url")
+    parser.add_argument("--hf-quant", default="", help="the quantisation wanted from --hf-repo, e.g. Q8_0")
+    parser.add_argument("--exact", action="store_true", help="never a smaller version than --hf-quant, even if it cannot fit")
     parser.add_argument("--sha256", default="")
     parser.add_argument("--size", type=int, default=0)
     parser.add_argument("--max-per-day", type=int, default=MAX_PER_DAY)
     parser.add_argument("--what", default="image model", help="what the messages call the file")
     args = parser.parse_args(argv)
-    return Downloader(args.dir, args.file, args.url, args.sha256 or None, args.size or None,
-                      max_per_day=max(1, args.max_per_day), what=args.what).run_once()
+    url, sha256, size, extra = args.url, args.sha256 or None, args.size or None, {}
+    if args.hf_repo:
+        found = resolved_for(args.dir, args.hf_repo, args.hf_quant, not args.exact)
+        if "error" in found:
+            waiting = Downloader(args.dir, args.file, "unresolved", what=args.what)
+            if (waiting.dir / args.file).exists():
+                return 0
+            Path(args.dir).mkdir(parents=True, exist_ok=True)
+            state = waiting.load()
+            if int(waiting.clock()) < int(state.get("nextTry", 0)):
+                return 0
+            return waiting.failed(state, found["error"])
+        url, sha256, size = found["url"], found["sha256"], found["size"]
+        extra = {"model": found["file"], "note": found["note"], "size": size}
+    elif not url:
+        parser.error("--url or --hf-repo is needed")
+    downloader = Downloader(args.dir, args.file, url, sha256, size, max_per_day=max(1, args.max_per_day), what=args.what)
+    downloader.extra = extra
+    return downloader.run_once()
 
 
 if __name__ == "__main__":

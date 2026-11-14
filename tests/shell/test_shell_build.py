@@ -762,6 +762,14 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("live = true;", iso)
         self.assertIn("services.nexus-core.enable = false;", iso)
 
+    def test_settings_offers_the_large_model_and_says_what_stops_it(self):
+        page = (self.out / "settings/PrivacyPage.qml").read_text()
+        self.assertIn('bridge.api("GET", "/model/large")', page)
+        self.assertIn('bridge.api("POST", "/model/large/use", { on: !page.largeOn })', page)
+        self.assertIn("The standard model answers meanwhile.", page)      # blocked: short of memory, failed to start
+        self.assertIn("d.note", page)                                     # which version was chosen, and why
+        self.assertIn('"largemodel", "Large model"', (self.out / "Settings.qml").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -244,6 +244,18 @@ fi
 processor_line="${cpu_name:-unknown}, ${memory_gib} GB memory"
 [ "$laptop" = false ] || processor_line="$processor_line, laptop"
 ai_line="$ai_model, $ai_where"
+# The large mixture-of-experts model (nix/modules/large-model.nix): with 16 GB
+# of memory (reported as 15), downloaded after installation in the biggest
+# version this computer can hold. With a graphics card for AI it becomes the
+# model Nexus answers with; otherwise it is a switch in Settings.
+large_model=""
+if [ "$memory_gib" -ge 15 ]; then
+  if [ "$gpu" = nvidia ] || { [ "$gpu" = amd ] && [ "$amd_vram_gib" -ge 6 ]; }; then
+    large_model="GPT-OSS 20B Heretic, downloaded once online, then used: experts in memory, the rest on the graphics card"
+  else
+    large_model="GPT-OSS 20B Heretic, downloaded once online; switch to it in Settings, Privacy and AI"
+  fi
+fi
 # --- end of hardware scan
 
 # --- Alongside planning -----------------------------------------------------
@@ -476,6 +488,7 @@ echo "  Time zone: $timezone"
 echo "  Processor: $processor_line"
 echo "  Graphics:  $graphics"
 echo "  Local AI:  $ai_line"
+[ -z "$large_model" ] || echo "  Large AI:  $large_model"
 if [ "$assume_yes" -ne 1 ]; then
   echo
   if [ "$alongside" -eq 1 ]; then

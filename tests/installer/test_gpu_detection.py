@@ -42,14 +42,14 @@ def scan(lines, nvidia="auto", cpu="GenuineIntel", cpu_name="Intel(R) Core(TM) i
             f.parent.mkdir(parents=True, exist_ok=True)
             f.write_text("{}")
         names = ["nvidia_bus", "intel_bus", "amd_bus", "nvidia_name", "nvidia_open", "nvidia_driver", "graphics",
-                 "gpu", "cpu", "memory_gib", "laptop", "amd_vram_gib", "ai_model", "ai_where"]
+                 "gpu", "cpu", "memory_gib", "laptop", "amd_vram_gib", "ai_model", "ai_where", "large_model"]
         script = ("set -euo pipefail\nnvidia=%s model=%s\nfail() { echo \"$*\" >&2; exit 1; }\n"
                   "lspci() { cat <<'L'\n%s\nL\n}\n%s\n" % (nvidia, model, "\n".join(lines), BLOCK)
                   + "".join('printf "%%s\\n" "$%s"\n' % n for n in names))
         env = {"PATH": "/usr/bin:/bin:" + __import__("os").environ.get("PATH", ""),
                "NEXUS_PROC": str(proc), "NEXUS_SYS": str(sys), "NEXUS_MODELS": str(store)}
         out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=True, env=env).stdout
-        return dict(zip(names, out.rstrip("\n").split("\n")))
+        return dict(zip(names, out.split("\n")))   # each printed with its newline: an empty value stays
 
 
 def detect(lines, nvidia="auto"):
@@ -138,6 +138,17 @@ class HardwareScan(unittest.TestCase):
         self.assertEqual(scan([INTEL], model="qwen3:8b")["ai_model"], "qwen3:8b")
         with self.assertRaises(subprocess.CalledProcessError):
             scan([INTEL], model="'evil;rm'")
+
+    def test_large_model_needs_16_gb_and_is_used_by_default_only_with_a_graphics_card(self):
+        self.assertEqual(scan([INTEL], mem_kib=8 * 1048576)["large_model"], "")
+        # A 16 GB computer reports a little under 16.
+        laptop = scan([INTEL], mem_kib=16_190_000)["large_model"]
+        self.assertIn("GPT-OSS 20B Heretic", laptop)
+        self.assertIn("switch to it in Settings", laptop)
+        self.assertIn("then used", scan([INTEL, RTX, AUDIO], mem_kib=16_190_000)["large_model"])
+        module = (ROOT / "nix/modules/hardware.nix").read_text()
+        self.assertIn("nexusos.largeModel.enable = lib.mkDefault (cfg.memoryGiB >= 15);", module)
+        self.assertIn('"$memory_gib" -ge 15', BLOCK)
 
     def test_the_module_chooses_the_same_models(self):
         module = (ROOT / "nix/modules/hardware.nix").read_text()

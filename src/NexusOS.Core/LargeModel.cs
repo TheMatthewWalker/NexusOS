@@ -84,7 +84,19 @@ public sealed class LargeModel
     }
 
     public bool Downloaded => Configured && File.Exists(Path);
-    public long ModelBytes => Bytes > 0 ? Bytes : Downloaded ? new FileInfo(Path!).Length : 0;
+    // The file's size: as configured, else the file itself, else what the download says it will be.
+    public long ModelBytes => Bytes > 0 ? Bytes : Downloaded ? new FileInfo(Path!).Length : Status("size") ?? 0;
+
+    private long? Status(string key)
+    {
+        if (StatusFile is null || !File.Exists(StatusFile)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(StatusFile));
+            return doc.RootElement.TryGetProperty(key, out var v) && v.TryGetInt64(out var n) ? n : null;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { return null; }
+    }
 
     // The graphics card's own memory: NVIDIA's from nvidia-smi, AMD's from the kernel. Looked up once.
     public long VramBytes()
@@ -184,10 +196,11 @@ public sealed class LargeModel
             var root = doc.RootElement;
             string? Text(string key) => root.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
             long? Number(string key) => root.TryGetProperty(key, out var v) && v.TryGetInt64(out var n) ? n : null;
-            var total = Number("size") ?? Bytes;
+            var total = Number("size") ?? Number("total") ?? Bytes;
             var part = Path + ".part";
             var have = Downloaded ? total : File.Exists(part) ? new FileInfo(part).Length : 0;
-            return new { state = Text("state"), message = Text("message"), bytes = have, total,
+            // file: which version of the model was chosen; note: why, if not the one asked for.
+            return new { state = Text("state"), message = Text("message"), file = Text("model"), note = Text("note"), bytes = have, total,
                          percent = total > 0 ? (int)Math.Clamp(have * 100 / total, 0, 100) : 0, nextTry = Number("nextTry") is long n and > 0 && DateTimeOffset.FromUnixTimeSeconds(n) > DateTimeOffset.UtcNow
                              ? DateTimeOffset.FromUnixTimeSeconds(n) : (DateTimeOffset?)null };
         }

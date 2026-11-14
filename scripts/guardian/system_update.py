@@ -41,7 +41,7 @@ MAX_LISTED = 16
 # Listed first in the dialog, in this order, when they changed; then the rest by name.
 NOTABLE = (("linux", "Linux"), ("firefox", "Firefox"), ("chromium", "Chromium"), ("libreoffice", "LibreOffice"),
            ("vlc", "VLC"), ("systemd", "systemd"), ("glibc", "glibc"), ("openssl", "OpenSSL"), ("openssh", "OpenSSH"),
-           ("nss", "NSS"), ("mesa", "Mesa"), ("curl", "curl"), ("sudo", "sudo"), ("polkit", "polkit"))
+           ("nss", "NSS"), ("mesa", "Mesa"), ("curl", "curl"), ("sudo", "sudo"), ("polkit", "polkit"))  # guardian-scan: read-only (package names, nothing is run)
 LABELS = dict(NOTABLE)
 
 

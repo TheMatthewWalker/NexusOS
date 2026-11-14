@@ -134,7 +134,7 @@ pkgs.testers.runNixOSTest {
     target.start()
 
     with subtest("the encrypted disk opens with alice's password"):
-        target.wait_for_console_text("Passphrase for", timeout=600)
+        target.wait_for_console_text("passphrase for disk", timeout=600)
         target.send_console("nexus-test-pw\n")
 
     with subtest("the installed system boots as NexusOS"):

@@ -169,6 +169,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
     public static string Doing(NexusAction action) => action.Name switch
     {
         "get_system_state" => "Looking at this computer",
+        "inspect_system" => "Looking at the system",
         "get_health_report" => "Checking the computer's health",
         "diagnose_problem" => "Running Fix it's checks",
         "search_files" => "Searching your files",
@@ -223,6 +224,19 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                     computerName = Environment.MachineName,
                     model = new { provider = router.Current.Name, name = router.Current.Model }
                 };
+            }
+            case "inspect_system":
+            {
+                var topic = Str(args, "topic");
+                object found;
+                try
+                {
+                    found = await services.GetRequiredService<SystemInspector>().LookAsync(topic,
+                        args["query"]?.GetValue<string>(), args["path"]?.GetValue<string>(), ct);
+                }
+                catch (ArgumentException ex) { throw new ActionRejectedException(ex.Message); }
+                await Read("Nexus looked at the system: " + topic, "inspect", ct);
+                return found;
             }
             case "get_health_report":
             {
@@ -501,9 +515,9 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             case "use_large_model":
             {
                 var large = services.GetRequiredService<LargeModel>();
-                if (!large.Configured) throw new ArgumentException("This computer has no large model set up; it needs 16 GB of memory.");
+                if (!large.Configured) throw new ActionRejectedException("This computer has no large model set up; it needs 16 GB of memory.");
                 var on = args["on"]!.GetValue<bool>();
-                if (on && !large.Downloaded) throw new ArgumentException($"{large.Name} is not downloaded yet; it downloads when the computer is online.");
+                if (on && !large.Downloaded) throw new ActionRejectedException($"{large.Name} is not downloaded yet; it downloads when the computer is online.");
                 return pending.Add(action, args, on ? $"Answer with the large model, {large.Name} ({large.Split().Where})" : "Answer with the standard model");
             }
             case "open_fix_it":

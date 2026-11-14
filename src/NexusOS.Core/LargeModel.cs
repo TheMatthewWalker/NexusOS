@@ -188,7 +188,8 @@ public sealed class LargeModel
             var part = Path + ".part";
             var have = Downloaded ? total : File.Exists(part) ? new FileInfo(part).Length : 0;
             return new { state = Text("state"), message = Text("message"), bytes = have, total,
-                         percent = total > 0 ? (int)Math.Clamp(have * 100 / total, 0, 100) : 0, nextTry = Text("next_try") };
+                         percent = total > 0 ? (int)Math.Clamp(have * 100 / total, 0, 100) : 0, nextTry = Number("nextTry") is long n and > 0 && DateTimeOffset.FromUnixTimeSeconds(n) > DateTimeOffset.UtcNow
+                             ? DateTimeOffset.FromUnixTimeSeconds(n) : (DateTimeOffset?)null };
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { return null; }
     }

@@ -20,7 +20,8 @@ public static class ActionSelection
     public const double CharsPerToken = 3.5;
     public const int FollowUpWords = 6;
 
-    public static readonly string[] Always = ["get_system_state"];
+    // "This computer" and the look at the running system: how Nexus works out what a request needs.
+    public static readonly string[] Always = ["get_system_state", "inspect_system"];
 
     private sealed record Group(string Name, Regex Words, string[] Actions);
 

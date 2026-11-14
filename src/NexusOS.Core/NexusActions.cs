@@ -75,6 +75,12 @@ public static class NexusActions
     [
         // ---- read: run at once ----
         new("get_system_state", ActionSafety.Read, "This computer: system, processor, memory, AI model, date and time.", []),
+        new("inspect_system", ActionSafety.Read,
+            "Look at the running system (read-only) to work out what to do.",
+            [new("topic", "string", "", Choices: SystemInspector.Topics),
+             new("query", "string", "Keep lines containing it.", Required: false, MaxLength: 60),
+             new("path", "string", "folder: e.g. ~/Documents.", Required: false, MaxLength: 200)],
+            Private: true),
         new("get_health_report", ActionSafety.Read, "Health check: disk, updates, network, sound, battery, problems.", []),
         new("diagnose_problem", ActionSafety.Read, "Run Fix it checks (read-only) for a problem; returns the cause and fixes.",
             [new("problem", "string", "In their words, e.g. no sound.", MaxLength: 300)]),

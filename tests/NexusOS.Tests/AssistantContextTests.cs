@@ -35,7 +35,7 @@ public sealed class AssistantContextTests : IDisposable
         var messages = Messages(stub, 0);
         Assert.Equal(["system", "user"], messages.Select(m => m.GetProperty("role").GetString()));
         var system = messages[0].GetProperty("content").GetString()!;
-        Assert.StartsWith("You are Nexus, the assistant built into NexusOS.", system);
+        Assert.StartsWith("You are Nexus, the assistant built into NexusOS", system);
         Assert.Contains("Super+Space: open or close Nexus", system);
         Assert.Contains("This computer", system);
         Assert.Contains("Apps set up: terminal: kitty, files: thunar", system);

@@ -82,7 +82,9 @@ def published(url, runner):
 
 class Downloader:
     def __init__(self, directory, file, url, sha256=None, size=None, *, max_per_day=MAX_PER_DAY,
-                 reserve=RESERVE_BYTES, runner=run, clock=time.time, free=free_bytes):
+                 reserve=RESERVE_BYTES, runner=run, clock=time.time, free=free_bytes, what="image model"):
+        # What the messages call the file: the same script fetches the large chat model (--what).
+        self.what = what
         self.dir = Path(directory)
         self.model = self.dir / file
         self.part = self.dir / (file + ".part")
@@ -103,6 +105,8 @@ class Downloader:
             return {}
 
     def save(self, record, **fields):
+        if isinstance(fields.get("message"), str):
+            fields["message"] = fields["message"].replace("image model", self.what)
         record.update(fields, updatedAt=int(self.clock()))
         path = self.dir / STATE_FILE
         temporary = path.with_suffix(".new")
@@ -201,9 +205,10 @@ def main(argv=None):
     parser.add_argument("--sha256", default="")
     parser.add_argument("--size", type=int, default=0)
     parser.add_argument("--max-per-day", type=int, default=MAX_PER_DAY)
+    parser.add_argument("--what", default="image model", help="what the messages call the file")
     args = parser.parse_args(argv)
     return Downloader(args.dir, args.file, args.url, args.sha256 or None, args.size or None,
-                      max_per_day=max(1, args.max_per_day)).run_once()
+                      max_per_day=max(1, args.max_per_day), what=args.what).run_once()
 
 
 if __name__ == "__main__":

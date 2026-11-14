@@ -28,15 +28,32 @@ Column {
     property int todayId: -1
     property int todayListId: -1
     property int forgetId: -1
+    // The large mixture-of-experts model (Core's /model/large), where this computer has one.
+    property var large: null
+    property int largeId: -1
+    property int largeUseId: -1
+    readonly property bool largeOn: !!large && large.selected
+    function largeDetail() {
+        const l = large, d = l.download;
+        if (!l.downloaded) {
+            if (d && d.state === "downloading") return "Downloading " + l.name + ": " + d.percent + "% of " + l.sizeGb + " GB.";
+            return (d && d.message) || (l.name + " (" + l.sizeGb + " GB) downloads once this computer is online.");
+        }
+        const how = l.name + " runs " + l.where + " and needs about " + l.memoryGb + " GB of free memory.";
+        if (l.selected && l.blocked) return l.blocked + " The standard model answers meanwhile.";
+        return l.selected ? how + (l.running ? " Loaded." : " It loads with your next question.")
+                          : how + " Smarter than the standard model, and slower.";
+    }
     property bool confirmForget: false
     readonly property string todayDate: Qt.formatDate(new Date(), "yyyy-MM-dd")
     readonly property string notesDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nexusos/assistant"
-    readonly property var labels: ({ "local": "On this computer (Ollama)", "llama-cpp": "On this computer (llama.cpp)",
+    readonly property var labels: ({ "local": "On this computer (Ollama)", "llama-cpp": "On this computer (large model)",
                                      "openai-compatible": "Cloud model" })
     function refresh() {
         if (!bridge.online) return;
         providersId = bridge.send("providers");
         statusId = bridge.send("status");
+        largeId = bridge.api("GET", "/model/large");
         todayId = bridge.api("GET", "/journal/today/summary");
         const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
         todayListId = bridge.api("GET", "/journal?limit=60&since=" + encodeURIComponent(midnight.toISOString()));
@@ -50,12 +67,16 @@ Column {
             else if (id === page.statusId) page.status = data;
             else if (id === page.selectId) { page.selected = data.selected; page.statusId = page.bridge.send("status") }
             else if (id === page.clearId) { page.confirmClear = false; page.message = "Conversation history erased." }
+            else if (id === page.largeId || id === page.largeUseId) {
+                page.large = data && data.configured ? data : null;
+                if (id === page.largeUseId) { page.providersId = page.bridge.send("providers"); page.statusId = page.bridge.send("status") }
+            }
             else if (id === page.todayId) page.today = data;
             else if (id === page.todayListId) page.todayEntries = (data || []).filter(e => ["ai-read", "egress", "device"].includes(e.kind));
             else if (id === page.forgetId) { page.confirmForget = false; page.message = "Today's record is erased."; page.refresh() }
         }
         function onFailed(id, message) {
-            if ([page.providersId, page.statusId, page.selectId, page.clearId, page.todayId, page.todayListId, page.forgetId].includes(id)) page.message = message;
+            if ([page.providersId, page.statusId, page.selectId, page.clearId, page.todayId, page.todayListId, page.forgetId, page.largeUseId].includes(id)) page.message = message;
         }
     }
 
@@ -112,6 +133,20 @@ Column {
               : page.status.model + " · " + (page.status.available === false ? "not ready (is Ollama running, and the model downloaded?)"
                                                                                 : "ready")
     }
+    // The large model: a mixture of experts, of which only a few work on each word,
+    // so it runs with its experts in ordinary memory on a computer a model its size would not fit.
+    SettingRow {
+        visible: page.large !== null
+        theme: page.theme; label: "Large model"; highlighted: page.host.highlight === "largemodel"
+        detail: page.large ? page.largeDetail() : ""
+        Switch { theme: page.theme; name: "Large model"; checked: page.largeOn
+                 enabled: !!page.large && (page.large.downloaded || page.largeOn)
+                 onToggled: page.largeUseId = page.bridge.api("POST", "/model/large/use", { on: !page.largeOn }) }
+    }
+    // While it downloads or loads, the row keeps itself current.
+    Timer { interval: 5000; repeat: true
+            running: page.visible && !!page.large && (!page.large.downloaded || (page.large.selected && !page.large.running))
+            onTriggered: if (page.bridge.online) page.largeId = page.bridge.api("GET", "/model/large") }
     SettingRow {
         theme: page.theme; label: "Where answers come from"; highlighted: page.host.highlight === "provider"
         visible: page.providers.length > 0

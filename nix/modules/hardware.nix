@@ -88,6 +88,13 @@ in
     # for AI they need a computer with memory to spare.
     nexusos.imageModel.enable = lib.mkDefault (aiGpu || cfg.memoryGiB >= 16);
 
+    # The large mixture-of-experts model (large-model.nix) needs a 16 GB
+    # computer (which reports 15 GiB). With a graphics card for AI most of it
+    # sits on the card and it becomes the model Nexus answers with; on the
+    # processor alone it takes most of the memory, so it is there to switch to.
+    nexusos.largeModel.enable = lib.mkDefault (cfg.memoryGiB >= 15);
+    nexusos.largeModel.preferred = lib.mkDefault aiGpu;
+
     # Describe this: the vision model's size follows the computer; with less
     # than 8 GB of memory it would crowd out the chat model, so it is off.
     nexusos.vision.model = lib.mkDefault cfg.visionModel;

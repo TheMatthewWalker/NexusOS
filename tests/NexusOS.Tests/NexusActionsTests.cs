@@ -98,7 +98,7 @@ public sealed class NexusActionsTests : IDisposable
         using var body = JsonDocument.Parse(stub.Bodies[0]);
         var tools = body.RootElement.GetProperty("tools").EnumerateArray().ToArray();
         // Only the actions the question is about (ActionSelection.cs), with "this computer" always.
-        Assert.Equal(["change_setting", "get_settings", "get_system_state", "open_settings"],
+        Assert.Equal(["change_setting", "get_settings", "get_system_state", "inspect_system", "open_settings"],
             tools.Select(t => t.GetProperty("function").GetProperty("name").GetString()).Order());
         var setting = tools.Single(t => t.GetProperty("function").GetProperty("name").GetString() == "change_setting");
         Assert.Equal("function", setting.GetProperty("type").GetString());

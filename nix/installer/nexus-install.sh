@@ -15,7 +15,7 @@
 set -euo pipefail
 
 source_dir=/etc/nexusos
-disk="" user="" full_name="" password_file="" host="nexus" timezone="" assume_yes=0 extra_module="" nvidia=auto model="" encrypt=1
+disk="" user="" full_name="" password_file="" host="nexus" timezone="" keyboard="" assume_yes=0 extra_module="" nvidia=auto model="" encrypt=1
 alongside=0 progress=0 probe=0 log=""
 
 usage() {
@@ -29,6 +29,8 @@ Usage: nexus-install [options]
   --password-file FILE  read the password from FILE (- reads it from standard input)
   --hostname NAME       computer name (default: nexus)
   --timezone ZONE       for example Europe/London (default: detected, else UTC)
+  --keyboard LAYOUT     keyboard layout, for example gb or de (default: guessed from
+                        the time zone); it also types the password that unlocks the disk
   --source DIR          NexusOS source to install (default: /etc/nexusos)
   --extra-module FILE   also include this NixOS module (used by the VM test)
   --no-nvidia           do not set up the NVIDIA driver, even if a card is found
@@ -68,7 +70,7 @@ usage_fail() { printf 'nexus-install: %s\n' "$*" >&2; usage >&2; reported=1
 seen=" "
 while [ $# -gt 0 ]; do
   case "$1" in
-    --disk|--user|--full-name|--password-file|--hostname|--timezone|--source|--extra-module|--model|--log)
+    --disk|--user|--full-name|--password-file|--hostname|--timezone|--keyboard|--source|--extra-module|--model|--log)
       [ $# -ge 2 ] || usage_fail "$1 needs a value"
       # A flag given twice is ambiguous (which disk?): refuse it.
       case "$seen" in *" $1 "*) usage_fail "$1 was given twice" ;; esac
@@ -82,6 +84,7 @@ while [ $# -gt 0 ]; do
     --password-file) password_file="$2"; shift 2 ;;
     --hostname) host="$2"; shift 2 ;;
     --timezone) timezone="$2"; shift 2 ;;
+    --keyboard) keyboard="$2"; shift 2 ;;
     --source) source_dir="$2"; shift 2 ;;
     --extra-module) extra_module="$2"; shift 2 ;;
     --no-nvidia) nvidia=off; shift ;;
@@ -380,6 +383,23 @@ detected_timezone() {
   echo "${tz:-UTC}"
 }
 
+# --- Keyboard layouts -------------------------------------------------------
+# nix/installer/keyboards.json, which nix/modules/keyboard.nix reads too: each
+# layout's name, its console keymap and the countries that mostly use it.
+keyboards="${NEXUS_KEYBOARDS:-$source_dir/nix/installer/keyboards.json}"
+zonetab="${NEXUS_ZONETAB:-/etc/zoneinfo/zone.tab}"
+known_keyboard() { jq -e --arg k "$1" 'has($k)' "$keyboards" >/dev/null 2>&1; }
+keyboard_name() { jq -r --arg k "$1" '.[$k].name // $k' "$keyboards"; }
+keyboard_console() { jq -r --arg k "$1" '.[$k].console' "$keyboards"; }
+# The time zone's country (zone.tab), then the layout most used there; else US.
+guessed_keyboard() {
+  local country=""
+  [ ! -r "$zonetab" ] || country="$(awk -F'\t' -v z="$1" '$1 !~ /^#/ && $3 == z { print $1; exit }' "$zonetab")"
+  jq -r --arg c "$country" '[to_entries[] | select(.value.countries | index($c)) | .key][0] // "us"' "$keyboards" 2>/dev/null || echo us
+}
+keyboards_json() { jq -c '[to_entries[] | {id: .key, name: .value.name}] | sort_by(.name)' "$keyboards"; }
+# --- end of keyboard layouts
+
 # --- Probe ------------------------------------------------------------------
 # For the graphical installer: everything it shows before anything changes.
 if [ "$probe" -eq 1 ]; then
@@ -390,8 +410,9 @@ if [ "$probe" -eq 1 ]; then
   done | jq -sc 'map({(.disk): .}) | add // {}')"
   emit --argjson disks "$disks" --argjson plans "$plans" --arg processor "$processor_line" --arg graphics "$graphics" \
     --arg ai "$ai_line" --arg tz "$(detected_timezone)" --argjson min "$min_root_bytes" \
+    --arg kb "$(guessed_keyboard "$(detected_timezone)")" --argjson kbs "$(keyboards_json)" \
     '{event: "probe", disks: ($disks | map(. + {alongside: ($plans[.path] // null)})), minimumBytes: $min,
-      hardware: {processor: $processor, graphics: $graphics, localAI: $ai}, timezone: $tz}'
+      hardware: {processor: $processor, graphics: $graphics, localAI: $ai}, timezone: $tz, keyboard: $kb, keyboards: $kbs}'
   exit 0
 fi
 
@@ -441,6 +462,25 @@ if [ "$alongside" -eq 1 ]; then
   [ -z "$plan_warnings" ] || printf '\nNote: %s\n' "$plan_warnings"
 fi
 
+# --- Keyboard ---------------------------------------------------------------
+# Before the password: the disk's password is typed with this layout at every
+# start-up, so it is typed with it here too.
+[ -n "$timezone" ] || timezone="$(detected_timezone)"
+[ -e "/etc/zoneinfo/$timezone" ] || [ "$timezone" = UTC ] || fail "unknown time zone $timezone"
+if [ -z "$keyboard" ]; then
+  keyboard="$(guessed_keyboard "$timezone")"
+  while [ "$assume_yes" -eq 0 ] && [ -z "$password_file" ]; do
+    read -rp "Keyboard layout [$keyboard: $(keyboard_name "$keyboard")] (? lists them): " answer
+    case "$answer" in
+      "") break ;;
+      "?") jq -r 'to_entries[] | "  \(.key)\t\(.value.name)"' "$keyboards" ;;
+      *) if known_keyboard "$answer"; then keyboard="$answer"; break; else echo "Not one of the layouts; ? lists them."; fi ;;
+    esac
+  done
+fi
+known_keyboard "$keyboard" || fail "unknown keyboard layout $keyboard (one of: $(jq -r 'keys | join(" ")' "$keyboards"))"
+if [ -z "$password_file" ] && [ -t 0 ]; then loadkeys "$(keyboard_console "$keyboard")" >/dev/null 2>&1 || true; fi
+
 # --- Person -----------------------------------------------------------------
 if [ -z "$user" ]; then
   read -rp "Your login name: " user
@@ -466,8 +506,6 @@ fi
 [ ${#password} -ge 10 ] || fail "use a password of at least 10 characters"
 
 [[ "$host" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,62}$ ]] || fail "computer names use letters, digits and -"
-[ -n "$timezone" ] || timezone="$(detected_timezone)"
-[ -e "/etc/zoneinfo/$timezone" ] || [ "$timezone" = UTC ] || fail "unknown time zone $timezone"
 
 # --- Confirm ----------------------------------------------------------------
 say "Ready to install"
@@ -485,6 +523,7 @@ fi
 echo "  User:      $user"
 echo "  Computer:  $host"
 echo "  Time zone: $timezone"
+echo "  Keyboard:  $(keyboard_name "$keyboard")"
 echo "  Processor: $processor_line"
 echo "  Graphics:  $graphics"
 echo "  Local AI:  $ai_line"
@@ -601,6 +640,7 @@ cat > /mnt/etc/nixos/local.nix <<EOF
   nexusos.fullName = $(nix_string "$full_name");
   networking.hostName = $(nix_string "$host");
   time.timeZone = $(nix_string "$timezone");
+  nexusos.keyboard.layout = $(nix_string "$keyboard");
 }
 EOF
 # What the hardware scan found (nix/modules/hardware.nix), before the closing brace.

@@ -376,6 +376,8 @@ in
     environment.etc."nexus/greeter.env".text = ''
       NEXUS_GREETER_USER=${lib.escapeShellArg (if cfg.greeter.user == null then "" else cfg.greeter.user)}
       NEXUS_GREETER_NAME=${lib.escapeShellArg cfg.greeter.fullName}
+      # The login screen types the password with the computer's layout (cage reads it).
+      XKB_DEFAULT_LAYOUT=${lib.escapeShellArg cfg.keyboardLayout}
     '';
     # gtk3 provides gtk-launch; Settings uses hyprsunset (night light),
     # brightnessctl, lspci (About) and xdg-open (Open folder). Explain mode

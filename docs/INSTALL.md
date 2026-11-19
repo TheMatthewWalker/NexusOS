@@ -64,8 +64,12 @@ The live session is only for installing: Nexus, apps and the Welcome setup start
 In a terminal instead (**Install in a terminal**, or `sudo nexus-install`), the same questions are asked in text, and you type the disk name to confirm. Every question has a flag (`nexus-install --help`), for example:
 
 ```sh
-sudo nexus-install --disk /dev/nvme0n1 --alongside --user ada --full-name "Ada Lovelace" --timezone Europe/London
+sudo nexus-install --disk /dev/nvme0n1 --alongside --user ada --full-name "Ada Lovelace" --timezone Europe/London --keyboard gb
 ```
+
+### Keyboard
+
+The **Keyboard** step comes before you choose your password, with the layout guessed from the time zone (a UK time zone guesses English (UK)). Choosing a layout switches the keyboard straight away, so the password is typed with it. The same layout is then used everywhere on the installed system: the prompt that unlocks the disk at start-up, the login screen, the desktop and the text consoles. Type a few of `@ " # £ \ |` in the box on that page to check them. 23 Latin layouts are offered (`nix/installer/keyboards.json`); to change it later, set `nexusos.keyboard.layout = "de";` in `/etc/nixos/local.nix` (a system change).
 
 ### Beside Windows (dual boot)
 

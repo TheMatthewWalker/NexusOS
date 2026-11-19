@@ -4,8 +4,10 @@
 // (tests/shell/installer.test.mjs). The rules match nix/installer/nexus-install.sh,
 // which checks everything again.
 
-export const STEPS = ["welcome", "disk", "you", "time", "summary", "install", "done"];
-export const STEP_LABELS = { welcome: "Welcome", disk: "Disk", you: "You", time: "Time zone", summary: "Summary", install: "Install", done: "Done" };
+// The keyboard comes before You: the password is typed with it, here and at every start-up.
+export const STEPS = ["welcome", "disk", "keyboard", "you", "time", "summary", "install", "done"];
+export const STEP_LABELS = { welcome: "Welcome", disk: "Disk", keyboard: "Keyboard", you: "You", time: "Time zone", summary: "Summary",
+                             install: "Install", done: "Done" };
 export const MIN_PASSWORD = 10;
 
 // Sizes as Windows' Disk Management shows them (1 GB = 1024 MB), like nexus-install.
@@ -78,10 +80,21 @@ export function filterZones(zones, query) {
 }
 export function zoneLabel(zone) { return String(zone).replace(/_/g, " ").replace(/\//g, " / ") }
 
+// Keyboard layouts from the probe ({id, name}), found by name or id.
+export function filterKeyboards(list, query) {
+  const q = String(query || "").trim().toLowerCase();
+  return q ? (list || []).filter(k => k.name.toLowerCase().includes(q) || k.id === q) : (list || []);
+}
+export function keyboardName(id, probe) {
+  const k = ((probe && probe.keyboards) || []).find(k => k.id === id);
+  return k ? k.name : String(id || "");
+}
+
 // The flags for nexus-install. The password goes on standard input (--password-file -), never on the command line.
 export function installArgs(s) {
   const args = ["--progress-json", "--yes", "--disk", s.disk, "--user", s.login, "--password-file", "-",
                 "--hostname", s.host, "--timezone", s.timezone];
+  if (s.keyboard) args.push("--keyboard", s.keyboard);
   if (s.fullName) args.push("--full-name", s.fullName);
   if (s.alongside) args.push("--alongside");
   if (!s.encrypt) args.push("--no-encrypt");
@@ -139,6 +152,7 @@ export function summaryRows(s, probe) {
     { label: "You", value: (s.fullName ? s.fullName + " (" + s.login + ")" : s.login) },
     { label: "Computer", value: s.host },
     { label: "Time zone", value: zoneLabel(s.timezone) },
+    { label: "Keyboard", value: keyboardName(s.keyboard, probe) },
     { label: "Processor", value: hw.processor || "unknown" },
     { label: "Graphics", value: hw.graphics || "unknown" },
     { label: "Local AI", value: hw.localAI || "unknown" },

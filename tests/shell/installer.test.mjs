@@ -71,6 +71,15 @@ test("time zones are found by city, with spaces or underscores", () => {
   assert.equal(I.zoneLabel("America/New_York"), "America / New York");
 });
 
+test("keyboard layouts are found by name, and the keyboard comes before the password", () => {
+  const list = [{ id: "gb", name: "English (UK)" }, { id: "de", name: "German" }, { id: "ch", name: "German (Switzerland)" }];
+  assert.deepEqual(I.filterKeyboards(list, "german").map(k => k.id), ["de", "ch"]);
+  assert.deepEqual(I.filterKeyboards(list, "gb").map(k => k.id), ["gb"]);
+  assert.equal(I.filterKeyboards(list, "").length, 3);
+  assert.equal(I.keyboardName("de", { keyboards: list }), "German");
+  assert.ok(I.STEPS.indexOf("keyboard") < I.STEPS.indexOf("you"));
+});
+
 test("the flags drive nexus-install, with the password on standard input", () => {
   const s = { disk: "/dev/nvme0n1", login: "ada", fullName: "Ada Lovelace", host: "nexus", timezone: "Europe/London", alongside: true, encrypt: true };
   const args = I.installArgs(s);
@@ -78,6 +87,8 @@ test("the flags drive nexus-install, with the password on standard input", () =>
                           "--hostname", "nexus", "--timezone", "Europe/London", "--full-name", "Ada Lovelace", "--alongside"]);
   const erase = I.installArgs({ ...s, alongside: false, encrypt: false, fullName: "" });
   assert.ok(!erase.includes("--alongside"));
+  const uk = I.installArgs({ ...s, keyboard: "gb" });
+  assert.deepEqual(uk.slice(uk.indexOf("--keyboard"), uk.indexOf("--keyboard") + 2), ["--keyboard", "gb"]);
   assert.ok(erase.includes("--no-encrypt"));
   assert.ok(!erase.includes("--full-name"));
   for (const a of [args, erase]) assert.ok(!a.some(x => /0123456789/.test(x)));
@@ -112,9 +123,11 @@ test("progress lines move the bar and end in done or the real error", () => {
 test("the summary shows the disk, encryption and the hardware scan's lines", () => {
   const probe = { hardware: { processor: "Intel(R) Core(TM) i5-1235U, 16 GB memory, laptop", graphics: "Intel Iris Xe (built-in drivers)", localAI: "qwen3:4b, on the processor, from the USB stick" } };
   const s = { disk: "/dev/nvme0n1", diskInfo: disk(), alongside: true, systems: "Windows", freeBytes: 120 * GiB, encrypt: true,
-              fullName: "Ada", login: "ada", host: "nexus", timezone: "Europe/London" };
+              fullName: "Ada", login: "ada", host: "nexus", timezone: "Europe/London", keyboard: "gb" };
+  probe.keyboards = [{ id: "gb", name: "English (UK)" }, { id: "us", name: "English (US)" }];
   const rows = Object.fromEntries(I.summaryRows(s, probe).map(r => [r.label, r]));
-  assert.deepEqual(Object.keys(rows), ["Disk", "Encryption", "You", "Computer", "Time zone", "Processor", "Graphics", "Local AI"]);
+  assert.deepEqual(Object.keys(rows), ["Disk", "Encryption", "You", "Computer", "Time zone", "Keyboard", "Processor", "Graphics", "Local AI"]);
+  assert.equal(rows.Keyboard.value, "English (UK)");
   assert.match(rows.Disk.value, /Alongside Windows .* 120 GB of free space/);
   assert.ok(!rows.Disk.danger);
   assert.match(rows.Encryption.value, /^On/);

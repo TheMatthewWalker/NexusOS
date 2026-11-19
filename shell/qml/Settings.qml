@@ -119,6 +119,7 @@ NexusWindow {
         ["desktop", "shortcuts", "Keyboard shortcuts", "keyboard shortcuts keys hotkeys super"],
         ["privacy", "model", "AI model", "model ai ollama qwen llm assistant nexus"],
         ["privacy", "largemodel", "Large model", "large model bigger smarter mixture of experts moe gpt-oss llama memory"],
+        ["privacy", "verylargemodel", "Very large model", "very large huge model colibri disk experts deepseek qwen glm download"],
         ["privacy", "provider", "Cloud or local answers", "cloud local openai provider privacy online"],
         ["privacy", "notes", "Your notes for Nexus", "notes training documents teach nexus about me instructions"],
         ["privacy", "history", "Conversation history", "history conversations erase delete forget"],

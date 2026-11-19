@@ -770,6 +770,22 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("d.note", page)                                     # which version was chosen, and why
         self.assertIn('"largemodel", "Large model"', (self.out / "Settings.qml").read_text())
 
+    def test_settings_downloads_the_very_large_model_only_when_asked_and_can_remove_it(self):
+        page = (self.out / "settings/PrivacyPage.qml").read_text()
+        self.assertIn('bridge.api("GET", "/model/colibri")', page)
+        # Only the Download button asks for it; nothing else posts on: true to /want.
+        self.assertEqual(page.count('"/model/colibri/want",\n'), 1)
+        self.assertIn('{ on: true, model: page.colibriPick || page.colibri.model }', page)
+        self.assertIn('"/model/colibri/want", { on: false }', page)
+        self.assertIn('bridge.api("POST", "/model/colibri/use", { on: !page.colibri.selected })', page)
+        # Removing deletes many GB: it asks first.
+        self.assertIn("confirmRemove", page)
+        self.assertIn('bridge.api("DELETE", "/model/colibri")', page)
+        # Only models this computer can hold are offered.
+        self.assertIn("page.colibriModels.filter(m => m.fits)", page)
+        self.assertIn("AVX2", page)
+        self.assertIn('"verylargemodel", "Very large model"', (self.out / "Settings.qml").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

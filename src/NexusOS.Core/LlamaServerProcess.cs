@@ -14,7 +14,21 @@ using System.Globalization;
 // model: its split between graphics memory and ordinary memory is worked out
 // when it starts (--n-gpu-layers with --n-cpu-moe), and a llama-server too old
 // for --n-cpu-moe gets whole layers on the card instead.
-public sealed class LlamaServerProcess : IDisposable
+// A local model server Core starts on demand and stops to free memory: llama.cpp
+// (this file) and colibri (Colibri.cs). Both speak the OpenAI chat API on loopback.
+public interface IManagedModelServer
+{
+    bool IsConfigured { get; }
+    bool IsRunning { get; }
+    bool ToolCalling { get; }
+    string Endpoint { get; }
+    // The path answering 200 once the server is up.
+    string HealthPath { get; }
+    Task EnsureRunningAsync(CancellationToken ct);
+    Task StopAsync(CancellationToken ct);
+}
+
+public sealed class LlamaServerProcess : IManagedModelServer, IDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly IHttpClientFactory _factory;
@@ -33,6 +47,7 @@ public sealed class LlamaServerProcess : IDisposable
     // Whether this server takes tools; false after it refused --jinja, until Core restarts.
     public bool ToolCalling => _jinja;
     public string Endpoint => $"http://127.0.0.1:{Port}";
+    public string HealthPath => "/health";
     public bool IsRunning { get { lock (_gate) return _process is { HasExited: false }; } }
     public int? ProcessId { get { lock (_gate) return _process is { HasExited: false } p ? p.Id : null; } }
 

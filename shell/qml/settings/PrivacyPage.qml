@@ -45,16 +45,45 @@ Column {
         return (l.selected ? how + (l.running ? " Loaded." : " It loads with your next question.")
                            : how + " Smarter than the standard model, and slower.") + which;
     }
+    // The very large model (Core's /model/colibri): colibri reads most of the model
+    // from the disk, so it runs models far bigger than memory. Nothing downloads
+    // until the person turns it on here.
+    property var colibri: null
+    property int colibriId: -1
+    property int colibriActId: -1
+    property string colibriPick: ""
+    property bool confirmRemove: false
+    readonly property var colibriModels: colibri && colibri.models ? colibri.models : []
+    readonly property var colibriCurrent: colibriModels.find(m => m.id === (colibri ? colibri.model : "")) || null
+    function colibriName() { return colibriCurrent ? colibriCurrent.name : (colibri ? colibri.model : "") }
+    function colibriDetail() {
+        const c = colibri, d = c.download;
+        if (!c.cpuSupported) return "This processor is too old for it (it needs AVX2, from about 2013 on).";
+        if (!c.wanted && !c.downloaded) {
+            const m = colibriModels.find(x => x.id === (page.colibriPick || c.model));
+            return "Runs models far bigger than this computer's memory by reading most of the model from the disk. Choose one to download"
+                + (m ? ": " + m.name + ", " + m.downloadGb + " GB. " + m.use + (m.fits ? "." : ". " + m.why + ".") : ".");
+        }
+        if (!c.downloaded) {
+            if (d && d.state === "downloading") return "Downloading " + colibriName() + ": " + d.percent + "% of "
+                + (d.total / 1e9).toFixed(1) + " GB. It goes on after a restart.";
+            return (d && d.message) || ("Downloading " + colibriName() + " shortly.");
+        }
+        if (c.selected && c.blocked) return c.blocked + " The standard model answers meanwhile.";
+        return colibriName() + (c.selected ? (c.running ? " answers your questions." : " loads with your next question; the first answer is slow.")
+                                           : " is downloaded. Much bigger than the standard model, and slower.");
+    }
     property bool confirmForget: false
     readonly property string todayDate: Qt.formatDate(new Date(), "yyyy-MM-dd")
     readonly property string notesDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nexusos/assistant"
     readonly property var labels: ({ "local": "On this computer (Ollama)", "llama-cpp": "On this computer (large model)",
-                                     "openai-compatible": "Cloud model" })
+                                     "colibri": "On this computer (very large model)", "openai-compatible": "Cloud model" })
     function refresh() {
         if (!bridge.online) return;
         providersId = bridge.send("providers");
         statusId = bridge.send("status");
         largeId = bridge.api("GET", "/model/large");
+        colibriId = bridge.api("GET", "/model/colibri");
         todayId = bridge.api("GET", "/journal/today/summary");
         const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
         todayListId = bridge.api("GET", "/journal?limit=60&since=" + encodeURIComponent(midnight.toISOString()));
@@ -72,12 +101,17 @@ Column {
                 page.large = data && data.configured ? data : null;
                 if (id === page.largeUseId) { page.providersId = page.bridge.send("providers"); page.statusId = page.bridge.send("status") }
             }
+            else if (id === page.colibriId || id === page.colibriActId) {
+                page.colibri = data && data.configured ? data : null;
+                page.confirmRemove = false;
+                if (id === page.colibriActId) { page.providersId = page.bridge.send("providers"); page.statusId = page.bridge.send("status") }
+            }
             else if (id === page.todayId) page.today = data;
             else if (id === page.todayListId) page.todayEntries = (data || []).filter(e => ["ai-read", "egress", "device"].includes(e.kind));
             else if (id === page.forgetId) { page.confirmForget = false; page.message = "Today's record is erased."; page.refresh() }
         }
         function onFailed(id, message) {
-            if ([page.providersId, page.statusId, page.selectId, page.clearId, page.todayId, page.todayListId, page.forgetId, page.largeUseId].includes(id)) page.message = message;
+            if ([page.providersId, page.statusId, page.selectId, page.clearId, page.todayId, page.todayListId, page.forgetId, page.largeUseId, page.colibriActId].includes(id)) page.message = message;
         }
     }
 
@@ -148,6 +182,43 @@ Column {
     Timer { interval: 5000; repeat: true
             running: page.visible && !!page.large && (!page.large.downloaded || (page.large.selected && !page.large.running))
             onTriggered: if (page.bridge.online) page.largeId = page.bridge.api("GET", "/model/large") }
+    SettingRow {
+        visible: page.colibri !== null
+        theme: page.theme; label: "Very large model"; highlighted: page.host.highlight === "verylargemodel"
+        detail: page.colibri ? page.colibriDetail() : ""
+        Column {
+            spacing: 8
+            // Before it is chosen: which model, from those this computer can hold.
+            Choice { theme: page.theme; name: "Very large model to download"
+                     visible: !!page.colibri && page.colibri.cpuSupported && !page.colibri.wanted && !page.colibri.downloaded
+                              && page.colibriModels.length > 1
+                     current: page.colibriPick || (page.colibri ? page.colibri.model : "")
+                     options: page.colibriModels.filter(m => m.fits).map(m => ({ value: m.id, label: m.name + " (" + m.downloadGb + " GB)" }))
+                     onChose: v => page.colibriPick = v }
+            Row {
+                spacing: 8
+                Button { theme: page.theme; label: "Download"; primary: true
+                         visible: !!page.colibri && page.colibri.cpuSupported && !page.colibri.wanted && !page.colibri.downloaded
+                         enabled: page.bridge.online && (!page.colibriCurrent || page.colibriModels.some(m => m.id === (page.colibriPick || page.colibri.model) && m.fits))
+                         onClicked: page.colibriActId = page.bridge.api("POST", "/model/colibri/want",
+                                        { on: true, model: page.colibriPick || page.colibri.model }) }
+                Button { theme: page.theme; label: "Stop the download"
+                         visible: !!page.colibri && page.colibri.wanted && !page.colibri.downloaded
+                         onClicked: page.colibriActId = page.bridge.api("POST", "/model/colibri/want", { on: false }) }
+                Switch { theme: page.theme; name: "Use the very large model"
+                         visible: !!page.colibri && page.colibri.downloaded; checked: !!page.colibri && page.colibri.selected
+                         onToggled: page.colibriActId = page.bridge.api("POST", "/model/colibri/use", { on: !page.colibri.selected }) }
+                Button { theme: page.theme; label: "Remove"; visible: !!page.colibri && page.colibri.downloaded && !page.confirmRemove
+                         onClicked: page.confirmRemove = true }
+                Button { theme: page.theme; label: "Cancel"; visible: page.confirmRemove; onClicked: page.confirmRemove = false }
+                Button { theme: page.theme; label: "Delete " + page.colibriName(); visible: page.confirmRemove; primary: true; danger: true
+                         onClicked: page.colibriActId = page.bridge.api("DELETE", "/model/colibri") }
+            }
+        }
+    }
+    Timer { interval: 5000; repeat: true
+            running: page.visible && !!page.colibri && ((page.colibri.wanted && !page.colibri.downloaded) || (page.colibri.selected && !page.colibri.running))
+            onTriggered: if (page.bridge.online) page.colibriId = page.bridge.api("GET", "/model/colibri") }
     SettingRow {
         theme: page.theme; label: "Where answers come from"; highlighted: page.host.highlight === "provider"
         visible: page.providers.length > 0

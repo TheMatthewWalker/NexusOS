@@ -67,6 +67,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/bench -v
           python3 -m unittest discover -s tests/backup -v
+          python3 -m unittest discover -s tests/colibri -v
 
       - name: Upload test logs
         if: always()

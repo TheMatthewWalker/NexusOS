@@ -157,6 +157,23 @@ nexusos.largeModel.exact = true;   # never a smaller version than the one named
 
 `nexusos.largeModel.enable = false;` leaves it out.
 
+## The very large model
+
+[colibri](https://github.com/JustVugg/colibri) goes further: it runs mixture-of-experts models bigger than the computer's memory. The part of the model every word uses stays in memory and the experts are read from the disk when the model asks for them, so the disk's speed sets how fast it answers (a fast NVMe drive helps most). Any graphics processor, built-in ones included, can hold part of it through Vulkan.
+
+Nothing is downloaded until you turn it on in **Settings, Privacy and AI, Very large model** (or ask Nexus, "use the very large model"). The download goes into your own folder (`~/.local/share/nexusos/colibri`), resumes after a restart, and every file is checked against the repository's SHA-256. Only the models this computer can hold are offered:
+
+| Model | Download | Memory | Speed on a laptop processor |
+|---|---|---|---|
+| Qwen3.6-35B-A3B (default with 10 GB or more): everyday questions, thinking and tools | 23 GB | 10 GB at least, 20 GB to keep every expert in memory | about 6 words a second, 10 with a built-in GPU (colibri's measurements) |
+| Qwen3-Coder-30B-A3B: code, with tools | 19 GB | 8 GB at least | about 5 to 9 words a second |
+| DeepSeek V4 Flash (284B) | 167 GB | 16 GB at least | about one word a second |
+| GLM-5.2 (744B) | 429 GB | 16 GB at least | very slow without much more memory |
+
+It needs a processor with AVX2 (Intel from 2013, AMD from 2015); Settings says so on older ones. Once downloaded, switch it on with **Use the very large model**: the other models leave memory first, and if it cannot start, the standard model answers and Settings says why. **Remove** deletes the download.
+
+`nexusos.colibri.enable = false;` in `/etc/nixos/local.nix` leaves the engine out; `nexusos.colibri.model` sets which model is offered first. colibri is © Vincenzo Fornaro, Apache License 2.0; its licence and notices are in `/etc/nexusos/licences/colibri` ([third-party notices](../THIRD_PARTY_NOTICES.md)).
+
 ## NVIDIA graphics
 
 The installer finds an NVIDIA card and sets up its driver; the summary before the install shows what it found ("Graphics: …"). You do not need to do anything. It sets:

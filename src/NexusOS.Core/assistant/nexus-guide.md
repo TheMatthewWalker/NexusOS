@@ -142,6 +142,7 @@ The installer chose the drivers and model (qwen3:8b with a graphics card,
 qwen3:4b without; nexusos.hardware in /etc/nixos/local.nix). It erases a
 disk or installs alongside Windows in free space made there (it never
 shrinks). Log: /var/log/nexus-install.log. Models: "ollama list".
-With 16 GB of memory there is also a large model (gpt-oss-20b, a mixture
-of experts: few work per word, so it fits). Switch it in Settings, Privacy
-and AI, or with use_large_model.
+With 16 GB there is also a large model (gpt-oss-20b: use_large_model).
+The very large model (colibri) reads most of itself from the disk, so far
+bigger models run: a big download, only when asked, and slower
+(use_very_large_model). Both in Settings, Privacy and AI.

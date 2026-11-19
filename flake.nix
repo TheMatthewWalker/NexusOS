@@ -26,6 +26,7 @@
         # The installer image: `nix build .#iso`, then write result/iso/*.iso to a USB stick.
         iso = self.nixosConfigurations.installer.config.system.build.isoImage;
         nexus-try = pkgs.callPackage ./nix/packages/nexus-try.nix { };
+        colibri = pkgs.callPackage ./nix/packages/colibri.nix { };
         default = self.packages.${system}.nexus-core;
       } // pkgs.lib.optionalAttrs (bundledModel != null) {
         bundled-model = bundledModel;

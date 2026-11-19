@@ -95,6 +95,13 @@ in
     nexusos.largeModel.enable = lib.mkDefault (cfg.memoryGiB >= 15);
     nexusos.largeModel.preferred = lib.mkDefault aiGpu;
 
+    # The very large model (colibri.nix) reads most of itself from the disk, so
+    # it needs less memory than its size: offered from 8 GB, downloaded only
+    # when the person turns it on. Its engine is built for x86-64.
+    nexusos.colibri.enable = lib.mkDefault (pkgs.stdenv.hostPlatform.isx86_64 && cfg.memoryGiB >= 8);
+    # Qwen3-Coder needs 8 GB at least; Qwen3.6 needs 10.
+    nexusos.colibri.model = lib.mkDefault (if cfg.memoryGiB >= 10 then "qwen36-35b" else "qwen3-coder-30b");
+
     # Describe this: the vision model's size follows the computer; with less
     # than 8 GB of memory it would crowd out the chat model, so it is off.
     nexusos.vision.model = lib.mkDefault cfg.visionModel;

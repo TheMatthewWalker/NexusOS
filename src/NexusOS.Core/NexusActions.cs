@@ -155,6 +155,9 @@ public static class NexusActions
         new("use_large_model", ActionSafety.Personal,
             "Switch Nexus between the large model (smarter, slower, needs most of the memory) and the standard one; get_settings says which is in use.",
             [new("on", "boolean", "true: large model; false: standard.")]),
+        new("use_very_large_model", ActionSafety.Personal,
+            "The very large model (colibri: much bigger, reads from the disk, slower; a big download): download it, use it, or go back to the standard one.",
+            [new("on", "boolean", "true: download it or use it; false: standard model.")]),
         new("apply_fix", ActionSafety.Personal, "Apply a personal fix diagnose_problem offered.",
             [new("fix_id", "string", "", MaxLength: 64, Pattern: @"[a-z0-9][a-z0-9._-]{0,63}")]),
 

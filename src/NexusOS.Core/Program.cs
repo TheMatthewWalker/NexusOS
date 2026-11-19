@@ -54,13 +54,26 @@ builder.Services.AddSingleton<ActivityJournal>();
 builder.Services.AddSingleton<IProviderCredentialStore, LinuxSecretToolStore>();
 builder.Services.AddSingleton<LargeModel>(); // The mixture-of-experts model on Core's llama.cpp server: LargeModel.cs
 builder.Services.AddSingleton<LlamaServerProcess>();
+// The very large model: colibri, experts read from the disk (Colibri.cs).
+builder.Services.AddSingleton<Colibri>();
+builder.Services.AddSingleton<ColibriServer>();
+builder.Services.AddHostedService<ColibriKeeper>();
 builder.Services.AddSingleton<IModelProvider, OllamaProvider>();
+// One model in memory at a time: the others leave before a managed server loads its model.
+static Func<CancellationToken, Task> UnloadOthers(IServiceProvider sp, string keep) => async ct =>
+{
+    foreach (var p in sp.GetServices<IModelProvider>().Where(p => p.Name != keep && p.SupportsUnload
+                 && p.Name is ProviderNames.Local or ProviderNames.LlamaCpp or ProviderNames.Colibri))
+        try { await p.UnloadAsync(ct); } catch (ProviderException) { }
+};
 builder.Services.AddSingleton<IModelProvider>(sp => new LlamaCppProvider(
     sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<IConfiguration>(),
     sp.GetRequiredService<LlamaServerProcess>(),
     // With the large model set up: the standard model leaves memory before the large one loads.
-    sp.GetRequiredService<LargeModel>().Configured
-        ? ct => sp.GetServices<IModelProvider>().First(p => p.Name == ProviderNames.Local).UnloadAsync(ct) : null));
+    sp.GetRequiredService<LargeModel>().Configured ? UnloadOthers(sp, ProviderNames.LlamaCpp) : null));
+builder.Services.AddSingleton<IModelProvider>(sp => LlamaCppProvider.Colibri(
+    sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<ColibriServer>(),
+    sp.GetRequiredService<Colibri>().Configured ? UnloadOthers(sp, ProviderNames.Colibri) : null));
 builder.Services.AddSingleton<IModelProvider, OpenAiCompatibleProvider>();
 builder.Services.AddSingleton<ModelRouter>();
 builder.Services.AddSingleton<InferenceActivity>();
@@ -127,11 +140,12 @@ app.UseRateLimiter();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "NexusOS.Core", version = "0.2.0-dev" }));
 app.MapGet("/providers", (ProviderStore store) => Results.Ok(new { selected = store.Selected, providers = store.Names }));
-app.MapPost("/providers/select", async (SelectRequest request, ProviderStore store, LlamaServerProcess llama, CancellationToken ct) =>
+app.MapPost("/providers/select", async (SelectRequest request, ProviderStore store, LlamaServerProcess llama, ColibriServer colibri, CancellationToken ct) =>
 {
     if (!store.Select(request.Name)) return Results.BadRequest(new { error = "Unknown provider" });
     // Leaving the large model frees its memory at once.
     if (store.Selected != ProviderNames.LlamaCpp && llama.IsConfigured) await llama.StopAsync(ct);
+    if (store.Selected != ProviderNames.Colibri && colibri.IsConfigured) await colibri.StopAsync(ct);
     return Results.Ok(new { selected = store.Selected });
 });
 app.MapDelete("/history", async (ConversationStore history, RuleStore rules, CancellationToken ct) =>
@@ -395,6 +409,7 @@ app.MapGet("/inference/status", async (ModelRouter router, CancellationToken ct)
                             unloadSupported = provider.SupportsUnload });
 });
 app.MapLargeModel();
+app.MapColibri();
 app.MapPost("/inference/unload", async (ModelRouter router, VisionDescriber vision, VoiceControl voice, CancellationToken ct) =>
 {
     // Game mode frees everything: the vision model and any speech work too, whatever answers the chat.

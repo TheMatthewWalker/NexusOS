@@ -111,8 +111,10 @@ pkgs.testers.runNixOSTest {
       # countdown can stop and wait for a key that never comes.
       boot.loader.timeout = 0;
       # The serial line last, so it is the console the initrd asks for the
-      # disk's password on, and the test can answer there.
-      boot.kernelParams = [ "console=ttyS0,115200" ];
+      # disk's password on, and the test can answer there. The start-up
+      # screen (Plymouth) would ask on the display instead: it is still built
+      # into the initrd during the offline install, and only not started here.
+      boot.kernelParams = [ "console=ttyS0,115200" "plymouth.enable=0" ];
     }
     EOF""")
         installer.succeed(
@@ -165,6 +167,9 @@ pkgs.testers.runNixOSTest {
         target.succeed("grep -q 'kb_layout = gb' /etc/nexus/hyprland.conf")
         target.succeed("grep -q 'KEYMAP=uk' /etc/vconsole.conf")
         target.succeed("grep -q '^XKB_DEFAULT_LAYOUT=gb$' /etc/nexus/greeter.env")
+        # The start-up screen is installed with its theme.
+        target.succeed("test -f /etc/plymouth/themes/nexusos/nexusos.plymouth")
+        target.succeed("grep -q 'Theme=nexusos' /etc/plymouth/plymouthd.conf")
         # The login screen's greeter account is a system user: Core must not run for it.
         target.fail("journalctl -b --no-pager | grep -q 'nexus-core.*Unhandled exception'")
 

@@ -27,6 +27,7 @@
         iso = self.nixosConfigurations.installer.config.system.build.isoImage;
         nexus-try = pkgs.callPackage ./nix/packages/nexus-try.nix { };
         colibri = pkgs.callPackage ./nix/packages/colibri.nix { };
+        nexusos-plymouth-theme = pkgs.callPackage ./nix/packages/nexus-plymouth.nix { };
         default = self.packages.${system}.nexus-core;
       } // pkgs.lib.optionalAttrs (bundledModel != null) {
         bundled-model = bundledModel;
@@ -66,6 +67,14 @@
             nixpkgsSource = nixpkgs.outPath;
             referenceSystem = self.nixosConfigurations.nexus-reference.config.system.build.toplevel;
             referenceSystemNvidia = self.nixosConfigurations.nexus-reference-nvidia.config.system.build.toplevel;
+            # What each computer's initrd is made from (the start-up screen's theme, plugins
+            # and font, the unlock prompt's keymaps...). They are copied into the initrd, so
+            # they are not in the finished system's closure; the image carries them so that
+            # installing builds that initrd with no internet.
+            referenceInitrdInputs = pkgs.lib.concatMap (name: let s = self.nixosConfigurations.${name}.config.boot.initrd.systemd; in
+                map (p: if builtins.isAttrs p then p.source else p) (builtins.filter (p: !(builtins.isAttrs p) || p.enable) s.storePaths)
+                ++ builtins.filter (x: x != null) (map (c: if c.enable or true then c.source or null else null) (builtins.attrValues s.contents)))
+              [ "nexus-reference" "nexus-reference-nvidia" ];
             inherit bundledModel;
           };
           modules = [ ./nix/installer/iso.nix ];

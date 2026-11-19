@@ -1,7 +1,8 @@
 # The NexusOS installer image: a live NexusOS desktop that opens the
 # graphical installer (shell/qml/Installer.qml); the terminal installer is a
 # button away. Build it with `nix build .#iso`.
-{ config, lib, pkgs, modulesPath, nexusSource, referenceSystem, referenceSystemNvidia, nixpkgsSource, bundledModel ? null, ... }:
+{ config, lib, pkgs, modulesPath, nexusSource, referenceSystem, referenceSystemNvidia, nixpkgsSource, bundledModel ? null,
+  referenceInitrdInputs ? [ ], ... }:
 let
   nexus-install = pkgs.callPackage ../packages/nexus-install.nix { };
   # What the graphical installer runs through pkexec, which starts programs
@@ -50,6 +51,8 @@ in
   isoImage.storeContents = [ referenceSystem referenceSystemNvidia nixpkgsSource ]
     # The tools that build those parts, so installing works with no internet.
     ++ import ./offline-deps.nix pkgs
+    # And what the initrd is made from (flake.nix, referenceInitrdInputs).
+    ++ referenceInitrdInputs
     # The local model, when pinned (nix/models/); nexus-install copies it to the disk.
     ++ lib.optional (bundledModel != null) bundledModel;
   environment.etc."nexusos-model" = lib.mkIf (bundledModel != null) { source = bundledModel; };

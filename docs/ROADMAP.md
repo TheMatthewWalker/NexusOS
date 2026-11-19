@@ -113,9 +113,8 @@ enough to call a milestone shipped.
 
 **Still to build**
 
-9. A boot splash (Plymouth) over the disk's unlock prompt. Not done blind: it
-   changes the unlock prompt and the initrd each install builds offline, so it
-   needs the hardware check in 4 alongside.
+9. The start-up screen (Plymouth, built): check it on real hardware with the
+   install in 4, including typing the disk's password on it.
 10. Secure Boot (signed boot files, for computers that will not start without it).
 11. More languages than English, for the desktop and Nexus.
 

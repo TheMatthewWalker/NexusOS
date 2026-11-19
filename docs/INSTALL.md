@@ -87,7 +87,7 @@ The installer adds one encrypted partition in the largest free space and reuses 
 
 The installer refuses, and says why, when: there is no free space (or less than 32 GB), the disk uses the old MBR layout (Windows started in legacy BIOS mode), the disk has no EFI system partition or more than one, the EFI partition is too full, or the disk already has a NexusOS partition from an earlier attempt (delete it in Disk Management). If an attempt fails part-way, the partition it added is removed again.
 
-Each start, NexusOS asks for your password twice: first to unlock the encrypted disk (a text prompt, before anything else runs), then on the login screen.
+Each start, NexusOS asks for your password twice: first on the NexusOS start-up screen, to unlock the encrypted disk (before anything else runs), then on the login screen. Press Esc on the start-up screen to see the start-up messages.
 
 The disk is encrypted (LUKS2) so a lost or stolen computer shows nothing without the password. If you change your login password later, the disk keeps the old one until you change it too: `sudo cryptsetup luksChangeKey /dev/disk/by-label/nexusos-crypt`. To install without encryption, run `sudo nexus-install --no-encrypt`.
 
@@ -230,7 +230,6 @@ Only after a confirmed restart is `/etc/nixos/flake.lock` updated, so `nixos-reb
 - Choosing partitions by hand, or shrinking a partition to make room (do that in Windows).
 - A Files app of its own: Thunar is the file manager. System-wide settings (software, services) are changed in `local.nix`.
 - NexusOS updates (new versions of NexusOS itself) on installed computers: only nixpkgs security updates arrive for now ([what is left](ROADMAP.md#what-is-left-before-a-10)).
-- A graphical boot splash: the disk's unlock prompt is text.
 
 ## How the installer is tested
 

@@ -121,6 +121,11 @@ Flathub apps update separately, daily, in `apps.nix`).
    accept only the update `update.json` offers now, made from today's
    `/etc/nixos/flake.lock`, and read the lock themselves from the root-owned
    directory, checking its hash.
+   The builder does not wait for Core: every five minutes it looks for an
+   update waiting and, if none is being built yet, builds and tests it in the
+   background (`prepare_waiting_update`), so it is ready to approve whoever
+   is logged in, or nobody. That job names no person; Core's `build` request
+   joins it. A failed background build is retried only when Core asks.
 3. **Build and test:** the candidate is the host configuration with no
    overlay, evaluated from the builder's own copy of `/etc/nixos` with that
    lock (removed after evaluation), then built and VM-tested as usual. The

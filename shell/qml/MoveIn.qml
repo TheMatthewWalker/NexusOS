@@ -179,12 +179,13 @@ NexusWindow {
         scanner.command = ["sh", helper, "scan", root];
         scanner.running = true;
     }
-    // Where a folder goes in the home folder: Movies becomes Videos; with several people on the old drive, each gets a subfolder.
+    // Where a folder goes in the home folder: Movies becomes Videos, and what
+    // came from an account on the old drive goes in a folder with that account's
+    // name (Documents/Ada), so the old files stay apart from new ones.
     function destination(item) {
         const name = item.folder === "Movies" ? "Videos" : item.folder;
-        return home + "/" + name + (perUser() && item.user ? "/" + item.user : "");
+        return home + "/" + name + (item.user ? "/" + item.user : "");
     }
-    function perUser() { return new Set(found.map(f => f.user)).size > 1 }
     function toggle(user, folder) {
         found = found.map(f => f.user === user && f.folder === folder ? Object.assign({}, f, { on: !f.on }) : f);
     }
@@ -206,7 +207,7 @@ NexusWindow {
         }
         copying = copyQueue[0]; copyQueue = copyQueue.slice(1); currentPct = 0;
         // The helper works out both paths again from the root, the user and the folder name.
-        rsync.command = ["sh", helper, "copy", root, copying.user, copying.folder, perUser() && copying.user ? "1" : "0"];
+        rsync.command = ["sh", helper, "copy", root, copying.user, copying.folder, copying.user ? "1" : "0"];
         rsync.running = true;
     }
     function cancel() { if (rsync.running) { copyQueue = []; rsync.running = false } }

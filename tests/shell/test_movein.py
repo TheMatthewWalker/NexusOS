@@ -312,5 +312,14 @@ class MoveInHelper(unittest.TestCase):
                     self.assertFalse((self.home / folder / "secret").exists())
 
 
+class MoveInWindow(unittest.TestCase):
+    def test_an_old_accounts_files_go_in_a_folder_with_its_name(self):
+        qml = (ROOT / "shell/qml/MoveIn.qml").read_text()
+        # Always, not only with several people on the old drive: old files stay apart from new ones.
+        self.assertIn('return home + "/" + name + (item.user ? "/" + item.user : "");', qml)
+        self.assertIn('copying.folder, copying.user ? "1" : "0"]', qml)
+        self.assertNotIn("perUser()", qml)
+
+
 if __name__ == "__main__":
     unittest.main()

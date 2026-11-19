@@ -100,9 +100,6 @@ enough to call a milestone shipped.
    host it elsewhere. Once decided: a release workflow (tag, build, checksums,
    signed manifest) and NexusOS updates through Guardian (lock-only, like
    security updates).
-2. **Security updates:** built in the background and waiting as "ready", or
-   only built when you click (today: when you click).
-3. **Move in:** keep the old account's name as a folder, or use generic names.
 
 **Needs real hardware (procedures in the evidence files)**
 

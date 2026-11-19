@@ -264,6 +264,29 @@ class BuilderAndBrokerTests(unittest.TestCase):
             with self.subTest(payload=payload), self.assertRaises(Denied):
                 self.builder.build(self.m.uid, payload)
 
+    def test_the_waiting_update_is_prepared_before_anyone_asks_and_joined_when_asked(self):
+        candidate_id = self.builder.prepare_waiting_update()
+        self.assertIsNotNone(candidate_id)
+        # Nobody asked: nobody can see it yet, and it is not queued twice.
+        self.assertIsNone(self.builder.prepare_waiting_update())
+        with self.assertRaises(Denied):
+            self.builder.status(self.m.uid, {"candidateId": candidate_id})
+        self.builder.run_job(candidate_id)
+        built = len(self.commands)
+        # The person's request joins the finished job: nothing is built again.
+        result = self.builder.build(self.m.uid, {"update": {"lockHash": self.lock_hash}})
+        self.assertEqual(candidate_id, result["candidate"]["candidateId"])
+        self.assertEqual("passed", result["job"]["state"], result["job"]["message"])
+        self.assertEqual(built, len(self.commands))
+        self.assertEqual("passed", self.builder.status(self.m.uid, {"candidateId": candidate_id})["state"])
+
+    def test_nothing_is_prepared_without_an_update_or_room(self):
+        self.free = 2 * 1024 ** 3
+        self.assertIsNone(self.builder.prepare_waiting_update())
+        self.free = 50 * 1024 ** 3
+        (self.m.host / "flake.lock").write_bytes(OLD + b"\n")       # /etc/nixos changed: no update waiting
+        self.assertIsNone(self.builder.prepare_waiting_update())
+
     def test_low_disk_refuses_to_build(self):
         self.free = 2 * 1024 ** 3
         with self.assertRaisesRegex(Denied, "Not enough free disk space"):

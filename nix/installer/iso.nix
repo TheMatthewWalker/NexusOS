@@ -2,7 +2,7 @@
 # graphical installer (shell/qml/Installer.qml); the terminal installer is a
 # button away. Build it with `nix build .#iso`.
 { config, lib, pkgs, modulesPath, nexusSource, referenceSystem, referenceSystemNvidia, nixpkgsSource, bundledModel ? null,
-  referenceInitrdInputs ? [ ], ... }:
+  referenceInitrdInputs ? [ ], nexusRelease ? null, ... }:
 let
   nexus-install = pkgs.callPackage ../packages/nexus-install.nix { };
   # What the graphical installer runs through pkexec, which starts programs
@@ -56,6 +56,12 @@ in
     # The local model, when pinned (nix/models/); nexus-install copies it to the disk.
     ++ lib.optional (bundledModel != null) bundledModel;
   environment.etc."nexusos-model" = lib.mkIf (bundledModel != null) { source = bundledModel; };
+  # The release this image's NexusOS is (its commit and content hash), for the
+  # installer to pin installed systems to; absent for an image built from
+  # uncommitted changes, which installs its local copy as before.
+  environment.etc."nexusos-release.json" = lib.mkIf (nexusRelease != null && nexusSource ? rev) {
+    text = builtins.toJSON (nexusRelease // { inherit (nexusSource) rev lastModified narHash; });
+  };
 
   # A second boot entry, "NexusOS live (NVIDIA)", for machines whose screen
   # is driven by an NVIDIA card. The default entry uses the built-in open

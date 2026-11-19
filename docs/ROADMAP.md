@@ -92,14 +92,13 @@ enough to call a milestone shipped.
 
 **Needs your decision**
 
-1. **Where updates and images are published.** Installed computers can only
-   receive NexusOS updates (not just nixpkgs security updates) from a place
-   they can download from without your GitHub login, so the repository, or a
-   release mirror, has to be public. The ISO with both bundled models is
-   several GB, beyond GitHub's 2 GB limit for a release file: split it, or
-   host it elsewhere. Once decided: a release workflow (tag, build, checksums,
-   signed manifest) and NexusOS updates through Guardian (lock-only, like
-   security updates).
+1. **Publish the first release.** NexusOS updates are built: installed
+   computers follow the `release` branch and Guardian offers each new release.
+   Make the repository public, then push a tag (`git tag v0.4.0 && git push
+   origin v0.4.0`): `.github/workflows/release.yml` builds the image, publishes
+   it in parts under GitHub's 2 GB limit, and moves `release`. For one-file
+   downloads, also host the image somewhere without that limit (SourceForge is
+   free for open-source projects; Cloudflare R2 is cheap with free downloads).
 
 **Needs real hardware (procedures in the evidence files)**
 

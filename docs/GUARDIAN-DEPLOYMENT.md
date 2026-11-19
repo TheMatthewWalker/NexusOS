@@ -147,6 +147,35 @@ Flathub apps update separately, daily, in `apps.nix`).
    a rollback or fallback `/etc/nixos` is as it was. Later rebuilds, changes
    and update checks build on the installed lock.
 
+### NexusOS updates
+
+A computer installed from a release image follows NexusOS's `release`
+branch: `/etc/nixos/flake.nix` has `inputs.nexusos.url =
+"github:TheMatthewWalker/NexusOS/release"`, locked to the commit the image
+was built from (the installer pins it with the files already on the stick,
+checking they are that commit by content hash, so nothing is downloaded; if
+that cannot be checked, it installs the local copy as before and the
+computer gets security updates only). An image built from uncommitted
+changes records no release and installs the copy.
+
+The weekly check then runs `nix flake update nexusos` before the nixpkgs
+step. If the release branch moved, the new lock is one update: NexusOS
+moved forward along the same branch of the same repository, bringing the
+inputs that release locks (its nixpkgs, on a NixOS release branch), with
+security updates on top. `system_update.compare_update` refuses anything
+else: another repository or branch, an older commit, a non-NixOS-release
+nixpkgs, or any change to what `/etc/nixos/flake.nix` asks for. The signed
+statement carries `update.nexusos` (the branch and the commits before and
+after), the dialog says "Approve the NexusOS update" with both, and it is
+built, VM-tested, approved with the person's password, trial-booted and
+rolled back exactly like security updates.
+
+Releases are published by `.github/workflows/release.yml` when a `v*` tag
+is pushed on a commit on `main`: it builds the image, publishes it (in
+parts under GitHub's 2 GB limit, with SHA256SUMS), and only then moves
+`release` to the commit, forward only. The repository must be public for
+computers to fetch from it.
+
 Asking Nexus "check for updates" offers a card; on "Do it" Core asks the
 builder (`check-updates`, at most every 10 minutes), which writes
 `/var/lib/nexus-guardian-builder/work/update-requested`; the root path unit

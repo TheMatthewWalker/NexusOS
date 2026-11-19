@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Look for security updates and hand them to Guardian (nexus-update-check.service, root).
+"""Look for security updates and NexusOS updates and hand them to Guardian (nexus-update-check.service, root).
+
+A computer installed from a NexusOS release follows its release branch
+(github:<owner>/<repo>/release in /etc/nixos/flake.nix): NexusOS moves there
+first (`nix flake update nexusos`), bringing the nixpkgs it was tested with,
+then nixpkgs moves on its branch as below. Either is one update, offered,
+built, tested and approved the same way.
 
 Weekly (and when the person asks Nexus to check), once online: copies
 /etc/nixos into a root-owned work directory, moves only NexusOS's nixpkgs
@@ -75,6 +81,15 @@ def _keep_source(updates_dir, flake, lock_hash, locks, runner):
     runner(NIX + ["build", "--out-link", str(roots / lock_hash), source], 120)
 
 
+def follows_release(lock_bytes):
+    """Whether this computer's NexusOS follows a release branch (installed from a release), not a local copy."""
+    try:
+        lock = json.loads(lock_bytes)
+        return system_update.release(lock["nodes"][system_update._nexus_name(lock)]) is not None
+    except (ValueError, KeyError, TypeError, UpdateError):
+        return False
+
+
 def check(updates_dir, host_dir, *, runner=run_command, free=system_update.free_bytes, clock=time.time,
           online=lambda: True, minimum=system_update.MIN_FREE_BYTES):
     """One check. Returns the status record it wrote (status.json)."""
@@ -102,19 +117,24 @@ def check(updates_dir, host_dir, *, runner=run_command, free=system_update.free_
     try:
         flake = work / "flake"
         shutil.copytree(host_dir, flake, symlinks=True)
+        old = (host_dir / "flake.lock").read_bytes()
+        if follows_release(old):
+            status, _, err = runner(NIX + ["flake", "update", system_update.NEXUS_INPUT, "--flake", f"path:{flake}"], 1800)
+            if status != 0:
+                print(f"nexus-update-check: nix flake update nexusos failed: {err}", file=sys.stderr, flush=True)
+                return report("failed", "Could not reach NexusOS's releases. Guardian checks again later.")
         status, _, err = runner(NIX + ["flake", "update", f"{system_update.NEXUS_INPUT}/{system_update.NIXPKGS_INPUT}",
                                        "--flake", f"path:{flake}"], 1800)
         if status != 0:
             print(f"nexus-update-check: nix flake update failed: {err}", file=sys.stderr, flush=True)
             return report("failed", "Could not fetch the latest NixOS packages. Guardian checks again later.")
-        old = (host_dir / "flake.lock").read_bytes()
         new = (flake / "flake.lock").read_bytes()
         try:
-            summary = system_update.compare(old, new)
+            change = system_update.compare_update(old, new)
         except UpdateError as error:
             print(f"nexus-update-check: refused the updated lock: {error}", file=sys.stderr, flush=True)
             return report("failed", "The update did not have the expected form, so it was not offered.")
-        if summary is None:
+        if change is None:
             (updates_dir / "update.json").unlink(missing_ok=True)
             return report("up-to-date", "This computer has the latest security updates.")
         locks = updates_dir / "locks"
@@ -124,7 +144,9 @@ def check(updates_dir, host_dir, *, runner=run_command, free=system_update.free_
         _prune(locks, system_update.KEEP_LOCKS)
         _keep_source(updates_dir, flake, lock_hash, locks, runner)
         system_update.write_file(updates_dir / "update.json", _json({
-            "lockHash": lock_hash, "previousLockHash": system_update.sha256(old), "nixpkgs": summary, "checkedAt": now}))
+            "lockHash": lock_hash, "previousLockHash": system_update.sha256(old), **change, "checkedAt": now}))
+        if "nexusos" in change:
+            return report("available", "A NexusOS update is available, with security updates.", lockHash=lock_hash)
         return report("available", "Security updates are available.", lockHash=lock_hash)
     finally:
         shutil.rmtree(work, ignore_errors=True)

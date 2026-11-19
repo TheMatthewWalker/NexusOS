@@ -734,7 +734,8 @@ rm -f /mnt/etc/nixos/configuration.nix
 # The NexusOS source lives inside /etc/nixos, so the machine's flake can
 # refer to it by a relative path and rebuild without network access.
 mkdir -p /mnt/etc/nixos/nexusos
-cp -rL --no-preserve=ownership "$source_dir/." /mnt/etc/nixos/nexusos/
+# Links inside the source stay links (-P), so the copy is the same files, by hash, as the release (follow_release).
+cp -rP --no-preserve=ownership "$source_dir/." /mnt/etc/nixos/nexusos/
 chmod -R u+w /mnt/etc/nixos/nexusos
 
 nix_string() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g')"; }
@@ -800,6 +801,41 @@ sed -i '$d' /mnt/etc/nixos/local.nix
   echo "}"
 } >> /mnt/etc/nixos/local.nix
 
+# --- Releases ---------------------------------------------------------------
+# follow_release INFO DIR: point DIR's flake at NexusOS's release (INFO: owner,
+# repo, ref, rev, lastModified, narHash), if the copy DIR/nexusos is exactly
+# that release, and the system still evaluates; otherwise leave DIR as it was.
+follow_release() {
+  local info="$1" dir="$2" owner repo ref rev modified nar node
+  owner="$(jq -r '.owner // ""' "$info")" repo="$(jq -r '.repo // ""' "$info")" ref="$(jq -r '.ref // ""' "$info")"
+  rev="$(jq -r '.rev // ""' "$info")" modified="$(jq -r '.lastModified // ""' "$info")" nar="$(jq -r '.narHash // ""' "$info")"
+  [[ "$rev" =~ ^[0-9a-f]{40}$ && "$modified" =~ ^[0-9]+$ && "$nar" =~ ^sha256- ]] || return 1
+  [[ "$owner" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && "$repo" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && "$ref" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || return 1
+  node="$(jq -r '.nodes[.root].inputs.nexusos' "$dir/flake.lock")"
+  # The copy must be exactly the release: the same files, by content hash (a commit's own narHash).
+  if [ "$(nix --extra-experimental-features nix-command hash path "$dir/nexusos")" != "$nar" ]; then
+    echo "The NexusOS copy is not exactly release ${rev:0:7}; installing the copy."
+    return 1
+  fi
+  cp "$dir/flake.nix" "$dir/flake.nix.copy"
+  cp "$dir/flake.lock" "$dir/flake.lock.copy"
+  sed -i "s|inputs.nexusos.url = \"path:./nexusos\";|inputs.nexusos.url = \"github:$owner/$repo/$ref\";|" "$dir/flake.nix"
+  jq --arg n "$node" --arg o "$owner" --arg r "$repo" --arg f "$ref" --arg rev "$rev" --arg nar "$nar" --argjson m "$modified" \
+    '.nodes[$n] |= (del(.parent) | .locked = {type: "github", owner: $o, repo: $r, rev: $rev, narHash: $nar, lastModified: $m}
+                    | .original = {type: "github", owner: $o, repo: $r, ref: $f})' "$dir/flake.lock.copy" > "$dir/flake.lock"
+  if nix --extra-experimental-features "nix-command flakes" eval --raw "${offline[@]}" \
+       "path:$dir#nixosConfigurations.nexus.config.system.build.toplevel.drvPath" > /dev/null; then
+    rm -f "$dir/flake.nix.copy" "$dir/flake.lock.copy"
+    echo "NexusOS follows its releases (github:$owner/$repo/$ref, now ${rev:0:7}): Guardian offers newer ones."
+    return 0
+  fi
+  echo "Could not use NexusOS's release here; installing the copy in /etc/nixos/nexusos instead."
+  mv "$dir/flake.nix.copy" "$dir/flake.nix"
+  mv "$dir/flake.lock.copy" "$dir/flake.lock"
+  return 1
+}
+# --- end of releases
+
 # --- Install ----------------------------------------------------------------
 step install "Installing NexusOS (this takes a while)"
 # Everything the install needs is on the image. Online, the NixOS cache can
@@ -813,6 +849,13 @@ if ! curl -sfI --max-time 8 https://cache.nixos.org/nix-cache-info > /dev/null 2
 fi
 # Lock first: locking inside nixos-install would change the flake mid-build.
 nix --extra-experimental-features "nix-command flakes" flake lock "path:/mnt/etc/nixos" "${offline[@]}"
+# Follow NexusOS's releases: when this stick was built from a release, the
+# installed system's NexusOS is that release's commit on GitHub, so Guardian
+# can offer newer releases (update_check.py). Its files are already here, the
+# same ones by hash: nothing is downloaded. If that cannot be checked here
+# (offline), the copy in /etc/nixos/nexusos is used, as before.
+release_info="${NEXUS_RELEASE:-/etc/nexusos-release.json}"
+if [ -r "$release_info" ] && [ "$source_dir" = /etc/nexusos ]; then follow_release "$release_info" /mnt/etc/nixos || true; fi
 # Offline, only small files specific to this computer may need building (its
 # boot files and settings). Anything bigger means a package is missing from
 # the stick: say which, rather than spend hours trying to compile it.

@@ -415,8 +415,11 @@ class LocalBuilder:
         else:
             print(f"guardian-builder: diff-closures failed: {err}", file=sys.stderr, flush=True)
             diff = {"packages": None, "otherPackages": 0, "added": 0, "removed": 0}
-        return {"lockHash": update["lockHash"], "previousLockHash": update["previousLockHash"],
-                "nixpkgs": update["nixpkgs"], **diff}
+        summary = {"lockHash": update["lockHash"], "previousLockHash": update["previousLockHash"],
+                   "nixpkgs": update["nixpkgs"], **diff}
+        if update.get("nexusos") is not None:
+            summary["nexusos"] = update["nexusos"]
+        return summary
 
     def _worker(self):
         while True:

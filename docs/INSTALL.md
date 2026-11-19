@@ -209,6 +209,10 @@ Windows keeps the Super (Windows) key for itself, so Super shortcuts do not reac
 | Configuration | `/etc/nixos/flake.nix` imports NexusOS. `/etc/nixos/local.nix` holds your user name, computer name and time zone. `/etc/nixos/hardware-configuration.nix` is generated for your hardware |
 | Boot loader | systemd-boot, keeping the last 20 system versions. Pick an older one at start-up if an update goes wrong |
 
+## Updates
+
+Guardian looks for updates weekly and prepares them in the background: security updates for everything from NixOS, and, on a computer installed from a release image, new NexusOS releases. When one is ready, the System change window asks for your password; it is used from the next restart, and if that start fails, the computer goes back by itself. Ask Nexus "check for updates" to look now.
+
 ## Changing the system afterwards
 
 Edit `/etc/nixos/local.nix` (for example `nexusos.autologin = true;`), then run:
@@ -229,7 +233,6 @@ Only after a confirmed restart is `/etc/nixos/flake.lock` updated, so `nixos-reb
 
 - Choosing partitions by hand, or shrinking a partition to make room (do that in Windows).
 - A Files app of its own: Thunar is the file manager. System-wide settings (software, services) are changed in `local.nix`.
-- NexusOS updates (new versions of NexusOS itself) on installed computers: only nixpkgs security updates arrive for now ([what is left](ROADMAP.md#what-is-left-before-a-10)).
 
 ## How the installer is tested
 

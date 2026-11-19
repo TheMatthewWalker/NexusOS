@@ -227,8 +227,12 @@ public sealed class GuardianProposals(NexusStatePaths paths, GuardianBrokerClien
         foreach (var old in items.Where(x => x.Kind == UpdateKind && x.State is Waiting or Checking or Ready or Failed))
             Touch(old, Dismissed, "Replaced by newer security updates.");
         var stamp = time.GetUtcNow();
-        var plan = new GuardianPlan(GuardianPlanner.PlanId("update\n" + lockHash), "Security updates for this computer", [], "",
-            "Review required — security updates from NixOS, on the same release.", "review");
+        // A NexusOS update (the release this computer follows moved) comes with the security updates on top.
+        var nexus = available.TryGetProperty("nexusos", out var n) && n.ValueKind == JsonValueKind.Object;
+        var plan = new GuardianPlan(GuardianPlanner.PlanId("update\n" + lockHash),
+            nexus ? "A NexusOS update, with security updates" : "Security updates for this computer", [], "",
+            nexus ? "Review required — a new NexusOS release, with security updates from NixOS."
+                  : "Review required — security updates from NixOS, on the same release.", "review");
         var proposal = new GuardianProposalRecord
         {
             Id = Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant(),
@@ -236,7 +240,7 @@ public sealed class GuardianProposals(NexusStatePaths paths, GuardianBrokerClien
             Kind = UpdateKind, LockHash = lockHash, Update = available.Clone()
         };
         items.Add(proposal);
-        await Record("guardian", "Guardian found security updates: ", plan, ct);
+        await Record("guardian", nexus ? "Guardian found a NexusOS update: " : "Guardian found security updates: ", plan, ct);
         await SendForCheckingAsync(proposal, "guardian", ct);
     }
 

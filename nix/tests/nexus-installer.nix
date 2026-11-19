@@ -4,7 +4,7 @@
 # installer runs from a small second disk, and the target machine boots the
 # same main disk image afterwards. The VM has no network, so everything the
 # install builds must already be in its store.
-{ pkgs, nexusSource, nixpkgsSource, referenceSystem, nexusInstall }:
+{ pkgs, nexusSource, nixpkgsSource, referenceSystem, nexusInstall, referenceInitrdInputs ? [ ], nexusRelease ? null }:
 let
   common = {
     virtualisation.diskSize = 16 * 1024;
@@ -50,13 +50,19 @@ pkgs.testers.runNixOSTest {
 
     environment.etc."nexusos".source = nexusSource;
     environment.etc."nexusos-model".source = testModel;
-    environment.systemPackages = [ nexusInstall ];
+    environment.systemPackages = [ nexusInstall pkgs.jq ];
     # The installer image's Nix settings, unchanged: it lists cache.nixos.org,
     # which this VM cannot reach, as a laptop with no Wi-Fi cannot.
     nix.settings.experimental-features = [ "nix-command" "flakes" ];
     # The same store contents as the installer image (nix/installer/iso.nix):
     # the installed system, nixpkgs' source and the offline build tools.
-    system.extraDependencies = [ referenceSystem nixpkgsSource ] ++ import ../installer/offline-deps.nix pkgs;
+    system.extraDependencies = [ referenceSystem nixpkgsSource ] ++ import ../installer/offline-deps.nix pkgs
+      ++ referenceInitrdInputs;
+    # As the image: the release this NexusOS is, when built from a commit (CI), so
+    # the install follows NexusOS's releases (nexus-install's follow_release).
+    environment.etc."nexusos-release.json" = pkgs.lib.mkIf (nexusRelease != null && nexusSource ? rev) {
+      text = builtins.toJSON (nexusRelease // { inherit (nexusSource) rev lastModified narHash; });
+    };
   };
 
   nodes.target = { lib, ... }: {
@@ -127,6 +133,11 @@ pkgs.testers.runNixOSTest {
         # A UK keyboard, everywhere: it also types the password at start-up (the
         # test's password, letters and a dash, is the same on both layouts).
         installer.succeed("grep -q 'nexusos.keyboard.layout = \"gb\"' /mnt/etc/nixos/local.nix")
+        # Built from a commit (CI): the installed system follows NexusOS's release branch,
+        # pinned to this commit, with nothing downloaded (this VM has no network).
+        if installer.succeed("test -f /etc/nexusos-release.json && echo yes || echo no").strip() == "yes":
+            installer.succeed("grep -q 'inputs.nexusos.url = \"github:TheMatthewWalker/NexusOS/release\"' /mnt/etc/nixos/flake.nix")
+            installer.succeed("jq -e '.nodes.nexusos.locked.type == \"github\"' /mnt/etc/nixos/flake.lock")
         # The hardware scan: no graphics card in this VM, so the model runs on the
         # processor; the model asked for is the one written down and copied.
         installer.succeed("grep -q 'nexusos.hardware.gpu = \"none\"' /mnt/etc/nixos/local.nix")

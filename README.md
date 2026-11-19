@@ -79,6 +79,8 @@ next boot:     healthy → confirmed;  failed boot → resets and falls back aut
 
 ## Install from an image (alpha)
 
+Download the newest release with **Get NexusOS**, which fetches the image's parts, checks them and joins them: on Windows, double-click `Get-NexusOS.cmd` from the [releases page](https://github.com/TheMatthewWalker/NexusOS/releases/latest); on Linux or Mac, `curl -fsSL https://raw.githubusercontent.com/TheMatthewWalker/NexusOS/main/scripts/release/get-nexusos.sh | sh`.
+
 `nix build .#iso` builds a live USB image: a NexusOS desktop that opens the installer when it starts. [docs/INSTALL.md](docs/INSTALL.md) covers writing it to a stick, the install, and what this alpha does not do yet.
 
 ## NixOS

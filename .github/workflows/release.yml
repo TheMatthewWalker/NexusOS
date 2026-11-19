@@ -1,7 +1,11 @@
 name: NexusOS release
-# Publishing a release: push a tag such as v0.4.0 on a commit that is on main.
+# Publishing a release: push a tag such as v0.4.0 on a commit that is on main,
 #
 #   git tag v0.4.0 && git push origin v0.4.0
+#
+# or run this workflow by hand (Actions, NexusOS release, Run workflow) with the
+# version: a tag that does not exist yet is made on main's newest commit when
+# the release is published.
 #
 # This builds the installer image from that commit, checks it, publishes it
 # (in parts under 2 GB, GitHub's limit for a release file, with SHA256SUMS and
@@ -16,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: An existing tag to publish, for example v0.4.0
+        description: The version to publish, for example v0.4.0 (made on main's newest commit if it is not a tag yet)
         required: true
 permissions:
   contents: write
@@ -36,8 +40,11 @@ jobs:
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
           fetch-depth: 0
+      - name: The commit to publish (the tag's, or main's newest when the tag is new)
+        run: |
+          if git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then git checkout -q "$TAG"
+          else git checkout -q origin/main; echo "$TAG is new: publishing main at $(git rev-parse --short HEAD)"; fi
       - name: The tag names a version and a commit on main
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tags look like v0.4.0, not $TAG" >&2; exit 1; }
@@ -66,10 +73,15 @@ jobs:
           split -b 1900M -d -a 2 "$name" "$name.part-"
           rm "$name"
           sha256sum "$name".part-* >> SHA256SUMS
+          cp ../scripts/release/get-nexusos.sh ../scripts/release/get-nexusos.ps1 ../scripts/release/Get-NexusOS.cmd .
           cat > README.txt <<EOF
           NexusOS ${TAG}: the installer image, in parts (GitHub limits each file to 2 GB).
 
-          Download every part and SHA256SUMS into one folder, then join them:
+          The easy way: Get NexusOS downloads the parts, checks them and joins them for you.
+            Windows:        download Get-NexusOS.cmd and double-click it (the image goes to Downloads)
+            Linux or Mac:   curl -fsSL https://raw.githubusercontent.com/TheMatthewWalker/NexusOS/main/scripts/release/get-nexusos.sh | sh
+
+          By hand: download every part and SHA256SUMS into one folder, then join them:
             Linux or Mac:   cat $name.part-* > $name
             Windows:        copy /b $name.part-00 + $name.part-01 + ... $name
           Check it:         sha256sum -c SHA256SUMS --ignore-missing
@@ -79,7 +91,7 @@ jobs:
           ls -la
       - name: Publish the release
         run: |
-          gh release create "$TAG" dist/* --title "NexusOS ${TAG#v}" --verify-tag \
-            --notes "The installer image is in parts: see README.txt. Installed computers are offered this release by Guardian."
+          gh release create "$TAG" dist/* --title "NexusOS ${TAG#v}" --target "$(git rev-parse HEAD)" \
+            --notes-file scripts/release/notes.md
       - name: Move the release branch to this commit (forward only)
         run: git push origin "HEAD:refs/heads/release"

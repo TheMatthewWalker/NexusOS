@@ -68,6 +68,7 @@ jobs:
           python3 -m unittest discover -s tests/bench -v
           python3 -m unittest discover -s tests/backup -v
           python3 -m unittest discover -s tests/colibri -v
+          python3 -m unittest discover -s tests/release -v
 
       - name: Upload test logs
         if: always()

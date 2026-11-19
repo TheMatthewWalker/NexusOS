@@ -12,7 +12,18 @@ anything you care about first either way.
 - A USB stick of 8 GB or more, or 16 GB if the image carries the local model (step 1). Writing the image erases the stick.
 - No internet connection is needed to install: everything is on the stick. Without the model on the stick, the installed system downloads it once it is online.
 
-## 1. Build the image
+## 1. Get the image
+
+The easy way is to download a release. Its image is published in parts (GitHub limits each file to 2 GB); **Get NexusOS** downloads them, checks each against the release's SHA256SUMS and joins them into one `.iso`:
+
+- **Windows:** download `Get-NexusOS.cmd` from the [newest release](https://github.com/TheMatthewWalker/NexusOS/releases/latest) and double-click it. The image goes to your Downloads folder, and the folder opens when it is ready.
+- **Linux or Mac:** `curl -fsSL https://raw.githubusercontent.com/TheMatthewWalker/NexusOS/main/scripts/release/get-nexusos.sh | sh` (into the current folder; add a version, `| sh -s v0.1.0`, for an older release).
+
+It goes on where it stopped if the connection drops: run it again. It needs about twice the image's size free while it works.
+
+Or build the image yourself:
+
+## 1b. Build the image
 
 On any Linux machine with Nix installed and flakes turned on:
 

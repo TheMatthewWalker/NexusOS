@@ -75,6 +75,12 @@ public static class NexusActions
     [
         // ---- read: run at once ----
         new("get_system_state", ActionSafety.Read, "This computer: system, processor, memory, AI model, date and time.", []),
+        new("inspect_system", ActionSafety.Read,
+            "Look at the running system (read-only) to work out what to do.",
+            [new("topic", "string", "", Choices: SystemInspector.Topics),
+             new("query", "string", "Keep lines containing it.", Required: false, MaxLength: 60),
+             new("path", "string", "folder: e.g. ~/Documents.", Required: false, MaxLength: 200)],
+            Private: true),
         new("get_health_report", ActionSafety.Read, "Health check: disk, updates, network, sound, battery, problems.", []),
         new("diagnose_problem", ActionSafety.Read, "Run Fix it checks (read-only) for a problem; returns the cause and fixes.",
             [new("problem", "string", "In their words, e.g. no sound.", MaxLength: 300)]),
@@ -146,6 +152,12 @@ public static class NexusActions
         new("show_old_apps", ActionSafety.Personal, "Show apps matched to the old computer's programs in Apps, to install with a click.", []),
         new("open_welcome", ActionSafety.Personal, "Open the welcome setup (apps and settings for what the person does).", []),
         new("check_for_updates", ActionSafety.Personal, "Ask Guardian to check for security updates now.", []),
+        new("use_large_model", ActionSafety.Personal,
+            "Switch Nexus between the large model (smarter, slower, needs most of the memory) and the standard one; get_settings says which is in use.",
+            [new("on", "boolean", "true: large model; false: standard.")]),
+        new("use_very_large_model", ActionSafety.Personal,
+            "The very large model (colibri: much bigger, reads from the disk, slower; a big download): download it, use it, or go back to the standard one.",
+            [new("on", "boolean", "true: download it or use it; false: standard model.")]),
         new("apply_fix", ActionSafety.Personal, "Apply a personal fix diagnose_problem offered.",
             [new("fix_id", "string", "", MaxLength: 64, Pattern: @"[a-z0-9][a-z0-9._-]{0,63}")]),
 

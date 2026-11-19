@@ -168,8 +168,11 @@ public sealed class ModelProviderTests
         using var state = new TempState();
         var factory = new StubHttpFactory(StubHandler.Json(HttpStatusCode.OK, """{"choices":[{"message":{"content":"from llama"}}]}"""));
         var store = new ProviderStore(state.Paths());
-        var router = new ModelRouter([new OllamaProvider(factory, TestConfig.Of()), new LlamaCppProvider(factory, TestConfig.Of()),
-            new OpenAiCompatibleProvider(factory, TestConfig.Of(), new FakeCredentials(null))], store, new InferenceTokenSettings(TestConfig.Of()));
+        var config = TestConfig.Of();
+        using var colibri = new ColibriServer(new Colibri(config), factory, config);
+        var router = new ModelRouter([new OllamaProvider(factory, config), new LlamaCppProvider(factory, config),
+            new OpenAiCompatibleProvider(factory, config, new FakeCredentials(null)), LlamaCppProvider.Colibri(factory, colibri, null)],
+            store, new InferenceTokenSettings(config));
         store.Select("llama-cpp");
         Assert.Equal(("from llama", "llama-cpp"), await router.AskAsync("hi", CancellationToken.None));
     }

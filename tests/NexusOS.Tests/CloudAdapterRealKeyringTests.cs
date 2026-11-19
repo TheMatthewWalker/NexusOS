@@ -88,7 +88,8 @@ public sealed class CloudAdapterRealKeyringTests
         Assert.True(selection.Select("openai-compatible"));
         var factory = provider.GetRequiredService<IHttpClientFactory>();
         return new ModelRouter([new OllamaProvider(factory, config), new LlamaCppProvider(factory, config),
-                new OpenAiCompatibleProvider(factory, config, provider.GetRequiredService<IProviderCredentialStore>())],
+                new OpenAiCompatibleProvider(factory, config, provider.GetRequiredService<IProviderCredentialStore>()),
+                LlamaCppProvider.Colibri(factory, new ColibriServer(new Colibri(config), factory, config), null)],
             selection, provider.GetRequiredService<InferenceTokenSettings>());
     }
 

@@ -83,7 +83,7 @@ class Handler(BaseHTTPRequestHandler):
                 content = json.dumps({"message": {"role": "assistant", "content": "Nexus mock response: " + last_user(body)},
                                       "done": True}).encode()
             elif self.path == "/v1/chat/completions":
-                message = body.get("messages", [{}])[0].get("content", "")
+                message = last_user(body)
                 content = json.dumps({"choices":[{"message":{"role":"assistant","content":"Nexus llama mock: " + message}}]}).encode()
             elif body.get("keep_alive") == 0 and "prompt" not in body:
                 content = json.dumps({"response": "", "done": True}).encode()
@@ -104,7 +104,7 @@ class Handler(BaseHTTPRequestHandler):
     def stream(self, body):
         """Streaming replies, word by word: Ollama NDJSON or OpenAI-style SSE."""
         if self.path == "/v1/chat/completions":
-            text = "Nexus llama mock: " + body.get("messages", [{}])[0].get("content", "")
+            text = "Nexus llama mock: " + last_user(body)
         elif self.path == "/api/chat":
             text = "Nexus mock response: " + last_user(body)
         elif isinstance(body.get("prompt"), str):

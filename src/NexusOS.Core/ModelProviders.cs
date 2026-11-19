@@ -9,7 +9,9 @@ public static class ProviderNames
     public const string Local = "local";
     public const string LlamaCpp = "llama-cpp";
     public const string OpenAiCompatible = "openai-compatible";
-    public static readonly string[] All = [Local, LlamaCpp, OpenAiCompatible];
+    // The very large model: colibri, experts read from the disk (Colibri.cs).
+    public const string Colibri = "colibri";
+    public static readonly string[] All = [Local, LlamaCpp, OpenAiCompatible, Colibri];
 
     public static string? Normalise(string? name) =>
         All.FirstOrDefault(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase));
@@ -374,43 +376,88 @@ public sealed class OllamaProvider : IModelProvider
     }
 }
 
+// A Core-managed local server speaking the OpenAI chat API: llama.cpp (the
+// large model, or any GGUF), and with Colibri(...) the very large model.
 public sealed class LlamaCppProvider : IModelProvider
 {
     private readonly IHttpClientFactory _factory;
-    private readonly LlamaServerProcess? _process;
+    private readonly IManagedModelServer? _process;
+    private readonly string _label;
     public string Endpoint { get; }
     public string Model { get; }
-    public string Name => ProviderNames.LlamaCpp;
+    public string Name { get; }
     public bool SupportsUnload => _process is not null;
 
-    public LlamaCppProvider(IHttpClientFactory factory, IConfiguration config, LlamaServerProcess? process = null)
+    // Run before the managed server starts: frees the other models' memory (16 GB does not hold two).
+    private readonly Func<CancellationToken, Task>? _beforeStart;
+
+    public LlamaCppProvider(IHttpClientFactory factory, IConfiguration config, LlamaServerProcess? process = null,
+        Func<CancellationToken, Task>? beforeStart = null)
+        : this(factory, process?.IsConfigured == true ? process : null,
+               process?.IsConfigured == true ? process.Endpoint : config["NEXUS_LLAMA_ENDPOINT"] ?? "http://127.0.0.1:8080",
+               ProviderNames.LlamaCpp, config["NEXUS_LARGE_MODEL_NAME"] ?? config["NEXUS_LLAMA_MODEL"] ?? "default",
+               "Local llama.cpp server", beforeStart)
+    {
+        // Models that think before answering (gpt-oss) take a "reasoning effort"; low keeps answers quick on a laptop.
+        var effort = config["NEXUS_LLAMA_REASONING_EFFORT"]?.Trim().ToLowerInvariant();
+        TemplateArgs = effort is "low" or "medium" or "high" ? new Dictionary<string, string> { ["reasoning_effort"] = effort } : null;
+    }
+
+    private LlamaCppProvider(IHttpClientFactory factory, IManagedModelServer? process, string endpoint, string name, string model,
+        string label, Func<CancellationToken, Task>? beforeStart)
     {
         _factory = factory;
-        _process = process?.IsConfigured == true ? process : null;
-        var endpoint = _process?.Endpoint ?? config["NEXUS_LLAMA_ENDPOINT"] ?? "http://127.0.0.1:8080";
+        _beforeStart = beforeStart;
+        _process = process;
+        _label = label;
         ProviderEndpointGuard.RequireLoopback(endpoint);
         Endpoint = endpoint.TrimEnd('/');
-        Model = config["NEXUS_LLAMA_MODEL"] ?? "default";
+        Name = name;
+        Model = model;
+    }
+
+    // The very large model, on colibri's own server (Colibri.cs).
+    public static LlamaCppProvider Colibri(IHttpClientFactory factory, ColibriServer server, Func<CancellationToken, Task>? beforeStart) =>
+        new(factory, server, server.Endpoint, ProviderNames.Colibri, ColibriServer.ModelId, "The very large model", beforeStart);
+
+    public Dictionary<string, string>? TemplateArgs { get; private init; }
+    private Dictionary<string, object> Body(object messages, bool stream, InferenceTokenBudget budget)
+    {
+        var body = new Dictionary<string, object>
+        {
+            ["model"] = Model, ["messages"] = messages, ["stream"] = stream, ["max_tokens"] = budget.ReservedOutputTokens
+        };
+        if (TemplateArgs is not null) body["chat_template_kwargs"] = TemplateArgs;
+        return body;
+    }
+
+    private async Task EnsureRunningAsync(CancellationToken ct)
+    {
+        if (_process is null) return;
+        if (!_process.IsRunning && _beforeStart is not null)
+        {
+            try { await _beforeStart(ct); }
+            catch (Exception ex) when (ex is ProviderException or HttpRequestException) { }
+        }
+        await _process.EnsureRunningAsync(ct);
     }
 
     public async Task<string> AskAsync(string prompt, InferenceTokenBudget budget, CancellationToken ct, ChatContext? context = null)
     {
-        if (_process is not null) await _process.EnsureRunningAsync(ct);
-        return await ProviderHttp.SendAsync("Local llama.cpp server", token => _factory.CreateClient("ai").PostAsJsonAsync(
+        await EnsureRunningAsync(ct);
+        return await ProviderHttp.SendAsync(_label, token => _factory.CreateClient("ai").PostAsJsonAsync(
                 Endpoint + "/v1/chat/completions",
-                new { model = Model, messages = ProviderHttp.Messages(prompt, context), stream = false,
-                      max_tokens = budget.ReservedOutputTokens }, token),
+                Body(ProviderHttp.Messages(prompt, context), false, budget), token),
             root => root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString(), ct);
     }
 
     public async IAsyncEnumerable<string> StreamAsync(string prompt, InferenceTokenBudget budget,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct, ChatContext? context = null)
     {
-        if (_process is not null) await _process.EnsureRunningAsync(ct);
-        await foreach (var piece in ProviderHttp.StreamAsync("Local llama.cpp server",
+        await EnsureRunningAsync(ct);
+        await foreach (var piece in ProviderHttp.StreamAsync(_label,
                            token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"), Endpoint + "/v1/chat/completions",
-                               new { model = Model, messages = ProviderHttp.Messages(prompt, context), stream = true,
-                                     max_tokens = budget.ReservedOutputTokens }, token),
+                               Body(ProviderHttp.Messages(prompt, context), true, budget), token),
                            ProviderHttp.ParseSseLine, ct))
             yield return piece;
     }
@@ -428,14 +475,20 @@ public sealed class LlamaCppProvider : IModelProvider
     public async IAsyncEnumerable<TurnPiece> StreamTurnAsync(IReadOnlyList<TurnMessage> messages, IReadOnlyList<ToolSpec> tools,
         InferenceTokenBudget budget, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
-        if (_process is not null) await _process.EnsureRunningAsync(ct);
+        await EnsureRunningAsync(ct);
         if (!ToolsLikely) tools = [];
-        await foreach (var piece in ProviderHttp.WithToolFallback(withTools => ProviderHttp.StreamTurnAsync("Local llama.cpp server",
+        await foreach (var piece in ProviderHttp.WithToolFallback(withTools => ProviderHttp.StreamTurnAsync(_label,
                            token => ProviderHttp.PostStreamAsync(_factory.CreateClient("ai"), Endpoint + "/v1/chat/completions",
-                               OpenAiTurnBody(Model, messages, withTools ? tools : [], budget), token),
+                               WithTemplateArgs(OpenAiTurnBody(Model, messages, withTools ? tools : [], budget)), token),
                            new OpenAiTurnParser(), withTools, ct), tools.Count > 0, ct,
                            refused: () => _toolsRefusedAt = DateTimeOffset.UtcNow))
             yield return piece;
+    }
+
+    private Dictionary<string, object> WithTemplateArgs(Dictionary<string, object> body)
+    {
+        if (TemplateArgs is not null) body["chat_template_kwargs"] = TemplateArgs;
+        return body;
     }
 
     internal static Dictionary<string, object> OpenAiTurnBody(string model, IReadOnlyList<TurnMessage> messages,
@@ -451,12 +504,12 @@ public sealed class LlamaCppProvider : IModelProvider
     }
 
     public async Task<bool?> IsAvailableAsync(CancellationToken ct) =>
-        await ProviderHttp.ProbeAsync(_factory.CreateClient("ai"), Endpoint + "/health", ct);
+        await ProviderHttp.ProbeAsync(_factory.CreateClient("ai"), Endpoint + (_process?.HealthPath ?? "/health"), ct);
 
     public async Task UnloadAsync(CancellationToken ct)
     {
         if (_process is null)
-            throw new ProviderException("Unload requires a Core-managed llama.cpp server (NEXUS_LLAMA_SERVER_BIN).", 409);
+            throw new ProviderException("Unload requires a Core-managed server (NEXUS_LLAMA_SERVER_BIN).", 409);
         await _process.StopAsync(ct);
     }
 }
@@ -565,8 +618,18 @@ public sealed class ModelRouter
     private readonly InferenceTokenSettings _tokens;
     private readonly Dictionary<string, IModelProvider> _providers;
 
-    public ModelRouter(IEnumerable<IModelProvider> providers, ProviderStore store, InferenceTokenSettings tokens)
+    private readonly LargeModel? _large;
+    private readonly LlamaServerProcess? _llama;
+    private readonly Colibri? _colibri;
+    private readonly ColibriServer? _colibriServer;
+
+    public ModelRouter(IEnumerable<IModelProvider> providers, ProviderStore store, InferenceTokenSettings tokens,
+        LargeModel? large = null, LlamaServerProcess? llama = null, Colibri? colibri = null, ColibriServer? colibriServer = null)
     {
+        _large = large is { Configured: true } ? large : null;
+        _llama = llama;
+        _colibri = colibri;
+        _colibriServer = colibriServer;
         _store = store;
         _tokens = tokens;
         _providers = providers.ToDictionary(x => x.Name, StringComparer.Ordinal);
@@ -574,7 +637,24 @@ public sealed class ModelRouter
             throw new InvalidOperationException("Provider registry does not match the supported provider names.");
     }
 
-    public IModelProvider Current => _providers[_store.Selected];
+    // The provider the person chose. With the large model chosen (or preferred
+    // on this computer and nothing chosen yet) but not usable right now (not
+    // downloaded, too little free memory, failed to start), the standard
+    // model answers instead, so Nexus always has something to answer with.
+    public IModelProvider Current
+    {
+        get
+        {
+            var selected = _store.Selected;
+            // The very large model, chosen but not able to answer yet (downloading, failed): the standard one answers.
+            if (selected == ProviderNames.Colibri && (_colibri is null || _colibri.Blocked(_colibriServer?.IsRunning == true) is not null))
+                selected = ProviderNames.Local;
+            if (_large is null) return _providers[selected];
+            if (selected == ProviderNames.Local && _large.Preferred && _store.SelectedAt is null) selected = ProviderNames.LlamaCpp;
+            if (selected == ProviderNames.LlamaCpp && _large.Blocked(_llama?.IsRunning == true, checkMemory: false) is not null) selected = ProviderNames.Local;
+            return _providers[selected];
+        }
+    }
 
     public async Task<(string Answer, string Provider)> AskAsync(string prompt, CancellationToken ct, ChatContext? context = null)
     {

@@ -605,7 +605,7 @@ static int RunTrial(string[] trialArgs)
 }
 static void Usage()
 {
-    Console.WriteLine("nexus [health [report]|fixit <problem>|fixit apply <fix id> <token>|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge|journal [--today] [--kind K]|journal forget-today|try <app> [-- args]|try keep <app>]");
+    Console.WriteLine("nexus [health [report]|fixit <problem>|fixit apply <fix id> <token>|system|providers|status|unload|history|clear-history|use <local|llama-cpp|colibri|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge|journal [--today] [--kind K]|journal forget-today|try <app> [-- args]|try keep <app>]");
     Console.WriteLine("nexus apps details <flathub id> | apps record --source flathub|apt --op install|remove --id <id> [--version V] [--box B] [--isolated] [--undoes N]");
     Console.WriteLine(RulesCommand.Usage);
     Console.WriteLine(ActionsCommand.Usage);
@@ -619,7 +619,7 @@ static class BridgeApi
     private static readonly string[] Prefixes =
         ["/journal", "/fixit", "/health/report", "/search", "/rules", "/events", "/guardian/propose", "/guardian/preview",
          "/guardian/proposals", "/guardian/review", "/guardian/stage",
-         "/try/keep", "/apps", "/settings/plan", "/workspaces", "/history", "/system", "/images", "/explain/keep", "/vision", "/voice", "/movein", "/actions"];
+         "/try/keep", "/apps", "/settings/plan", "/workspaces", "/history", "/system", "/images", "/explain/keep", "/vision", "/voice", "/movein", "/model/large", "/model/colibri", "/actions"];
 
     public static bool Allowed(string method, string path) =>
         method is "GET" or "POST" or "DELETE" && path.StartsWith('/') && !path.Contains("..") &&

@@ -2,9 +2,10 @@ import QtQuick
 import "../lib/installer.mjs" as I
 
 // Disk: the computer's disks (from nexus-install --probe-json), then what to
-// do with the chosen one: erase it, or install alongside what is there, in
-// its free space. Alongside is offered only when nexus-install's plan says it
-// is safe; otherwise its reason is shown (often: make room in Windows first).
+// do with the chosen one: install alongside what is there, in its free space;
+// replace one of its partitions; or erase it. Each is offered only when
+// nexus-install's plan says it is safe; otherwise its reason is shown (often:
+// make room in Windows first). Everything is chosen here: no terminal.
 Column {
     id: page
     property var app
@@ -46,8 +47,37 @@ Column {
             : (page.app.choices.alongside.reason || "This disk has nothing to install beside.")
         note: (page.app.choices.alongside.warnings || []).join("\n")
         enabled: page.app.choices.alongside.possible
-        selected: page.app.alongside
-        onChosen: page.app.alongside = true
+        selected: page.app.alongside && page.app.partition === ""
+        onChosen: { page.app.alongside = true; page.app.partition = "" }
+    }
+    Card {
+        visible: page.app.disk !== ""
+        theme: page.theme
+        danger: true
+        title: "Replace a partition"
+        detail: page.app.choices.replace.possible
+            ? "Choose one partition below: only it is deleted, and NexusOS goes in its place. The rest of the disk is not changed."
+            : (page.app.choices.replace.reason || "No partition on this disk can be replaced.")
+        enabled: page.app.choices.replace.possible
+        selected: page.app.partition !== ""
+        onChosen: {
+            const first = page.app.choices.replace.partitions.find(p => p.possible);
+            if (first) { page.app.alongside = false; page.app.partition = first.path }
+        }
+    }
+    Repeater {
+        model: page.app.disk !== "" && page.app.choices.replace.possible ? page.app.choices.replace.partitions : []
+        delegate: Card {
+            required property var modelData
+            x: 28; width: page.width - 28
+            theme: page.theme
+            danger: true
+            title: modelData.path + ": " + I.partitionTitle(modelData)
+            detail: modelData.possible ? (modelData.warning || "") : modelData.reason
+            enabled: modelData.possible
+            selected: page.app.partition === modelData.path
+            onChosen: { page.app.alongside = false; page.app.partition = modelData.path }
+        }
     }
     Card {
         visible: page.app.disk !== ""
@@ -58,7 +88,7 @@ Column {
             ? "Everything on " + (page.app.diskInfo ? I.diskTitle(page.app.diskInfo) : "it") + " is deleted, and NexusOS uses all of it."
             : page.app.choices.erase.reason
         enabled: page.app.choices.erase.possible
-        selected: !page.app.alongside && page.app.choices.erase.possible
-        onChosen: page.app.alongside = false
+        selected: !page.app.alongside && page.app.partition === "" && page.app.choices.erase.possible
+        onChosen: { page.app.alongside = false; page.app.partition = "" }
     }
 }

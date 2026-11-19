@@ -12,7 +12,7 @@ INSTALLER = (QML / "Installer.qml").read_text()
 LIVE = (QML / "live.qml").read_text()
 ISO = (ROOT / "nix/installer/iso.nix").read_text()
 SCRIPT = (ROOT / "nix/installer/nexus-install.sh").read_text()
-PAGES = ["Field", "Card", "DiskPage", "YouPage", "TimePage", "SummaryPage", "ProgressPage"]
+PAGES = ["Field", "Card", "DiskPage", "KeyboardPage", "YouPage", "TimePage", "SummaryPage", "ProgressPage"]
 
 
 class GraphicalInstaller(unittest.TestCase):
@@ -28,10 +28,17 @@ class GraphicalInstaller(unittest.TestCase):
     def test_every_page_is_there_and_used(self):
         for page in PAGES:
             self.assertTrue((QML / "installer" / f"{page}.qml").exists(), page)
-        for page in ["DiskPage", "YouPage", "TimePage", "SummaryPage", "ProgressPage"]:
+        for page in ["DiskPage", "KeyboardPage", "YouPage", "TimePage", "SummaryPage", "ProgressPage"]:
             self.assertIn(page + " {", INSTALLER)
         steps = re.search(r"STEPS = \[(.*?)\]", (QML / "lib/installer.mjs").read_text()).group(1)
-        self.assertEqual(re.findall(r'"(\w+)"', steps), ["welcome", "disk", "you", "time", "summary", "install", "done"])
+        self.assertEqual(re.findall(r'"(\w+)"', steps), ["welcome", "disk", "keyboard", "you", "time", "summary", "install", "done"])
+
+    def test_choosing_a_layout_switches_the_live_keyboard_before_the_password(self):
+        self.assertIn('Quickshell.execDetached([hyprctl, "keyword", "input:kb_layout", id])', INSTALLER)
+        self.assertIn('if (step === "keyboard" && keyboard) setKeyboard(keyboard)', INSTALLER)
+        self.assertIn("if (found.keyboard && !win.keyboard) win.keyboard = found.keyboard", INSTALLER)
+        page = (QML / "installer/KeyboardPage.qml").read_text()
+        self.assertIn("page.app.setKeyboard(modelData.id)", page)
 
     def test_it_is_an_app_window_in_the_nexusos_style(self):
         self.assertRegex(INSTALLER, r"(?m)^NexusWindow \{")

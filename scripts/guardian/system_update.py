@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Security updates as Guardian changes: the pieces the update check, builder, broker and boot check share.
+"""Security updates and NexusOS updates as Guardian changes: the pieces the update check, builder, broker and boot check share.
 
 An update is the host's own configuration, without any overlay, evaluated
-with a newer flake.lock in which only nixpkgs moved, along the same release
-branch (nixos-26.05). The update check (update_check.py, a root service)
-writes that lock into a root-owned directory:
+with a newer flake.lock. In it either only nixpkgs moved, along the same
+release branch (nixos-26.05): security updates; or NexusOS itself moved
+forward along its own release branch (an installed system follows
+github:<owner>/<repo>/release, flake.nix's nexusRelease), bringing the
+nixpkgs that release was tested with, with security updates on top. The
+update check (update_check.py, a root service) writes that lock into a
+root-owned directory:
 
   /var/lib/nexus-updates/            0700 root
     status.json                      the last check: up-to-date, available, low-disk, offline or failed
-    update.json                      the update waiting: lockHash, previousLockHash, nixpkgs before/after
+    update.json                      the update waiting: lockHash, previousLockHash, nixpkgs before/after,
+                                     and nexusos before/after when NexusOS itself moves
     locks/<sha256>.lock              the locks themselves, by hash (the newest few)
 
 Nothing else names a lock: Core and the person send only its hash, and the
@@ -34,6 +39,7 @@ MAX_LOCK_BYTES = 1024 * 1024
 KEEP_LOCKS = 3
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 REV = re.compile(r"[0-9a-f]{40}\Z")
+OWNER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}\Z")
 BRANCH = re.compile(r"nixos-[0-9]{2}\.[0-9]{2}\Z")
 PACKAGE = re.compile(r"[A-Za-z0-9+._-]{1,100}\Z")
 VERSION = re.compile(r"[A-Za-z0-9+._~, -]{0,100}\Z")
@@ -41,7 +47,7 @@ MAX_LISTED = 16
 # Listed first in the dialog, in this order, when they changed; then the rest by name.
 NOTABLE = (("linux", "Linux"), ("firefox", "Firefox"), ("chromium", "Chromium"), ("libreoffice", "LibreOffice"),
            ("vlc", "VLC"), ("systemd", "systemd"), ("glibc", "glibc"), ("openssl", "OpenSSL"), ("openssh", "OpenSSH"),
-           ("nss", "NSS"), ("mesa", "Mesa"), ("curl", "curl"), ("sudo", "sudo"), ("polkit", "polkit"))
+           ("nss", "NSS"), ("mesa", "Mesa"), ("curl", "curl"), ("sudo", "sudo"), ("polkit", "polkit"))  # guardian-scan: read-only (package names, nothing is run)
 LABELS = dict(NOTABLE)
 
 
@@ -99,10 +105,47 @@ def revision(node):
 
 
 def compare(old_bytes, new_bytes):
-    """What an updated lock changes: None if nothing, else the nixpkgs revisions, or UpdateError.
+    """What an updated lock changes when only nixpkgs may move: None, the nixpkgs revisions, or UpdateError."""
+    change = compare_update(old_bytes, new_bytes)
+    if change is not None and "nexusos" in change:
+        raise UpdateError("The update changes more than nixpkgs")
+    return None if change is None else change["nixpkgs"]
 
-    Only nexusos's nixpkgs node may differ, only in what is locked, and only
-    forward along the same release branch; any other difference is refused.
+
+def _nexus_name(lock):
+    try:
+        nexus = lock["nodes"][lock["root"]]["inputs"][NEXUS_INPUT]
+    except (KeyError, TypeError):
+        raise UpdateError("The lock file does not have NexusOS's input") from None
+    if not isinstance(nexus, str) or nexus not in lock["nodes"]:
+        raise UpdateError("The lock file does not have NexusOS's input")
+    return nexus
+
+
+def release(node):
+    """A NexusOS node that follows a release branch on GitHub: (source, {rev, lastModified}), or None."""
+    locked, original = node.get("locked"), node.get("original")
+    if not isinstance(locked, dict) or not isinstance(original, dict) or original.get("type") != "github" \
+            or locked.get("type") != "github" or set(original) != {"type", "owner", "repo", "ref"}:
+        return None
+    if (locked.get("owner"), locked.get("repo")) != (original["owner"], original["repo"]) \
+            or not all(isinstance(original[k], str) and OWNER.fullmatch(original[k]) for k in ("owner", "repo", "ref")) \
+            or not isinstance(locked.get("rev"), str) or REV.fullmatch(locked["rev"]) is None \
+            or type(locked.get("lastModified")) is not int:
+        return None
+    return (f"github:{original['owner']}/{original['repo']}/{original['ref']}",
+            {"rev": locked["rev"], "lastModified": locked["lastModified"]})
+
+
+def compare_update(old_bytes, new_bytes):
+    """What an updated lock changes: None if nothing, else {nixpkgs, nexusos (when NexusOS moved)}, or UpdateError.
+
+    Security updates: only nexusos's nixpkgs node may differ, only in what is
+    locked, and only forward along the same release branch. A NexusOS update:
+    the nexusos node moves forward along the release branch it follows (the
+    same repository and branch), and what it brings (its inputs, among them
+    nixpkgs, on a NixOS release branch) may differ with it. The root of the
+    lock, and so what the host flake asks for, never changes.
     """
     try:
         old, new = json.loads(old_bytes), json.loads(new_bytes)
@@ -113,6 +156,12 @@ def compare(old_bytes, new_bytes):
     if not isinstance(old, dict) or not isinstance(new, dict) or set(old) != set(new) \
             or any(old[key] != new[key] for key in old if key != "nodes"):
         raise UpdateError("The update changes more than nixpkgs")
+    if not isinstance(old.get("nodes"), dict) or not isinstance(new.get("nodes"), dict) \
+            or old["nodes"].get(old.get("root")) != new["nodes"].get(new.get("root")):
+        raise UpdateError("The update changes what this computer's configuration asks for")
+    nexus = _nexus_name(old)
+    if old["nodes"][nexus] != new["nodes"][nexus]:
+        return _nexus_moved(old, new, nexus)
     name = _nixpkgs_name(old)
     if _nixpkgs_name(new) != name or not isinstance(old["nodes"], dict) or set(old["nodes"]) != set(new["nodes"]):
         raise UpdateError("The update changes more than nixpkgs")
@@ -127,7 +176,25 @@ def compare(old_bytes, new_bytes):
         raise UpdateError("The update would go back to an older nixpkgs")
     if was == now:
         return None
-    return {"branch": before["original"]["ref"], "before": was, "after": now}
+    return {"nixpkgs": {"branch": before["original"]["ref"], "before": was, "after": now}}
+
+
+def _nexus_moved(old, new, nexus):
+    before_node, after_node = old["nodes"][nexus], new["nodes"][nexus]
+    before, after = release(before_node), release(after_node)
+    if before is None or after is None:
+        raise UpdateError("NexusOS changed, but this computer does not follow a NexusOS release")
+    if before[0] != after[0] or before_node.get("original") != after_node.get("original"):
+        raise UpdateError("The update changes where NexusOS comes from")
+    if after[1]["lastModified"] <= before[1]["lastModified"]:
+        raise UpdateError("The update would go back to an older NexusOS")
+    old_name, new_name = _nixpkgs_name(old), _nixpkgs_name(new)
+    was, now = revision(old["nodes"][old_name]), revision(new["nodes"][new_name])
+    branch = new["nodes"][new_name]["original"].get("ref")
+    if not isinstance(branch, str) or BRANCH.fullmatch(branch) is None:
+        raise UpdateError("NexusOS's nixpkgs is not on a NixOS release branch")
+    return {"nixpkgs": {"branch": branch, "before": was, "after": now},
+            "nexusos": {"source": before[0], "before": before[1], "after": after[1]}}
 
 
 # --- the update waiting -----------------------------------------------------
@@ -195,11 +262,11 @@ def pending(updates_dir=UPDATES_DIR, host_dir=HOST_FLAKE_DIR, *, owner=0):
         return None
     if sha256(current) != previous:
         return None  # Made from another lock: installed already, or /etc/nixos changed since.
-    summary = compare(current, read_lock(updates_dir, lock_hash, owner=owner))
-    if summary is None or summary != record.get("nixpkgs"):
+    change = compare_update(current, read_lock(updates_dir, lock_hash, owner=owner))
+    if change is None or change["nixpkgs"] != record.get("nixpkgs") or change.get("nexusos") != record.get("nexusos"):
         raise UpdateError("Guardian's update record does not match its lock file")
     checked = record.get("checkedAt")
-    return {"lockHash": lock_hash, "previousLockHash": previous, "nixpkgs": summary,
+    return {"lockHash": lock_hash, "previousLockHash": previous, **change,
             "checkedAt": checked if type(checked) is int else None}
 
 

@@ -72,7 +72,7 @@ ShellRoot {
                         spacing: 10
                         Button { theme: root.theme; label: "Restart"; onClicked: Quickshell.execDetached(["systemctl", "reboot"]) }
                         Button { theme: root.theme; label: "Shut down"; onClicked: Quickshell.execDetached(["systemctl", "poweroff"]) }
-                        Button { theme: root.theme; label: "Install in a terminal"; onClicked: root.terminalInstall() }
+                        Button { theme: root.theme; label: "Install in a terminal (advanced)"; onClicked: root.terminalInstall() }
                     }
                 }
             }

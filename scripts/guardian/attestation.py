@@ -64,6 +64,7 @@ def validate_before(before):
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 REV = re.compile(r"[0-9a-f]{40}\Z")
 BRANCH = re.compile(r"nixos-[0-9]{2}\.[0-9]{2}\Z")
+SOURCE = re.compile(r"github:[A-Za-z0-9][A-Za-z0-9._-]{0,99}/[A-Za-z0-9][A-Za-z0-9._-]{0,99}/[A-Za-z0-9][A-Za-z0-9._/-]{0,99}\Z")
 NAME = re.compile(r"[A-Za-z0-9+._-]{1,100}\Z")
 VERSION = re.compile(r"[A-Za-z0-9+._~, -]{1,100}\Z")
 MAX_LISTED = 16
@@ -76,9 +77,22 @@ def _count(value):
 def validate_update(update):
     """{lockHash, previousLockHash, nixpkgs: {branch, before, after: {rev, lastModified}},
     packages: [{name, before, after}] or null (the list could not be read), otherPackages, added, removed}"""
-    if not isinstance(update, dict) or set(update) != {"lockHash", "previousLockHash", "nixpkgs", "packages",
-                                                       "otherPackages", "added", "removed"}:
+    fields = {"lockHash", "previousLockHash", "nixpkgs", "packages", "otherPackages", "added", "removed"}
+    if not isinstance(update, dict) or set(update) not in (fields, fields | {"nexusos"}):
         raise ValueError("update has unexpected fields")
+    if "nexusos" in update:
+        # A NexusOS update: the release branch it follows, and the commits before and after.
+        nexus = update["nexusos"]
+        if not isinstance(nexus, dict) or set(nexus) != {"source", "before", "after"} or not isinstance(nexus["source"], str) \
+                or SOURCE.fullmatch(nexus["source"]) is None:
+            raise ValueError("update must name NexusOS's release branch")
+        for side in ("before", "after"):
+            value = nexus[side]
+            if not isinstance(value, dict) or set(value) != {"rev", "lastModified"} or not isinstance(value["rev"], str) \
+                    or REV.fullmatch(value["rev"]) is None or type(value["lastModified"]) is not int:
+                raise ValueError("update must name NexusOS commits")
+        if nexus["after"]["lastModified"] <= nexus["before"]["lastModified"]:
+            raise ValueError("update must move NexusOS forward")
     if not all(isinstance(update[k], str) and HEX64.fullmatch(update[k]) for k in ("lockHash", "previousLockHash")):
         raise ValueError("update must name lock hashes")
     nixpkgs = update["nixpkgs"]

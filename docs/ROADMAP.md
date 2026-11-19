@@ -1,6 +1,6 @@
 # NexusOS — roadmap
 
-**Baseline:** 2026-10-14. **Updated:** 2026-10-21. Milestones are evidence-gated, not dated.
+**Baseline:** 2026-10-14. **Updated:** 2026-11-19. Milestones are evidence-gated, not dated.
 
 A milestone is **DONE** only when every gate has reproducible evidence: CI,
 VM tests and, where stated, real hardware. Passing CI or a VM is never
@@ -17,12 +17,12 @@ Older dated progress notes are kept in [history](evidence/history.md).
 | M3 | Guardian preview and approval | **DONE in VM (pending review)** | Shared schema, Ed25519 attestations, root broker as a hardened NixOS service, root-console approval, AI-proposed typed plans with injection tests ([M3](evidence/M3.md), [ADR-002](adr/002-guardian-candidate-model.md)) |
 | M4 | Guardian rollback | **VM DONE; hardware open** | One-time trial boots on a real GRUB disk. A healthy trial is confirmed; a broken trial panics and falls back unattended. User-data snapshots are separate from OS generations ([M4](evidence/M4.md)). Physical-hardware drill outstanding |
 | M5 | Inference manager | **IN PROGRESS: tooling done, hardware open** | Provider registry, managed llama.cpp (start on demand, stop on unload), token budgets, RAM/VRAM telemetry, benchmark through Core, CI CPU run ([M5](evidence/M5.md)). 8 GB and 24 GB GPU runs and the gaming-reclaim test outstanding |
-| M6 | Desktop alpha | **IN PROGRESS: desktop built and passing its VM test** | `nixosModules.desktop` logs into Hyprland running the Nexus shell (SpaceUI, Quickshell): Nova core, app orbit from Core suggestions, streamed answers, open windows as launcher planets, a real system panel, offline mode, and a lock screen that covers the shell. Covered end to end by the `hyprland-desktop` VM test ([M6](evidence/M6.md)). Still needs your input on Settings, Files and the dark colour set |
-| M7 | OS alpha image | **IN PROGRESS: installer image built** | `nix build .#iso` makes a live USB image that installs NexusOS with `nexus-install` ([INSTALL](INSTALL.md)), covered by the `nexus-installer` VM test. Guardian is on in installed systems, with a local builder key made at first boot and the desktop's System change dialog. Disk encryption and the hardware matrix are still to do |
-| M8 | Context and search | TODO | |
-| M9 | Automation and skills | TODO | |
-| M10 | Voice and vision | TODO | |
-| M11 | Advanced optional | TODO | |
+| M6 | Desktop alpha | **BUILT; hardware open** | Hyprland with the Nexus shell (SpaceUI): Nova core, app orbit, streamed answers, floating or tiled windows with a top bar, Settings (every page, with search and AI help), graphical login and lock screens, Apps (Flathub, apt in a container, Try it), Code, Images, Explain, Describe this, voice, workspaces, game mode. VM tests cover the desktop and login ([M6](evidence/M6.md)). Not yet run on your laptop end to end |
+| M7 | OS alpha image | **BUILT; hardware open** | `nix build .#iso`: a live image whose graphical installer finds the hardware, picks drivers and a model, chooses keyboard and time zone, encrypts the disk (LUKS2) and installs offline, also beside Windows. The `nexus-installer` VM test installs to a blank encrypted disk and boots it in CI. A real-hardware install and the supported-hardware list are outstanding |
+| M8 | Context and search | **BUILT** | Search by words or meaning (Super+S), Nexus reads what it is allowed to (`inspect_system`, files, journal), teaching notes, the activity journal and Timeline |
+| M9 | Automation and skills | **BUILT** | Automations in plain words (rules engine), Fix it with read-only probes, Welcome bundles, Move in from an old Windows, Mac or Linux drive |
+| M10 | Voice and vision | **BUILT; hardware open** | Hold-to-talk voice, spoken replies, Describe this with a local vision model. Not yet tried on real microphones and screens |
+| M11 | Advanced optional | **PARTLY BUILT** | The large model (gpt-oss-20b, mixture of experts on llama.cpp) and the very large model (colibri, experts read from the disk, #68). Multi-machine inference and a marketplace are not started |
 
 ## Gates that need you or real hardware
 
@@ -88,9 +88,36 @@ log and telemetry behaviour; install, remove and rollback instructions; a
 reproducible acceptance demonstration. Source files existing is never
 enough to call a milestone shipped.
 
-## Next steps
+## What is left before a 1.0
 
-1. Merge the open stacked PRs after review.
-2. Complete the four operator and hardware gates above.
-3. **M6 desktop:** decide the Settings and Files apps, the dark colour set, and how Guardian change proposals appear on the desktop. Then run the shell on your own GPU.
-4. **M7:** a NixOS installer image built from `flake.nix`, onboarding (key provisioning, allowed users) and a supported-hardware matrix.
+**Needs your decision**
+
+1. **Publish the first release.** NexusOS updates are built: installed
+   computers follow the `release` branch and Guardian offers each new release.
+   Make the repository public, then push a tag (`git tag v0.4.0 && git push
+   origin v0.4.0`): `.github/workflows/release.yml` builds the image, publishes
+   it in parts under GitHub's 2 GB limit, and moves `release`. For one-file
+   downloads, also host the image somewhere without that limit (SourceForge is
+   free for open-source projects; Cloudflare R2 is cheap with free downloads).
+
+**Needs real hardware (procedures in the evidence files)**
+
+4. Install from the USB stick on your laptop, offline, with encryption; send
+   `/var/log/nexus-install.log` if anything fails.
+5. Guardian on the installed system: a change approved with your password, its
+   trial boot, and a deliberately broken one falling back (M4 drill).
+6. The large and very large models on 16 GB: download, speed, tool calls.
+7. GPU profiles (8 GB and 24 GB) and the game-mode VRAM check (M5).
+8. Voice, Describe this, Move in from a real Windows drive.
+
+**Still to build**
+
+9. The start-up screen (Plymouth, built): check it on real hardware with the
+   install in 4, including typing the disk's password on it.
+10. Secure Boot (signed boot files, for computers that will not start without it).
+11. More languages than English, for the desktop and Nexus.
+
+**Review**
+
+12. An independent security review of Core, Guardian and the installer
+    (M2/M3 sign-off), and one live cloud answer with your API key (M1).

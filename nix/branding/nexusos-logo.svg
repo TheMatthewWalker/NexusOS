@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- The NexusOS mark: the Nova core (shell/qml/NovaCore.qml) with one orbit, in the SpaceUI colours. -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#7C6BFF" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#5A48F0" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#5A48F0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core" cx="40%" cy="36%" r="66%">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.16" stop-color="#E3EAFF"/>
+      <stop offset="0.48" stop-color="#8F7DFF"/>
+      <stop offset="0.82" stop-color="#3A2BB8"/>
+      <stop offset="1" stop-color="#160F55"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#86A8FF" stop-opacity="0.2"/>
+      <stop offset="0.5" stop-color="#E3EAFF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#86A8FF" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="252" fill="url(#glow)"/>
+  <g transform="rotate(-18 256 256)">
+    <!-- The far half of the orbit, behind the core. -->
+    <path d="M 56 256 A 200 60 0 0 1 456 256" fill="none" stroke="url(#ring)" stroke-width="6" stroke-opacity="0.55"/>
+  </g>
+  <circle cx="256" cy="256" r="104" fill="url(#core)"/>
+  <g transform="rotate(-18 256 256)">
+    <!-- The near half, in front of it, with a planet on it. -->
+    <path d="M 56 256 A 200 60 0 0 0 456 256" fill="none" stroke="url(#ring)" stroke-width="7"/>
+    <circle cx="398" cy="298" r="15" fill="#FFD166"/>
+  </g>
+</svg>

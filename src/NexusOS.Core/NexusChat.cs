@@ -169,6 +169,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
     public static string Doing(NexusAction action) => action.Name switch
     {
         "get_system_state" => "Looking at this computer",
+        "inspect_system" => "Looking at the system",
         "get_health_report" => "Checking the computer's health",
         "diagnose_problem" => "Running Fix it's checks",
         "search_files" => "Searching your files",
@@ -223,6 +224,19 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                     computerName = Environment.MachineName,
                     model = new { provider = router.Current.Name, name = router.Current.Model }
                 };
+            }
+            case "inspect_system":
+            {
+                var topic = Str(args, "topic");
+                object found;
+                try
+                {
+                    found = await services.GetRequiredService<SystemInspector>().LookAsync(topic,
+                        args["query"]?.GetValue<string>(), args["path"]?.GetValue<string>(), ct);
+                }
+                catch (ArgumentException ex) { throw new ActionRejectedException(ex.Message); }
+                await Read("Nexus looked at the system: " + topic, "inspect", ct);
+                return found;
             }
             case "get_health_report":
             {
@@ -296,7 +310,14 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             default: // get_settings
             {
                 var router = services.GetRequiredService<ModelRouter>();
+                var large = services.GetRequiredService<LargeModel>();
                 return new { desktop = DesktopSettings(), model = new { provider = router.Current.Name, name = router.Current.Model },
+                             // The mixture-of-experts model, if this computer has one set up (use_large_model switches).
+                             largeModel = large.Configured ? LargeModelEndpoints.View(large, services.GetRequiredService<ProviderStore>(),
+                                 services.GetRequiredService<LlamaServerProcess>()) : null,
+                             // The very large model (colibri), if set up here (use_very_large_model).
+                             veryLargeModel = services.GetRequiredService<Colibri>() is { Configured: true } colibri
+                                 ? await ColibriEndpoints.ViewAsync(colibri, services.GetRequiredService<ProviderStore>(), services.GetRequiredService<ColibriServer>(), ct) : null,
                              cloudAllowed = CloudEgressPolicy.IsExplicitlyAllowed(config) };
             }
         }
@@ -494,6 +515,24 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 return pending.Add(action, args, "Open the welcome setup", Perform("welcome.open"));
             case "check_for_updates":
                 return pending.Add(action, args, "Check for system security updates now");
+            case "use_large_model":
+            {
+                var large = services.GetRequiredService<LargeModel>();
+                if (!large.Configured) throw new ActionRejectedException("This computer has no large model set up; it needs 16 GB of memory.");
+                var on = args["on"]!.GetValue<bool>();
+                if (on && !large.Downloaded) throw new ActionRejectedException($"{large.Name} is not downloaded yet; it downloads when the computer is online.");
+                return pending.Add(action, args, on ? $"Answer with the large model, {large.Name} ({large.Split().Where})" : "Answer with the standard model");
+            }
+            case "use_very_large_model":
+            {
+                var colibri = services.GetRequiredService<Colibri>();
+                if (!colibri.Configured) throw new ActionRejectedException("This computer has no very large model set up.");
+                if (!colibri.CpuSupported()) throw new ActionRejectedException(colibri.Blocked(false)!);
+                var on = args["on"]!.GetValue<bool>();
+                if (!on) return pending.Add(action, args, "Answer with the standard model");
+                return pending.Add(action, args, colibri.Downloaded ? $"Answer with the very large model ({colibri.Model}); the first answer is slow while it loads"
+                    : $"Download the very large model ({colibri.Model}, a large download, in the background) and use it when it is ready");
+            }
             case "open_fix_it":
             {
                 var problem = Str(args, "problem");
@@ -632,6 +671,41 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
             if (requested) await Journal(JournalKinds.System, action, ct);
             return new ConfirmResult(requested ? "done" : "failed",
                 requested ? "Checking for updates. If there are any, Guardian builds and tests them, then asks for your approval." : message);
+        }
+        if (action.Action.Name == "use_large_model")
+        {
+            var large = services.GetRequiredService<LargeModel>();
+            var on = action.Args["on"]!.GetValue<bool>();
+            if (on && !large.Downloaded) return new ConfirmResult("failed", $"{large.Name} is not downloaded yet.");
+            services.GetRequiredService<ProviderStore>().Select(on ? ProviderNames.LlamaCpp : ProviderNames.Local);
+            // One model in memory at a time: the other leaves now.
+            try
+            {
+                if (on) await services.GetServices<IModelProvider>().First(p => p.Name == ProviderNames.Local).UnloadAsync(ct);
+                else await services.GetRequiredService<LlamaServerProcess>().StopAsync(ct);
+            }
+            catch (Exception ex) when (ex is ProviderException or HttpRequestException) { }
+            await Journal(JournalKinds.Setting, action, ct);
+            return new ConfirmResult("done", on
+                ? $"Nexus now answers with {large.Name}. The first answer takes longer while it loads; if memory runs short, the standard model answers instead."
+                : "Nexus now answers with the standard model.");
+        }
+        if (action.Action.Name == "use_very_large_model")
+        {
+            var colibri = services.GetRequiredService<Colibri>();
+            var on = action.Args["on"]!.GetValue<bool>();
+            if (on && !colibri.Downloaded)
+            {
+                colibri.Want(null);
+                await Journal(JournalKinds.Setting, action, ct);
+                return new ConfirmResult("done", $"Downloading {colibri.Model} in the background; Settings, Privacy and AI shows how far it is. Ask again to use it once it is ready.");
+            }
+            if (await ColibriEndpoints.UseAsync(on, colibri, services.GetRequiredService<ProviderStore>(), services.GetRequiredService<ColibriServer>(),
+                    services.GetServices<IModelProvider>(), services.GetRequiredService<ActivityJournal>(), ct) is { } refused)
+                return new ConfirmResult("failed", refused);
+            return new ConfirmResult("done", on
+                ? "Nexus now answers with the very large model. The first answer takes a while as it loads; if it cannot start, the standard model answers."
+                : "Nexus now answers with the standard model.");
         }
         if (action.Action.Name == "clean_up_pictures")
         {

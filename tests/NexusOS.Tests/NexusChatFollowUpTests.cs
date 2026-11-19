@@ -71,7 +71,8 @@ public sealed class NexusChatFollowUpTests : IDisposable
 
     // ---- 1. fewer tokens per question ----
 
-    public const int SimpleQuestionBudget = 600;
+    // Includes inspect_system, offered with every question so Nexus can look before it acts.
+    public const int SimpleQuestionBudget = 700;
 
     public static TheoryData<string, string[]> Representative => new()
     {
@@ -106,8 +107,8 @@ public sealed class NexusChatFollowUpTests : IDisposable
         using var factory = Factory(Model(Says("x")));
         var runner = factory.Services.GetRequiredService<ActionRunner>();
         var plain = runner.ToolsFor(ProviderNames.Local, "What is the capital of France?");
-        Assert.Equal(["get_system_state"], plain.Select(t => t.Name));
-        Assert.True(ActionSelection.Tokens(plain) < 60, $"{ActionSelection.Tokens(plain)} tokens");
+        Assert.Equal(["get_system_state", "inspect_system"], plain.Select(t => t.Name));
+        Assert.True(ActionSelection.Tokens(plain) < 220, $"{ActionSelection.Tokens(plain)} tokens");
         // Every action at once, as every question used to carry (by this estimate, which counts JSON generously).
         var all = ActionSelection.Tokens(runner.ToolsFor(ProviderNames.Local));
         var typical = Representative.Select(row => ActionSelection.Tokens(runner.ToolsFor(ProviderNames.Local, (string)row[0]))).Average();
@@ -129,11 +130,11 @@ public sealed class NexusChatFollowUpTests : IDisposable
     {
         // A question touching every group is offered every action: none is unreachable.
         var everything = ActionSelection.NamesFor(
-            "install an app, remove, try, health, settings, fix it, find files, every day, today, updates, a picture, describe the screen, code, workspace, move in, system")
+            "install an app, remove, try, health, settings, fix it, find files, every day, today, updates, a picture, describe the screen, code, workspace, move in, system, large model")
             .Concat(ActionSelection.FollowOn.Values.SelectMany(x => x)).Distinct();   // apply_fix comes after diagnose_problem
         Assert.Equal(NexusActions.All.Select(a => a.Name).Order(), everything.Order());
         // A plain question gets only "this computer": every action has keywords.
-        Assert.Equal(["get_system_state"], ActionSelection.NamesFor("hello"));
+        Assert.Equal(["get_system_state", "inspect_system"], ActionSelection.NamesFor("hello"));
     }
 
     [Fact]

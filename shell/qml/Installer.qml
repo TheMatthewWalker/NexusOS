@@ -35,6 +35,8 @@ NexusWindow {
     // The choices.
     property string disk: ""
     property bool alongside: false
+    // A partition to replace (its path), instead of the whole disk or its free space.
+    property string partition: ""
     property bool encrypt: true
     property string fullName: ""
     property string login: ""
@@ -43,6 +45,8 @@ NexusWindow {
     property string again: ""
     property string host: "nexus"
     property string timezone: "UTC"
+    // An XKB layout from the probe's list; the live session types with it as soon as it is chosen.
+    property string keyboard: ""
     property var progress: I.initialProgress()
 
     readonly property var diskInfo: probe ? (probe.disks.find(d => d.path === disk) || null) : null
@@ -61,20 +65,29 @@ NexusWindow {
         disk = path;
         // Alongside first when it is possible: it keeps what is there.
         alongside = choices.alongside.possible;
+        partition = "";
+    }
+    // The password typed next must be the one that unlocks the disk at start-up, with the same layout.
+    function setKeyboard(id) {
+        keyboard = id;
+        Quickshell.execDetached([hyprctl, "keyword", "input:kb_layout", id]);
     }
     function setFullName(text) {
         fullName = text;
         if (!loginEdited) login = I.suggestLogin(text);
     }
     function summaryState() {
-        return { disk: disk, diskInfo: diskInfo, alongside: alongside, systems: choices.alongside.systems,
+        return { disk: disk, diskInfo: diskInfo, alongside: alongside, partition: partition,
+                 partitionInfo: choices.replace.partitions.find(p => p.path === partition) || null, systems: choices.alongside.systems,
                  freeBytes: choices.alongside.freeBytes, encrypt: encrypt, fullName: fullName, login: login,
-                 host: host, timezone: timezone };
+                 host: host, timezone: timezone, keyboard: keyboard };
     }
     function canNext() {
         switch (step) {
             case "welcome": return !!probe;
-            case "disk": return disk !== "" && (alongside ? choices.alongside.possible : choices.erase.possible);
+            case "disk": return disk !== "" && (partition !== "" ? choices.replace.partitions.some(p => p.path === partition && p.possible)
+                                                : alongside ? choices.alongside.possible : choices.erase.possible);
+            case "keyboard": return keyboard !== "";
             case "you": return I.youReady({ fullName: fullName, login: login, password: password, again: again, host: host });
             case "time": return timezone !== "";
             default: return false;
@@ -112,6 +125,7 @@ NexusWindow {
             if (found) {
                 win.probe = found;
                 if (found.timezone) win.timezone = found.timezone;
+                if (found.keyboard && !win.keyboard) win.keyboard = found.keyboard;
                 const usable = found.disks.filter(d => !d.inUse);
                 if (usable.length === 1 && win.disk === "") win.chooseDisk(usable[0].path);
             } else {
@@ -219,6 +233,7 @@ NexusWindow {
                 Button { visible: win.probeError !== "" && !win.probing; theme: win.theme; label: "Look again"; onClicked: win.runProbe() }
             }
             DiskPage { visible: win.step === "disk"; width: parent.width; app: win; theme: win.theme }
+            KeyboardPage { visible: win.step === "keyboard"; width: parent.width; app: win; theme: win.theme }
             YouPage { id: youPage; visible: win.step === "you"; width: parent.width; app: win; theme: win.theme }
             TimePage { visible: win.step === "time"; width: parent.width; app: win; theme: win.theme }
             SummaryPage { visible: win.step === "summary"; width: parent.width; app: win; theme: win.theme }
@@ -232,12 +247,16 @@ NexusWindow {
                     width: parent.width; wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 15; lineHeight: 1.3
                     text: "Restart the computer and remove the USB stick when the screen goes dark." +
                           (win.encrypt ? " When it starts, type your password to unlock the disk, then again to log in." : "") +
-                          (win.alongside ? " The start-up menu lists NexusOS and Windows; NexusOS starts unless you choose Windows." : "")
+                          (win.alongside || win.partition ? " The start-up menu lists NexusOS and any other system on the disk; NexusOS starts unless you choose another." : "")
                 }
             }
         }
     }
-    onStepChanged: { body.contentY = 0; if (step === "you") youPage.focusFirst() }
+    onStepChanged: {
+        body.contentY = 0;
+        if (step === "keyboard" && keyboard) setKeyboard(keyboard);   // the guess, in use from now on
+        if (step === "you") youPage.focusFirst();
+    }
 
     // Back and Next, along the bottom.
     Item {
@@ -262,8 +281,8 @@ NexusWindow {
                 visible: win.step !== "install" && win.step !== "done"
                 enabled: win.step === "summary" || win.canNext()
                 theme: win.theme; primary: true
-                danger: win.step === "summary" && !win.alongside
-                label: win.step === "summary" ? (win.alongside ? "Install" : "Erase and install") : "Next"
+                danger: win.step === "summary" && (!win.alongside || win.partition !== "")
+                label: win.step === "summary" ? (win.partition ? "Replace and install" : win.alongside ? "Install" : "Erase and install") : "Next"
                 onClicked: win.next()
             }
             Button {

@@ -275,6 +275,7 @@ public static class FixItEndpoints
     public static IServiceCollection AddFixIt(this IServiceCollection services)
     {
         services.AddSingleton<ICommandRunner, ProcessCommandRunner>();
+        services.AddSingleton<SystemInspector>(); // Nexus's read-only look at the running system: SystemInspector.cs
         services.AddSingleton<ProbeRunner>();
         // Explicit factory: DI would otherwise pick the file-list constructor with an empty list.
         services.AddSingleton(_ => new FixLibrary());

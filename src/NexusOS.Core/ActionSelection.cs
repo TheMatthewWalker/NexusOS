@@ -20,7 +20,8 @@ public static class ActionSelection
     public const double CharsPerToken = 3.5;
     public const int FollowUpWords = 6;
 
-    public static readonly string[] Always = ["get_system_state"];
+    // "This computer" and the look at the running system: how Nexus works out what a request needs.
+    public static readonly string[] Always = ["get_system_state", "inspect_system"];
 
     private sealed record Group(string Name, Regex Words, string[] Actions);
 
@@ -70,6 +71,8 @@ public static class ActionSelection
         G("system", @"system|everyone|every (?:account|user)|all (?:users|accounts)|services?|ssh|remote|printers?|printing|print|" +
                     @"cups|flatpak|networkmanager|drivers?|guardian|server",
             "install_system_software", "change_system_option"),
+        G("model", @"models?|large|bigger|smarter|cleverer|standard|gpt-?oss|qwen|experts?|\bai\b|llm|brain",
+            "use_large_model", "use_very_large_model", "get_settings"),
     ];
 
     // Offered once a look-up has run, because only then are they useful: a fix

@@ -1,0 +1,85 @@
+name: NexusOS release
+# Publishing a release: push a tag such as v0.4.0 on a commit that is on main.
+#
+#   git tag v0.4.0 && git push origin v0.4.0
+#
+# This builds the installer image from that commit, checks it, publishes it
+# (in parts under 2 GB, GitHub's limit for a release file, with SHA256SUMS and
+# the command to join them) as a GitHub release, and then moves the `release`
+# branch to the commit. Installed computers follow that branch: Guardian's
+# weekly check finds the new commit, builds and tests it, and offers it as a
+# NexusOS update, approved with the person's password (docs/GUARDIAN-DEPLOYMENT.md).
+# The branch only moves forward, and only after the image built.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: An existing tag to publish, for example v0.4.0
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    name: Build and publish the release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Free runner disk for the image
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+      - name: The tag names a version and a commit on main
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Tags look like v0.4.0, not $TAG" >&2; exit 1; }
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main || { echo "$TAG is not on main" >&2; exit 1; }
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Tests that need no VM
+        run: |
+          python3 -m unittest discover -s tests/installer
+          python3 -m unittest discover -s tests/guardian
+      - name: Build the installer image
+        run: nix build .#iso --no-update-lock-file --print-build-logs
+      - name: The image says which release it is
+        run: |
+          rev="$(nix eval --raw --no-update-lock-file '.#nixosConfigurations.installer.config.environment.etc."nexusos-release.json".text' | jq -r .rev)"
+          [ "$rev" = "$(git rev-parse HEAD)" ] || { echo "the image does not record this commit ($rev)" >&2; exit 1; }
+      - name: Split it into parts GitHub accepts, with checksums
+        run: |
+          mkdir dist
+          iso="$(find -L result/iso -name '*.iso' | head -n1)"
+          name="nexusos-${TAG#v}-x86_64.iso"
+          cp "$iso" "dist/$name"
+          cd dist
+          sha256sum "$name" > SHA256SUMS
+          split -b 1900M -d -a 2 "$name" "$name.part-"
+          rm "$name"
+          sha256sum "$name".part-* >> SHA256SUMS
+          cat > README.txt <<EOF
+          NexusOS ${TAG}: the installer image, in parts (GitHub limits each file to 2 GB).
+
+          Download every part and SHA256SUMS into one folder, then join them:
+            Linux or Mac:   cat $name.part-* > $name
+            Windows:        copy /b $name.part-00 + $name.part-01 + ... $name
+          Check it:         sha256sum -c SHA256SUMS --ignore-missing
+          Then write $name to a USB stick (docs/INSTALL.md).
+          EOF
+          sed -i 's/^          //' README.txt
+          ls -la
+      - name: Publish the release
+        run: |
+          gh release create "$TAG" dist/* --title "NexusOS ${TAG#v}" --verify-tag \
+            --notes "The installer image is in parts: see README.txt. Installed computers are offered this release by Guardian."
+      - name: Move the release branch to this commit (forward only)
+        run: git push origin "HEAD:refs/heads/release"

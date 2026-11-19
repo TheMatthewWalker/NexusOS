@@ -83,6 +83,16 @@ test("a security update's record names its packages and NixOS revisions", () => 
   assert.equal(G.title({ ...update, update: { ...update.update, lockHash: "x" } }), "");
 });
 
+test("a NexusOS update says so, with the NexusOS commits before the NixOS ones", () => {
+  const nexus = { ...update, update: { ...update.update, nexusos: { source: "github:TheMatthewWalker/NexusOS/release",
+    before: { rev: "1".repeat(40), lastModified: 1791000000 }, after: { rev: "2".repeat(40), lastModified: 1792000000 } } } };
+  assert.equal(G.isNexusUpdate(nexus.update), true);
+  assert.equal(G.isNexusUpdate(update.update), false);
+  assert.equal(G.title(nexus), "Approve the NexusOS update 1a2b3c4d: 12 packages updated");
+  assert.match(G.updateLine(nexus.update), /^NexusOS 2026-10-\d\d, with security updates: 12 packages updated/);
+  assert.match(G.revisions(nexus.update), /^NexusOS: 1111111 \(.+\) → 2222222 \(.+\); NixOS nixos-26.05: /);
+});
+
 test("Core's update must name the same lock and versions as the broker's", () => {
   const core = G.items(update);
   assert.equal(G.agrees(core, update, LOCK), true);

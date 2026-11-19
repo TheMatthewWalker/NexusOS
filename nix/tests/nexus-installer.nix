@@ -4,7 +4,7 @@
 # installer runs from a small second disk, and the target machine boots the
 # same main disk image afterwards. The VM has no network, so everything the
 # install builds must already be in its store.
-{ pkgs, nexusSource, nixpkgsSource, referenceSystem, nexusInstall }:
+{ pkgs, nexusSource, nixpkgsSource, referenceSystem, nexusInstall, referenceInitrdInputs ? [ ], nexusRelease ? null }:
 let
   common = {
     virtualisation.diskSize = 16 * 1024;
@@ -50,13 +50,19 @@ pkgs.testers.runNixOSTest {
 
     environment.etc."nexusos".source = nexusSource;
     environment.etc."nexusos-model".source = testModel;
-    environment.systemPackages = [ nexusInstall ];
+    environment.systemPackages = [ nexusInstall pkgs.jq ];
     # The installer image's Nix settings, unchanged: it lists cache.nixos.org,
     # which this VM cannot reach, as a laptop with no Wi-Fi cannot.
     nix.settings.experimental-features = [ "nix-command" "flakes" ];
     # The same store contents as the installer image (nix/installer/iso.nix):
     # the installed system, nixpkgs' source and the offline build tools.
-    system.extraDependencies = [ referenceSystem nixpkgsSource ] ++ import ../installer/offline-deps.nix pkgs;
+    system.extraDependencies = [ referenceSystem nixpkgsSource ] ++ import ../installer/offline-deps.nix pkgs
+      ++ referenceInitrdInputs;
+    # As the image: the release this NexusOS is, when built from a commit (CI), so
+    # the install follows NexusOS's releases (nexus-install's follow_release).
+    environment.etc."nexusos-release.json" = pkgs.lib.mkIf (nexusRelease != null && nexusSource ? rev) {
+      text = builtins.toJSON (nexusRelease // { inherit (nexusSource) rev lastModified narHash; });
+    };
   };
 
   nodes.target = { lib, ... }: {
@@ -77,6 +83,9 @@ pkgs.testers.runNixOSTest {
     with subtest("the installer refuses a partition and an unknown option"):
         installer.fail("nexus-install --disk /dev/vda1 --user alice --yes")
         installer.fail("nexus-install --bogus")
+        # An unknown keyboard layout is refused before the disk is touched.
+        out = installer.fail("echo 'nexus-test-pw' | nexus-install --disk /dev/vda --user alice --password-file - --keyboard xx --yes 2>&1")
+        assert "unknown keyboard layout xx" in out, out
 
     with subtest("the graphical installer's probe sees the disk, and alongside needs room beside something"):
         out = installer.succeed("nexus-install --probe-json")
@@ -108,17 +117,27 @@ pkgs.testers.runNixOSTest {
       # countdown can stop and wait for a key that never comes.
       boot.loader.timeout = 0;
       # The serial line last, so it is the console the initrd asks for the
-      # disk's password on, and the test can answer there.
-      boot.kernelParams = [ "console=ttyS0,115200" ];
+      # disk's password on, and the test can answer there. The start-up
+      # screen (Plymouth) would ask on the display instead: it is still built
+      # into the initrd during the offline install, and only not started here.
+      boot.kernelParams = [ "console=ttyS0,115200" "plymouth.enable=0" ];
     }
     EOF""")
         installer.succeed(
             "nexus-install --disk /dev/vda --user alice --full-name 'Alice Test'"
-            " --password-file /tmp/pw --hostname nexus-test --timezone Europe/London"
+            " --password-file /tmp/pw --hostname nexus-test --timezone Europe/London --keyboard gb"
             " --extra-module /tmp/test.nix --model nexus-test:tiny --yes >&2",
             timeout=7200)
         installer.succeed("test -f /mnt/etc/nixos/flake.lock && test -f /mnt/etc/nixos/nexusos/flake.nix")
         installer.succeed("grep -q 'nexusos.user = \"alice\"' /mnt/etc/nixos/local.nix")
+        # A UK keyboard, everywhere: it also types the password at start-up (the
+        # test's password, letters and a dash, is the same on both layouts).
+        installer.succeed("grep -q 'nexusos.keyboard.layout = \"gb\"' /mnt/etc/nixos/local.nix")
+        # Built from a commit (CI): the installed system follows NexusOS's release branch,
+        # pinned to this commit, with nothing downloaded (this VM has no network).
+        if installer.succeed("test -f /etc/nexusos-release.json && echo yes || echo no").strip() == "yes":
+            installer.succeed("grep -q 'inputs.nexusos.url = \"github:TheMatthewWalker/NexusOS/release\"' /mnt/etc/nixos/flake.nix")
+            installer.succeed("jq -e '.nodes.nexusos.locked.type == \"github\"' /mnt/etc/nixos/flake.lock")
         # The hardware scan: no graphics card in this VM, so the model runs on the
         # processor; the model asked for is the one written down and copied.
         installer.succeed("grep -q 'nexusos.hardware.gpu = \"none\"' /mnt/etc/nixos/local.nix")
@@ -134,7 +153,7 @@ pkgs.testers.runNixOSTest {
     target.start()
 
     with subtest("the encrypted disk opens with alice's password"):
-        target.wait_for_console_text("Passphrase for", timeout=600)
+        target.wait_for_console_text("passphrase for disk", timeout=600)
         target.send_console("nexus-test-pw\n")
 
     with subtest("the installed system boots as NexusOS"):
@@ -156,6 +175,12 @@ pkgs.testers.runNixOSTest {
         target.wait_for_unit("ollama.service")
         target.succeed("test -x /run/current-system/sw/bin/nexus-shell")
         target.succeed("test -f /etc/nexus/hyprland.conf")
+        target.succeed("grep -q 'kb_layout = gb' /etc/nexus/hyprland.conf")
+        target.succeed("grep -q 'KEYMAP=uk' /etc/vconsole.conf")
+        target.succeed("grep -q '^XKB_DEFAULT_LAYOUT=gb$' /etc/nexus/greeter.env")
+        # The start-up screen is installed with its theme.
+        target.succeed("test -f /etc/plymouth/themes/nexusos/nexusos.plymouth")
+        target.succeed("grep -q 'Theme=nexusos' /etc/plymouth/plymouthd.conf")
         # The login screen's greeter account is a system user: Core must not run for it.
         target.fail("journalctl -b --no-pager | grep -q 'nexus-core.*Unhandled exception'")
 

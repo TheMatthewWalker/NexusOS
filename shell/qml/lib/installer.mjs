@@ -4,8 +4,10 @@
 // (tests/shell/installer.test.mjs). The rules match nix/installer/nexus-install.sh,
 // which checks everything again.
 
-export const STEPS = ["welcome", "disk", "you", "time", "summary", "install", "done"];
-export const STEP_LABELS = { welcome: "Welcome", disk: "Disk", you: "You", time: "Time zone", summary: "Summary", install: "Install", done: "Done" };
+// The keyboard comes before You: the password is typed with it, here and at every start-up.
+export const STEPS = ["welcome", "disk", "keyboard", "you", "time", "summary", "install", "done"];
+export const STEP_LABELS = { welcome: "Welcome", disk: "Disk", keyboard: "Keyboard", you: "You", time: "Time zone", summary: "Summary",
+                             install: "Install", done: "Done" };
 export const MIN_PASSWORD = 10;
 
 // Sizes as Windows' Disk Management shows them (1 GB = 1024 MB), like nexus-install.
@@ -29,16 +31,25 @@ export function diskDetail(d) {
   return parts.join(" · ");
 }
 
-// What can be done with a disk: { erase: {possible, reason}, alongside: {possible, reason, warnings, systems} }.
+// What can be done with a disk: { erase: {possible, reason}, alongside: {possible, reason, warnings, systems},
+// replace: {possible, reason, partitions: [{path, size, what, label, possible, reason, warning}]} }.
 export function diskChoices(d, minimumBytes) {
-  if (!d) return { erase: { possible: false, reason: "" }, alongside: { possible: false, reason: "", warnings: [] } };
+  if (!d) return { erase: { possible: false, reason: "" }, alongside: { possible: false, reason: "", warnings: [] },
+                   replace: { possible: false, reason: "", partitions: [] } };
   const erase = d.inUse ? { possible: false, reason: "The installer is running from this disk." }
               : d.size < minimumBytes ? { possible: false, reason: "This disk is too small: NexusOS needs at least " + sizeLabel(minimumBytes) + "." }
               : { possible: true, reason: "" };
   const a = d.alongside;
   const alongside = d.inUse || !a ? { possible: false, reason: d.inUse ? erase.reason : "", warnings: [] }
                   : { possible: !!a.possible, reason: a.reason || "", warnings: a.warnings || [], systems: a.systems || "", esp: a.esp || "", freeBytes: a.freeBytes || 0 };
-  return { erase, alongside };
+  const r = d.replace;
+  const replace = d.inUse || !r ? { possible: false, reason: d.inUse ? erase.reason : "", partitions: [] }
+                : { possible: !!r.possible, reason: r.reason || "", esp: r.esp || "", partitions: r.partitions || [] };
+  return { erase, alongside, replace };
+}
+// A partition, as the person sees it: "Linux (ext4), ubuntu, 200 GB".
+export function partitionTitle(p) {
+  return [p.what, p.label, sizeLabel(p.size)].filter(x => x).join(", ");
 }
 
 // Login names: lower case letters, digits, - and _, starting with a letter.
@@ -78,12 +89,24 @@ export function filterZones(zones, query) {
 }
 export function zoneLabel(zone) { return String(zone).replace(/_/g, " ").replace(/\//g, " / ") }
 
+// Keyboard layouts from the probe ({id, name}), found by name or id.
+export function filterKeyboards(list, query) {
+  const q = String(query || "").trim().toLowerCase();
+  return q ? (list || []).filter(k => k.name.toLowerCase().includes(q) || k.id === q) : (list || []);
+}
+export function keyboardName(id, probe) {
+  const k = ((probe && probe.keyboards) || []).find(k => k.id === id);
+  return k ? k.name : String(id || "");
+}
+
 // The flags for nexus-install. The password goes on standard input (--password-file -), never on the command line.
 export function installArgs(s) {
   const args = ["--progress-json", "--yes", "--disk", s.disk, "--user", s.login, "--password-file", "-",
                 "--hostname", s.host, "--timezone", s.timezone];
+  if (s.keyboard) args.push("--keyboard", s.keyboard);
   if (s.fullName) args.push("--full-name", s.fullName);
-  if (s.alongside) args.push("--alongside");
+  if (s.partition) args.push("--partition", s.partition);
+  else if (s.alongside) args.push("--alongside");
   if (!s.encrypt) args.push("--no-encrypt");
   return args;
 }
@@ -129,16 +152,21 @@ export function exitProblem(code, stderr) {
 export function summaryRows(s, probe) {
   const d = s.diskInfo || { path: s.disk, size: 0 };
   const hw = (probe && probe.hardware) || {};
-  const disk = s.alongside
+  const part = s.partition ? (s.partitionInfo || { path: s.partition, size: 0, what: "" }) : null;
+  const disk = part
+    ? "Replace " + part.path + " (" + partitionTitle(part) + ") on " + diskTitle(d) + ": everything on that partition is deleted; " +
+      "the rest of the disk is not changed, and its start-up menu is shared."
+    : s.alongside
     ? "Alongside " + (s.systems || "the system already there") + " on " + diskTitle(d) + ", in " + sizeLabel(s.freeBytes) +
       " of free space. Nothing else is erased; the start-up menu lists Windows too."
     : "Erase " + diskTitle(d) + ": everything on it is deleted.";
   return [
-    { label: "Disk", value: disk, danger: !s.alongside },
+    { label: "Disk", value: disk, danger: !s.alongside || !!s.partition },
     { label: "Encryption", value: s.encrypt ? "On: your password unlocks the disk when the computer starts" : "Off: anyone with the disk can read it" },
     { label: "You", value: (s.fullName ? s.fullName + " (" + s.login + ")" : s.login) },
     { label: "Computer", value: s.host },
     { label: "Time zone", value: zoneLabel(s.timezone) },
+    { label: "Keyboard", value: keyboardName(s.keyboard, probe) },
     { label: "Processor", value: hw.processor || "unknown" },
     { label: "Graphics", value: hw.graphics || "unknown" },
     { label: "Local AI", value: hw.localAI || "unknown" },

@@ -26,6 +26,11 @@ identified by SO_PEERCRED and limited to the broker's allowlist. Operations:
   check-updates {}        -> asks for an update check now (nexus-update-check.path
                              starts the root service); at most every 10 minutes
 
+The security update waiting is also built and tested without being asked
+(prepare_waiting_update, every few minutes): by the time the person sees it,
+it is ready to approve, whoever is logged in. A person's build request for it
+then joins that job. Approving it still takes their password.
+
 Jobs run one at a time. A caller sees only jobs it asked for.
 
   serve      --config /etc/nexus-guardian/config.json --dir /var/lib/nexus-guardian-builder
@@ -70,6 +75,8 @@ NIX = ["nix", "--extra-experimental-features", "nix-command flakes"]
 FINAL = ("passed", "failed")
 CHECK_REQUEST = "update-requested"
 CHECK_INTERVAL = 600
+# How often the builder looks for an update waiting to be prepared.
+PREPARE_INTERVAL = 300
 
 
 # How qemu and Nix say the machine cannot run virtual machines.
@@ -165,6 +172,7 @@ class LocalBuilder:
         self._prune()
         if start_worker:
             threading.Thread(target=self._worker, daemon=True).start()
+            threading.Thread(target=self._prepare_loop, daemon=True).start()
 
     # Jobs are kept on disk so results survive a restart; one interrupted mid-way is failed.
     def _load(self):
@@ -265,20 +273,26 @@ class LocalBuilder:
                 candidate = prepare(payload["changes"], observation["generationStorePath"], self.host_config)
         except ValueError as error:
             raise Denied(str(error)) from None
+        return self._enqueue(candidate, uid, payload.get("changes"), update)
+
+    def _enqueue(self, candidate, uid, changes, update):
+        """The job for this candidate: the existing one (joined by uid), or a new one queued.
+
+        uid None: the builder's own background preparation, which names no person."""
         candidate_id = candidate["candidateId"]
         with self.lock:
             job = self.jobs.get(candidate_id)
             if job is not None and job["state"] != "failed":
                 # The same change on the same system: share the result (it names no person).
-                if uid not in job["uids"]:
+                if uid is not None and uid not in job["uids"]:
                     job["uids"].append(uid)
                     self._save(job)
                 return {"candidate": candidate, "job": self.public_view(job)}
             active = sum(1 for other in self.jobs.values() if other["state"] not in FINAL)
             if active >= MAX_QUEUED:
                 raise Denied("Guardian is already checking several changes; try again later")
-            job = {"candidateId": candidate_id, "uids": [uid], "candidate": candidate, "changes": payload.get("changes"), "state": "queued",
-                   "checks": {name: "pending" for name in CHECKS}, "message": "", "attestation": None,
+            job = {"candidateId": candidate_id, "uids": [] if uid is None else [uid], "candidate": candidate, "changes": changes,
+                   "state": "queued", "checks": {name: "pending" for name in CHECKS}, "message": "", "attestation": None,
                    "createdAt": int(self.clock())}
             if update is not None:
                 job.update(kind="update", update=update)
@@ -286,6 +300,35 @@ class LocalBuilder:
             self._save(job)
         self.queue.put(candidate_id)
         return {"candidate": candidate, "job": self.public_view(job)}
+
+    def prepare_waiting_update(self):
+        """Build and test the security update waiting, before anyone asks: the candidate id, or None.
+
+        Nothing when there is none, it is already being prepared or prepared,
+        the store is short of room, or the running system cannot be verified.
+        A failed preparation is not retried here (a person's request retries it)."""
+        try:
+            waiting = system_update.pending(self.updates_dir, self.host_flake_dir, owner=self.owner)
+            if waiting is None:
+                return None
+            with self.lock:
+                if any(job.get("kind") == "update" and job.get("update", {}).get("lockHash") == waiting["lockHash"]
+                       for job in self.jobs.values()):
+                    return None
+            system_update.require_space(self.free(), self.min_free)
+            observation = self.observer()
+            if observation.get("verified") is not True:
+                return None
+            candidate = prepare_update(waiting["lockHash"], observation["generationStorePath"], self.host_config)
+            return self._enqueue(candidate, None, None, waiting)["candidate"]["candidateId"]
+        except (UpdateError, Denied, ValueError, OSError) as error:
+            print(f"guardian-builder: could not prepare the waiting update: {error}", file=sys.stderr, flush=True)
+            return None
+
+    def _prepare_loop(self):
+        while True:
+            time.sleep(PREPARE_INTERVAL)
+            self.prepare_waiting_update()
 
     def status(self, uid, payload):
         self._authorise(uid)
@@ -372,8 +415,11 @@ class LocalBuilder:
         else:
             print(f"guardian-builder: diff-closures failed: {err}", file=sys.stderr, flush=True)
             diff = {"packages": None, "otherPackages": 0, "added": 0, "removed": 0}
-        return {"lockHash": update["lockHash"], "previousLockHash": update["previousLockHash"],
-                "nixpkgs": update["nixpkgs"], **diff}
+        summary = {"lockHash": update["lockHash"], "previousLockHash": update["previousLockHash"],
+                   "nixpkgs": update["nixpkgs"], **diff}
+        if update.get("nexusos") is not None:
+            summary["nexusos"] = update["nexusos"]
+        return summary
 
     def _worker(self):
         while True:

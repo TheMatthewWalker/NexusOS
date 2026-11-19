@@ -43,7 +43,7 @@ On Windows or macOS, a tool such as balenaEtcher or Rufus (in "DD image" mode) d
 
 Boot the computer from the stick (usually F12, F11, F8 or Esc during start-up opens the boot menu). Choose **NexusOS live**. If the screen stays black on a computer with an NVIDIA card, restart and choose **NexusOS live (NVIDIA)** instead.
 
-The live desktop starts by itself and opens the **Install NexusOS** window. Behind it, the live screen has **Install NexusOS** (opens the window again), **Connect to Wi-Fi**, Restart, Shut down and **Install in a terminal** (the text installer, `nexus-install`).
+The live desktop starts by itself and opens the **Install NexusOS** window. Behind it, the live screen has **Install NexusOS** (opens the window again), **Connect to Wi-Fi**, Restart, Shut down and, for advanced use only, **Install in a terminal (advanced)** (the text installer, `nexus-install`). Everything can be done in the window: no typing in a terminal is needed.
 
 The live session is only for installing: Nexus, apps and the Welcome setup start once NexusOS is installed. Nothing in it is kept.
 
@@ -64,8 +64,16 @@ The live session is only for installing: Nexus, apps and the Welcome setup start
 In a terminal instead (**Install in a terminal**, or `sudo nexus-install`), the same questions are asked in text, and you type the disk name to confirm. Every question has a flag (`nexus-install --help`), for example:
 
 ```sh
-sudo nexus-install --disk /dev/nvme0n1 --alongside --user ada --full-name "Ada Lovelace" --timezone Europe/London
+sudo nexus-install --disk /dev/nvme0n1 --alongside --user ada --full-name "Ada Lovelace" --timezone Europe/London --keyboard gb
 ```
+
+### Replacing a partition
+
+On the **Disk** step, **Replace a partition** lists the chosen disk's partitions with what is on each (Windows, Linux, an earlier NexusOS, shared files) and its size. Choose one and only that partition is deleted; NexusOS goes in its place and shares the disk's start-up (EFI) partition, as when installing alongside Windows. The rest of the disk is not changed. Partitions that cannot be replaced say why: the start-up and recovery partitions, anything in use, anything under 32 GB, and Windows itself (C:). To replace Windows, erase the disk instead. An NTFS partition the installer cannot look inside, often because of Windows' Fast startup, is not offered either. In a terminal: `sudo nexus-install --partition /dev/nvme0n1p5`.
+
+### Keyboard
+
+The **Keyboard** step comes before you choose your password, with the layout guessed from the time zone (a UK time zone guesses English (UK)). Choosing a layout switches the keyboard straight away, so the password is typed with it. The same layout is then used everywhere on the installed system: the prompt that unlocks the disk at start-up, the login screen, the desktop and the text consoles. Type a few of `@ " # £ \ |` in the box on that page to check them. 23 Latin layouts are offered (`nix/installer/keyboards.json`); to change it later, set `nexusos.keyboard.layout = "de";` in `/etc/nixos/local.nix` (a system change).
 
 ### Beside Windows (dual boot)
 
@@ -79,7 +87,7 @@ The installer adds one encrypted partition in the largest free space and reuses 
 
 The installer refuses, and says why, when: there is no free space (or less than 32 GB), the disk uses the old MBR layout (Windows started in legacy BIOS mode), the disk has no EFI system partition or more than one, the EFI partition is too full, or the disk already has a NexusOS partition from an earlier attempt (delete it in Disk Management). If an attempt fails part-way, the partition it added is removed again.
 
-Each start, NexusOS asks for your password twice: first to unlock the encrypted disk (a text prompt, before anything else runs), then on the login screen.
+Each start, NexusOS asks for your password twice: first on the NexusOS start-up screen, to unlock the encrypted disk (before anything else runs), then on the login screen. Press Esc on the start-up screen to see the start-up messages.
 
 The disk is encrypted (LUKS2) so a lost or stolen computer shows nothing without the password. If you change your login password later, the disk keeps the old one until you change it too: `sudo cryptsetup luksChangeKey /dev/disk/by-label/nexusos-crypt`. To install without encryption, run `sudo nexus-install --no-encrypt`.
 
@@ -131,9 +139,48 @@ The installer looks at the computer and sets it up; you do not pick drivers. The
 | A graphics card for AI (NVIDIA, or AMD as above) | Local model `qwen3:8b` |
 | No such card, 8 GB of memory or more | `qwen3:4b` on the processor: about twice as fast there as the 8B model |
 | Less than 8 GB of memory | `qwen3:1.7b` |
+| 16 GB of memory or more | The large model as well (see "The large model" below) |
 | No graphics card for AI and less than 16 GB of memory | Image generation is off (it needs about 8 GB of memory and a 7 GB download) |
 
 What it found is in `/etc/nixos/local.nix` under `nexusos.hardware`. To use another model, run `sudo nexus-install --model qwen3:8b`, or later set `services.nexus-core.ollamaModel` in `local.nix` and rebuild.
+
+## The large model
+
+On a computer with 16 GB of memory, NexusOS also downloads a much bigger model once it is online: by default `DavidAU/OpenAi-GPT-oss-20b-HERETIC-uncensored-NEO-Imatrix-gguf` at `Q8_0`, a 21-billion-parameter *mixture-of-experts* model. Such a model is split into many "experts" and uses only a few of them for each word (about 3.6 billion parameters' worth), so it does the work of a small model while knowing as much as a big one. NexusOS runs it with llama.cpp, which keeps the experts in ordinary memory and puts the part every word needs on the graphics card (`--n-cpu-moe`); the split is worked out from the graphics memory the computer has. Without a graphics card the whole model runs from memory on the processor.
+
+| | |
+|---|---|
+| Which version | The quantisation asked for, if this computer can hold it: its memory beside the desktop (4 GB kept back) plus what a graphics card takes. If it cannot (Q8_0 may be too big for 16 GB), the biggest version in the repository that fits is downloaded instead, and Settings says which and why |
+| Download | Once online, with room checked first (the file plus 2 GB), resumed if interrupted, and kept only if it matches the SHA-256 in the repository's file list |
+| Using it | With a graphics card for AI, Nexus answers with it as soon as it is downloaded. Otherwise turn it on in **Settings, Privacy and AI, Large model**, or ask Nexus ("use the large model") |
+| Memory | One model is in memory at a time. Before the large model loads, NexusOS checks there is enough free memory; if not, it says how much is short and the standard model answers. The same happens if it fails to start |
+
+To choose another model or version, set in `/etc/nixos/local.nix` (a system change):
+
+```nix
+nexusos.largeModel.repo = "unsloth/gpt-oss-20b-GGUF";
+nexusos.largeModel.quant = "Q4_K_M";
+nexusos.largeModel.exact = true;   # never a smaller version than the one named
+```
+
+`nexusos.largeModel.enable = false;` leaves it out.
+
+## The very large model
+
+[colibri](https://github.com/JustVugg/colibri) goes further: it runs mixture-of-experts models bigger than the computer's memory. The part of the model every word uses stays in memory and the experts are read from the disk when the model asks for them, so the disk's speed sets how fast it answers (a fast NVMe drive helps most). Any graphics processor, built-in ones included, can hold part of it through Vulkan.
+
+Nothing is downloaded until you turn it on in **Settings, Privacy and AI, Very large model** (or ask Nexus, "use the very large model"). The download goes into your own folder (`~/.local/share/nexusos/colibri`), resumes after a restart, and every file is checked against the repository's SHA-256. Only the models this computer can hold are offered:
+
+| Model | Download | Memory | Speed on a laptop processor |
+|---|---|---|---|
+| Qwen3.6-35B-A3B (default with 10 GB or more): everyday questions, thinking and tools | 23 GB | 10 GB at least, 20 GB to keep every expert in memory | about 6 words a second, 10 with a built-in GPU (colibri's measurements) |
+| Qwen3-Coder-30B-A3B: code, with tools | 19 GB | 8 GB at least | about 5 to 9 words a second |
+| DeepSeek V4 Flash (284B) | 167 GB | 16 GB at least | about one word a second |
+| GLM-5.2 (744B) | 429 GB | 16 GB at least | very slow without much more memory |
+
+It needs a processor with AVX2 (Intel from 2013, AMD from 2015); Settings says so on older ones. Once downloaded, switch it on with **Use the very large model**: the other models leave memory first, and if it cannot start, the standard model answers and Settings says why. **Remove** deletes the download.
+
+`nexusos.colibri.enable = false;` in `/etc/nixos/local.nix` leaves the engine out; `nexusos.colibri.model` sets which model is offered first. colibri is © Vincenzo Fornaro, Apache License 2.0; its licence and notices are in `/etc/nexusos/licences/colibri` ([third-party notices](../THIRD_PARTY_NOTICES.md)).
 
 ## NVIDIA graphics
 
@@ -162,6 +209,10 @@ Windows keeps the Super (Windows) key for itself, so Super shortcuts do not reac
 | Configuration | `/etc/nixos/flake.nix` imports NexusOS. `/etc/nixos/local.nix` holds your user name, computer name and time zone. `/etc/nixos/hardware-configuration.nix` is generated for your hardware |
 | Boot loader | systemd-boot, keeping the last 20 system versions. Pick an older one at start-up if an update goes wrong |
 
+## Updates
+
+Guardian looks for updates weekly and prepares them in the background: security updates for everything from NixOS, and, on a computer installed from a release image, new NexusOS releases. When one is ready, the System change window asks for your password; it is used from the next restart, and if that start fails, the computer goes back by itself. Ask Nexus "check for updates" to look now.
+
 ## Changing the system afterwards
 
 Edit `/etc/nixos/local.nix` (for example `nexusos.autologin = true;`), then run:
@@ -182,7 +233,6 @@ Only after a confirmed restart is `/etc/nixos/flake.lock` updated, so `nixos-reb
 
 - Choosing partitions by hand, or shrinking a partition to make room (do that in Windows).
 - A Files app of its own: Thunar is the file manager. System-wide settings (software, services) are changed in `local.nix`.
-- Nexus applying settings for you: it explains and points to the right page, and you make the change.
 
 ## How the installer is tested
 

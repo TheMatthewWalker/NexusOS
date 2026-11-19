@@ -73,10 +73,15 @@ jobs:
           split -b 1900M -d -a 2 "$name" "$name.part-"
           rm "$name"
           sha256sum "$name".part-* >> SHA256SUMS
+          cp ../scripts/release/get-nexusos.sh ../scripts/release/get-nexusos.ps1 ../scripts/release/Get-NexusOS.cmd .
           cat > README.txt <<EOF
           NexusOS ${TAG}: the installer image, in parts (GitHub limits each file to 2 GB).
 
-          Download every part and SHA256SUMS into one folder, then join them:
+          The easy way: Get NexusOS downloads the parts, checks them and joins them for you.
+            Windows:        download Get-NexusOS.cmd and double-click it (the image goes to Downloads)
+            Linux or Mac:   curl -fsSL https://raw.githubusercontent.com/TheMatthewWalker/NexusOS/main/scripts/release/get-nexusos.sh | sh
+
+          By hand: download every part and SHA256SUMS into one folder, then join them:
             Linux or Mac:   cat $name.part-* > $name
             Windows:        copy /b $name.part-00 + $name.part-01 + ... $name
           Check it:         sha256sum -c SHA256SUMS --ignore-missing
@@ -87,6 +92,6 @@ jobs:
       - name: Publish the release
         run: |
           gh release create "$TAG" dist/* --title "NexusOS ${TAG#v}" --target "$(git rev-parse HEAD)" \
-            --notes "The installer image is in parts: see README.txt. Installed computers are offered this release by Guardian."
+            --notes-file scripts/release/notes.md
       - name: Move the release branch to this commit (forward only)
         run: git push origin "HEAD:refs/heads/release"

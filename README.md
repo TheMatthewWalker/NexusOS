@@ -20,11 +20,12 @@ This repository contains:
   A system panel shows real audio, network, Bluetooth and battery state.
 - **NixOS packaging**: `flake.nix` packages, modules and VM tests.
 
-**Status:** M0 is done, M1–M3 are done pending review, M4 is VM-proven
-with a hardware drill outstanding, and M5's tooling is done with GPU runs
-outstanding. M6, the desktop alpha, is in progress: the Hyprland desktop and
-Nexus shell are built, with an end-to-end VM test. There is no installer image yet. See the
-[roadmap](docs/ROADMAP.md) and the [evidence](docs/evidence/).
+**Status:** an alpha. The desktop, the installer image (offline, encrypted,
+beside Windows) and the AI features are built and covered by CI and VM
+tests; what is left is mostly checking it on real hardware, deciding where
+releases and updates are published, and a security review. See
+[what is left](docs/ROADMAP.md#what-is-left-before-a-10) and the
+[evidence](docs/evidence/).
 
 ## Quick start (development)
 
@@ -41,7 +42,7 @@ On Linux, Core listens only on a peer-authenticated Unix socket in its
 state directory. On other platforms, or with `NEXUS_API_MODE=tcp`, it uses
 `127.0.0.1:5077` with a bearer token. Never expose either on a network.
 
-CLI commands: `health`, `system`, `providers`, `use <local|llama-cpp|openai-compatible>`,
+CLI commands: `health`, `system`, `providers`, `use <local|llama-cpp|colibri|openai-compatible>`,
 `ask <prompt>`, `history`, `clear-history`, `status`, `unload`.
 
 ## Model providers
@@ -50,6 +51,7 @@ CLI commands: `health`, `system`, `providers`, `use <local|llama-cpp|openai-comp
 |---|---|
 | `local` (Ollama, default) | Ollama on HTTP loopback. `NEXUS_OLLAMA_URL`, `NEXUS_OLLAMA_MODEL`. A missing model gives an `ollama pull` hint |
 | `llama-cpp` | Either an existing server (`NEXUS_LLAMA_ENDPOINT`, loopback only), or a **Core-managed** one: set `NEXUS_LLAMA_SERVER_BIN` and `NEXUS_LLAMA_MODEL_PATH` (absolute paths), plus optionally `NEXUS_LLAMA_PORT` and `NEXUS_LLAMA_GPU_LAYERS`. It starts on first use and stops on `nexus unload` |
+| `colibri` | The very large model: [colibri](https://github.com/JustVugg/colibri) runs mixture-of-experts models bigger than memory, reading experts from the disk. Core starts `coli serve` on demand from `NEXUS_COLIBRI_BIN`; the model downloads only when the person asks (`/model/colibri/want`, Settings). See [INSTALL](docs/INSTALL.md#the-very-large-model) |
 | `openai-compatible` | Off until the operator sets `NEXUS_CLOUD_EGRESS_ALLOWED=true`. The key is read only from the Secret Service keyring: `secret-tool store --label="NexusOS OpenAI" app nexusos provider openai-compatible`. HTTPS on port 443 to `api.openai.com` or hosts listed in `NEXUS_CLOUD_HOSTS`. Every DNS answer is validated, with no redirects or proxies |
 
 Invalid configuration stops Core at startup with a clear message.
@@ -145,4 +147,4 @@ nix flake check                                          # packages + NixOS VM t
 - [Nexus shell](shell/README.md) and the [SpaceUI design pack](docs/design/spaceui/README.md)
 - [Installing NexusOS](docs/INSTALL.md) and [Guardian deployment](docs/GUARDIAN-DEPLOYMENT.md)
 
-Licensed under MIT.
+Licensed under MIT. Third-party software NexusOS builds or bundles: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -605,7 +605,7 @@ static int RunTrial(string[] trialArgs)
 }
 static void Usage()
 {
-    Console.WriteLine("nexus [health [report]|fixit <problem>|fixit apply <fix id> <token>|system|providers|status|unload|history|clear-history|use <local|llama-cpp|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge|journal [--today] [--kind K]|journal forget-today|try <app> [-- args]|try keep <app>]");
+    Console.WriteLine("nexus [health [report]|fixit <problem>|fixit apply <fix id> <token>|system|providers|status|unload|history|clear-history|use <local|llama-cpp|colibri|openai-compatible>|ask [--stream] <prompt>|suggest <prompt>|bridge|journal [--today] [--kind K]|journal forget-today|try <app> [-- args]|try keep <app>]");
     Console.WriteLine("nexus apps details <flathub id> | apps record --source flathub|apt --op install|remove --id <id> [--version V] [--box B] [--isolated] [--undoes N]");
     Console.WriteLine(RulesCommand.Usage);
     Console.WriteLine(ActionsCommand.Usage);

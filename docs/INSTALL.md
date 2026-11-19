@@ -225,7 +225,8 @@ Only after a confirmed restart is `/etc/nixos/flake.lock` updated, so `nixos-reb
 
 - Choosing partitions by hand, or shrinking a partition to make room (do that in Windows).
 - A Files app of its own: Thunar is the file manager. System-wide settings (software, services) are changed in `local.nix`.
-- Nexus applying settings for you: it explains and points to the right page, and you make the change.
+- NexusOS updates (new versions of NexusOS itself) on installed computers: only nixpkgs security updates arrive for now ([what is left](ROADMAP.md#what-is-left-before-a-10)).
+- A graphical boot splash: the disk's unlock prompt is text.
 
 ## How the installer is tested
 

@@ -43,7 +43,7 @@ On Windows or macOS, a tool such as balenaEtcher or Rufus (in "DD image" mode) d
 
 Boot the computer from the stick (usually F12, F11, F8 or Esc during start-up opens the boot menu). Choose **NexusOS live**. If the screen stays black on a computer with an NVIDIA card, restart and choose **NexusOS live (NVIDIA)** instead.
 
-The live desktop starts by itself and opens the **Install NexusOS** window. Behind it, the live screen has **Install NexusOS** (opens the window again), **Connect to Wi-Fi**, Restart, Shut down and **Install in a terminal** (the text installer, `nexus-install`).
+The live desktop starts by itself and opens the **Install NexusOS** window. Behind it, the live screen has **Install NexusOS** (opens the window again), **Connect to Wi-Fi**, Restart, Shut down and, for advanced use only, **Install in a terminal (advanced)** (the text installer, `nexus-install`). Everything can be done in the window: no typing in a terminal is needed.
 
 The live session is only for installing: Nexus, apps and the Welcome setup start once NexusOS is installed. Nothing in it is kept.
 
@@ -66,6 +66,10 @@ In a terminal instead (**Install in a terminal**, or `sudo nexus-install`), the 
 ```sh
 sudo nexus-install --disk /dev/nvme0n1 --alongside --user ada --full-name "Ada Lovelace" --timezone Europe/London --keyboard gb
 ```
+
+### Replacing a partition
+
+On the **Disk** step, **Replace a partition** lists the chosen disk's partitions with what is on each (Windows, Linux, an earlier NexusOS, shared files) and its size. Choose one and only that partition is deleted; NexusOS goes in its place and shares the disk's start-up (EFI) partition, as when installing alongside Windows. The rest of the disk is not changed. Partitions that cannot be replaced say why: the start-up and recovery partitions, anything in use, anything under 32 GB, and Windows itself (C:). To replace Windows, erase the disk instead. An NTFS partition the installer cannot look inside, often because of Windows' Fast startup, is not offered either. In a terminal: `sudo nexus-install --partition /dev/nvme0n1p5`.
 
 ### Keyboard
 

@@ -175,7 +175,8 @@ class Flags(unittest.TestCase):
 
     def test_progress_json_asks_no_questions(self):
         self.assert_refused(["--progress-json", "--disk", "/dev/sda", "--user", "alice", "--password-file", "-"], "needs --yes", json_mode=True)
-        self.assert_refused(["--progress-json", "--yes", "--disk", "/dev/sda"], "needs --disk, --user and --password-file", json_mode=True)
+        self.assert_refused(["--progress-json", "--yes", "--disk", "/dev/sda"], "needs --disk or --partition, --user and --password-file", json_mode=True)
+        self.assert_refused(["--partition", "/dev/sda2", "--alongside"], "do not go together")
         self.assert_refused(["--progress-json", "--probe-json"], "do not go together", json_mode=True)
 
     def test_progress_json_reports_a_stop_as_one_error_object_with_the_log(self):

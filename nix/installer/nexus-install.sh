@@ -16,7 +16,7 @@ set -euo pipefail
 
 source_dir=/etc/nexusos
 disk="" user="" full_name="" password_file="" host="nexus" timezone="" keyboard="" assume_yes=0 extra_module="" nvidia=auto model="" encrypt=1
-alongside=0 progress=0 probe=0 log=""
+alongside=0 partition="" progress=0 probe=0 log=""
 
 usage() {
   cat <<'EOF'
@@ -24,6 +24,8 @@ Usage: nexus-install [options]
   --disk DEVICE         disk to install to, for example /dev/nvme0n1
   --alongside           keep what is on the disk and install in its free space,
                         reusing its EFI system partition (dual boot with Windows)
+  --partition PART      replace one partition (for example /dev/nvme0n1p5): only it
+                        is erased; the disk's EFI system partition is shared
   --user NAME           your login name (lower case letters, digits, - and _)
   --full-name "NAME"    shown on the login screen
   --password-file FILE  read the password from FILE (- reads it from standard input)
@@ -70,7 +72,7 @@ usage_fail() { printf 'nexus-install: %s\n' "$*" >&2; usage >&2; reported=1
 seen=" "
 while [ $# -gt 0 ]; do
   case "$1" in
-    --disk|--user|--full-name|--password-file|--hostname|--timezone|--keyboard|--source|--extra-module|--model|--log)
+    --disk|--partition|--user|--full-name|--password-file|--hostname|--timezone|--keyboard|--source|--extra-module|--model|--log)
       [ $# -ge 2 ] || usage_fail "$1 needs a value"
       # A flag given twice is ambiguous (which disk?): refuse it.
       case "$seen" in *" $1 "*) usage_fail "$1 was given twice" ;; esac
@@ -79,6 +81,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --disk) disk="$2"; shift 2 ;;
     --alongside) alongside=1; shift ;;
+    --partition) partition="$2"; shift 2 ;;
     --user) user="$2"; shift 2 ;;
     --full-name) full_name="$2"; shift 2 ;;
     --password-file) password_file="$2"; shift 2 ;;
@@ -101,10 +104,12 @@ done
 
 # Combinations that would leave a question unanswered, or mean two things.
 if [ "$probe" -eq 1 ] && [ "$progress" -eq 1 ]; then usage_fail "--probe-json and --progress-json do not go together"; fi
+if [ -n "$partition" ] && [ "$alongside" -eq 1 ]; then usage_fail "--partition and --alongside do not go together: replace a partition, or use free space"; fi
 if [ "$alongside" -eq 1 ] && [ -z "$disk" ]; then usage_fail "--alongside needs --disk: say which disk to install beside"; fi
 if [ "$progress" -eq 1 ]; then
-  for need in disk user password_file; do
-    [ -n "${!need}" ] || usage_fail "--progress-json needs --disk, --user and --password-file (it asks no questions)"
+  [ -n "$disk$partition" ] || usage_fail "--progress-json needs --disk or --partition, --user and --password-file (it asks no questions)"
+  for need in user password_file; do
+    [ -n "${!need}" ] || usage_fail "--progress-json needs --disk or --partition, --user and --password-file (it asks no questions)"
   done
   [ "$assume_yes" -eq 1 ] || usage_fail "--progress-json needs --yes (it asks no questions)"
 fi
@@ -360,6 +365,87 @@ plan_alongside() {
   plan_ok=1 plan_start=$((best_s / sector)) plan_size=$((best_len / sector)) plan_free=$best_len
   plan_reason="NexusOS goes in the $(gb "$best_len") of free space, beside $plan_systems; nothing else on the disk changes. It shares the EFI system partition ($plan_esp, not formatted), and its start-up menu (systemd-boot) finds Windows Boot Manager by itself."
 }
+
+# Does an NTFS partition hold Windows itself (C:)? yes, no, or unknown (it could
+# not be opened read-only, often because Windows' Fast startup left it locked).
+holds_windows() {
+  local dir answer=unknown
+  dir="$(mktemp -d)"
+  if mount -t ntfs3 -o ro "$1" "$dir" 2>/dev/null || mount -t ntfs -o ro "$1" "$dir" 2>/dev/null; then
+    if [ -d "$dir/Windows/System32" ]; then answer=yes; else answer=no; fi
+    umount "$dir"
+  fi
+  rmdir "$dir"
+  echo "$answer"
+}
+
+# plan_partitions DISK prints, as JSON, whether NexusOS can replace one of the
+# disk's partitions ({possible, reason, esp, partitions: [{path, size, fstype,
+# label, what, possible, reason, warning}]}). Only that partition is formatted;
+# the disk's EFI system partition is shared, as alongside. Refused: the EFI
+# and Microsoft reserved partitions, Windows' recovery partition, anything in
+# use, anything under 32 GB, and Windows itself (erase the disk to remove it).
+plan_partitions() {
+  local d="$1" table label sector parts esps esp esp_free rows="" node type name fs size plabel mounted what ok why warn
+  local no='{"possible": false, "esp": "", "partitions": []}'
+  if ! table="$(sfdisk -J "$d" 2>/dev/null)" || [ -z "$table" ] || [ "$(jq '.partitiontable.partitions // [] | length' <<<"$table")" -eq 0 ]; then
+    jq -c --arg r "This disk has no partitions to replace. Erase it instead." '. + {reason: $r}' <<<"$no"; return 0
+  fi
+  label="$(jq -r '.partitiontable.label' <<<"$table")"
+  if [ "$label" != gpt ]; then
+    jq -c --arg r "This disk does not use the GPT layout NexusOS starts from (UEFI). Erase it, or use another disk." '. + {reason: $r}' <<<"$no"; return 0
+  fi
+  sector="$(jq '.partitiontable.sectorsize // 512' <<<"$table")"
+  # One line per partition: node, type GUID, name, size in bytes, file system, label, mounted (1/0).
+  parts="$(jq -r --argjson s "$sector" --argjson blk "$(lsblk -J -o PATH,FSTYPE,LABEL,MOUNTPOINTS "$d")" '
+    ([$blk | .. | objects | select(has("path")) | {(.path): .}] | add // {}) as $b
+    | .partitiontable.partitions[]
+    | [.node, (.type | ascii_downcase), (.name // ""), (.size * $s), ($b[.node].fstype // ""), ($b[.node].label // ""),
+       (if ([($b[.node].mountpoints // [])[] | select(. != null and . != "")] | length) > 0 then 1 else 0 end)] | @tsv' <<<"$table")"
+  mapfile -t esps < <(awk -F'\t' -v t="$esp_type" '$2 == t { print $1 }' <<<"$parts")
+  if [ "${#esps[@]}" -ne 1 ]; then
+    jq -c --arg r "This disk has ${#esps[@]} EFI system partitions; NexusOS needs exactly one to share. Erase it, or use another disk." '. + {reason: $r}' <<<"$no"; return 0
+  fi
+  esp="${esps[0]}"
+  if [ "$(awk -F'\t' -v p="$esp" '$1 == p { print $5 }' <<<"$parts")" != vfat ]; then
+    jq -c --arg r "The EFI system partition ($esp) is not FAT formatted." '. + {reason: $r}' <<<"$no"; return 0
+  fi
+  esp_free="$(esp_free_bytes "$esp")"
+  if [ "$esp_free" -lt "$min_esp_free" ]; then
+    jq -c --arg r "The EFI system partition ($esp) has $(mb "$((esp_free < 0 ? 0 : esp_free))") free; NexusOS needs $(mb "$min_esp_free") there. Erase the disk, or use another disk." \
+      '. + {reason: $r}' <<<"$no"; return 0
+  fi
+  # Read with a separator that is not white space, so an empty field (a partition with no name) stays a field.
+  while IFS=$'\037' read -r node type name size fs plabel mounted; do
+    [ "$type" != "$esp_type" ] && [ "$type" != "$msr_type" ] || continue
+    ok=1 why="" warn=""
+    case "$fs" in
+      ntfs) what="Windows (NTFS)" ;; BitLocker) what="Windows, encrypted with BitLocker" ;;
+      ext4|ext3|ext2|btrfs|xfs|f2fs) what="Linux ($fs)" ;; crypto_LUKS) what="Linux, encrypted" ;;
+      vfat|exfat) what="Shared files ($fs)" ;; swap) what="Linux swap" ;; "") what="Empty or unknown" ;; *) what="$fs" ;;
+    esac
+    [ "$name" != nexusos ] || what="NexusOS, from an earlier install"
+    if [ "$mounted" = 1 ]; then ok=0 why="It is in use (the installer runs from it, or it is mounted)."
+    elif [ "$type" = de94bba4-06d1-4d40-a16a-bfd50179d6ac ]; then ok=0 why="This is Windows' recovery partition."
+    elif [ "$size" -lt "$min_root_bytes" ]; then ok=0 why="It is $(gb "$size"); NexusOS needs at least $(gb "$min_root_bytes")."
+    elif [ "$fs" = ntfs ]; then
+      case "$(holds_windows "$node")" in
+        yes) ok=0 why="This is Windows itself (C:). To replace Windows, erase the whole disk instead." ;;
+        unknown) ok=0 why="The installer could not look inside it to check it is not Windows itself (Windows' Fast startup can lock it). Turn off Fast startup in Windows, or erase the disk." ;;
+        *) warn="Everything on it is deleted: copy what you need from it first." ;;
+      esac
+    elif [ "$fs" = BitLocker ]; then
+      ok=0 why="It is encrypted with BitLocker, so the installer cannot check it is not Windows itself. Remove it in Windows (Disk Management, Delete volume) to install in its space alongside Windows."
+    else
+      warn="Everything on it is deleted."
+    fi
+    rows+="$(jq -cn --arg path "$node" --argjson size "$size" --arg fstype "$fs" --arg label "${plabel:-$name}" --arg what "$what" \
+      --argjson ok "$ok" --arg why "$why" --arg warn "$warn" \
+      '{path: $path, size: $size, fstype: $fstype, label: $label, what: $what, possible: ($ok == 1), reason: $why, warning: $warn}')"$'\n'
+  done < <(tr '\t' '\037' <<<"$parts")
+  jq -sc --arg esp "$esp" '{possible: (map(select(.possible)) | length > 0), esp: $esp, partitions: .,
+    reason: (if map(select(.possible)) | length > 0 then "" else "No partition on this disk can be replaced." end)}' <<<"$rows"
+}
 plan_json() {  # the plan for DISK as JSON, after plan_alongside
   jq -cn --arg disk "$1" --argjson ok "$plan_ok" --arg reason "$plan_reason" --arg esp "$plan_esp" \
     --argjson espFree "$plan_esp_free" --argjson free "$plan_free" --arg systems "$plan_systems" --arg warnings "$plan_warnings" \
@@ -408,22 +494,34 @@ if [ "$probe" -eq 1 ]; then
     [ -z "$disk" ] || [ "$d" = "$disk" ] || continue
     plan_alongside "$d"; plan_json "$d"
   done | jq -sc 'map({(.disk): .}) | add // {}')"
-  emit --argjson disks "$disks" --argjson plans "$plans" --arg processor "$processor_line" --arg graphics "$graphics" \
+  replace="$(jq -r '.[] | select(.inUse | not) | .path' <<<"$disks" | while read -r d; do
+    [ -z "$disk" ] || [ "$d" = "$disk" ] || continue
+    plan_partitions "$d" | jq -c --arg d "$d" '{($d): .}'
+  done | jq -sc 'add // {}')"
+  emit --argjson disks "$disks" --argjson plans "$plans" --argjson replace "$replace" --arg processor "$processor_line" --arg graphics "$graphics" \
     --arg ai "$ai_line" --arg tz "$(detected_timezone)" --argjson min "$min_root_bytes" \
     --arg kb "$(guessed_keyboard "$(detected_timezone)")" --argjson kbs "$(keyboards_json)" \
-    '{event: "probe", disks: ($disks | map(. + {alongside: ($plans[.path] // null)})), minimumBytes: $min,
+    '{event: "probe", disks: ($disks | map(. + {alongside: ($plans[.path] // null), replace: ($replace[.path] // null)})), minimumBytes: $min,
       hardware: {processor: $processor, graphics: $graphics, localAI: $ai}, timezone: $tz, keyboard: $kb, keyboards: $kbs}'
   exit 0
 fi
 
 say "NexusOS installer"
-if [ "$alongside" -eq 1 ]; then
+if [ -n "$partition" ]; then
+  echo "This replaces one partition with NexusOS. The rest of its disk is not changed."
+elif [ "$alongside" -eq 1 ]; then
   echo "This installs NexusOS in the free space of one disk, beside what is on it. Nothing is erased."
 else
   echo "This erases one disk and installs NexusOS on it. Other disks are not touched."
 fi
 
 # --- Disk -------------------------------------------------------------------
+if [ -n "$partition" ]; then
+  [ -b "$partition" ] && [ "$(lsblk -dno TYPE "$partition")" = part ] || fail "$partition is not a partition"
+  parent="/dev/$(lsblk -dno PKNAME "$partition")"
+  [ -z "$disk" ] || [ "$disk" = "$parent" ] || fail "$partition is not on $disk"
+  disk="$parent"
+fi
 if [ -z "$disk" ]; then
   echo
   echo "Disks on this computer:"
@@ -446,8 +544,8 @@ cryptsetup close nexusos-root 2>/dev/null || true
 
 # Beside another system: only if the plan holds. Asked interactively when it could.
 plan_ok=0 plan_reason=""
-if [ "$alongside" -eq 1 ] || [ "$assume_yes" -eq 0 ]; then plan_alongside "$disk"; fi
-if [ "$alongside" -eq 0 ] && [ "$assume_yes" -eq 0 ]; then
+if [ -z "$partition" ] && { [ "$alongside" -eq 1 ] || [ "$assume_yes" -eq 0 ]; }; then plan_alongside "$disk"; fi
+if [ -z "$partition" ] && [ "$alongside" -eq 0 ] && [ "$assume_yes" -eq 0 ]; then
   if [ "$plan_ok" -eq 1 ]; then
     echo
     echo "$disk has $plan_systems on it, and $(gb "$plan_free") of free space."
@@ -460,6 +558,18 @@ fi
 if [ "$alongside" -eq 1 ]; then
   [ "$plan_ok" -eq 1 ] || fail "cannot install alongside on $disk: $plan_reason"
   [ -z "$plan_warnings" ] || printf '\nNote: %s\n' "$plan_warnings"
+fi
+# Replacing one partition: only if the plan allows that one.
+part_esp="" part_what=""
+if [ -n "$partition" ]; then
+  replace="$(plan_partitions "$disk")"
+  [ "$(jq -r '.possible' <<<"$replace")" = true ] || fail "cannot replace a partition on $disk: $(jq -r '.reason' <<<"$replace")"
+  this="$(jq -c --arg p "$partition" '.partitions[] | select(.path == $p)' <<<"$replace")"
+  [ -n "$this" ] || fail "$partition cannot be replaced (it is the EFI system or Microsoft reserved partition)"
+  [ "$(jq -r '.possible' <<<"$this")" = true ] || fail "cannot replace $partition: $(jq -r '.reason' <<<"$this")"
+  part_esp="$(jq -r '.esp' <<<"$replace")" part_what="$(jq -r '.what' <<<"$this")"
+  plan_alongside "$disk"      # for plan_systems: what else is on the disk
+  plan_esp_free="$(esp_free_bytes "$part_esp")"
 fi
 
 # --- Keyboard ---------------------------------------------------------------
@@ -509,7 +619,10 @@ fi
 
 # --- Confirm ----------------------------------------------------------------
 say "Ready to install"
-if [ "$alongside" -eq 1 ]; then
+if [ -n "$partition" ]; then
+  echo "  Partition: $partition ($(lsblk -dno SIZE "$partition"), $part_what) — erased and replaced; the rest of $disk is not changed"
+  echo "  Start-up:  the EFI partition $part_esp is shared, not formatted"
+elif [ "$alongside" -eq 1 ]; then
   echo "  Disk:      $disk ($(lsblk -dno SIZE "$disk")) — alongside $plan_systems, in $(gb "$plan_free") of free space; nothing else is erased"
   echo "  Start-up:  the EFI partition $plan_esp is shared, not formatted; the boot menu lists Windows too"
 else
@@ -530,7 +643,10 @@ echo "  Local AI:  $ai_line"
 [ -z "$large_model" ] || echo "  Large AI:  $large_model"
 if [ "$assume_yes" -ne 1 ]; then
   echo
-  if [ "$alongside" -eq 1 ]; then
+  if [ -n "$partition" ]; then
+    read -rp "Type the partition name ($partition) to erase it and install: " answer
+    [ "$answer" = "$partition" ] && answer="$disk"
+  elif [ "$alongside" -eq 1 ]; then
     read -rp "Type the disk name ($disk) to install alongside: " answer
   else
     read -rp "Type the disk name ($disk) to erase it and install: " answer
@@ -538,8 +654,8 @@ if [ "$assume_yes" -ne 1 ]; then
   [ "$answer" = "$disk" ] || fail "not confirmed; nothing was changed"
 fi
 [ -f "$ai_manifest" ] || step_of=5
-emit --arg disk "$disk" --argjson alongside "$alongside" --argjson encrypt "$encrypt" --arg log "$log" \
-  '{event: "start", disk: $disk, alongside: ($alongside == 1), encrypted: ($encrypt == 1), log: $log}'
+emit --arg disk "$disk" --argjson alongside "$alongside" --arg partition "$partition" --argjson encrypt "$encrypt" --arg log "$log" \
+  '{event: "start", disk: $disk, alongside: ($alongside == 1), partition: $partition, encrypted: ($encrypt == 1), log: $log}'
 
 # --- Partition and format ---------------------------------------------------
 step prepare "Preparing $disk"
@@ -561,6 +677,15 @@ if [ "$alongside" -eq 1 ]; then
   added_part="$root_part"
   boot_part="$plan_esp"
   wipefs -af "$root_part" > /dev/null
+elif [ -n "$partition" ]; then
+  # Only this partition: wiped, marked as Linux and named; the rest of the disk stays as it is.
+  root_part="$partition" boot_part="$part_esp"
+  wipefs -af "$root_part" > /dev/null
+  part_number="$(cat "/sys/class/block/$(basename "$root_part")/partition")"
+  sfdisk --part-type "$disk" "$part_number" 0FC63DAF-8483-4772-8E79-3D69D8477DE4 > /dev/null
+  sfdisk --part-label "$disk" "$part_number" nexusos > /dev/null
+  partx -u "$disk" 2>/dev/null || true
+  udevadm settle
 else
   wipefs -af "$disk" > /dev/null
   parted -s "$disk" -- mklabel gpt \
@@ -663,11 +788,11 @@ sed -i '$d' /mnt/etc/nixos/local.nix
       [ -z "$amd_bus" ] || echo "  nexusos.nvidia.prime.amdgpuBusId = \"$amd_bus\";"
     fi
   fi
-  if [ "$alongside" -eq 1 ]; then
+  if [ "$alongside" -eq 1 ] || [ -n "$partition" ]; then
     echo "  # Installed alongside $plan_systems: the EFI partition is shared ($(mb "$plan_esp_free") free when"
     echo "  # installed), so keep only a few start-up entries there."
     echo "  boot.loader.systemd-boot.configurationLimit = 3;"
-    if [ "$plan_systems" != "another Linux system" ]; then
+    if [[ "$plan_systems" == Windows* ]] || { [ "$alongside" -eq 1 ] && [ "$plan_systems" != "another Linux system" ]; }; then
       echo "  # Windows keeps the hardware clock in local time; so does NexusOS, so the clocks agree."
       echo "  time.hardwareClockInLocalTime = true;"
     fi

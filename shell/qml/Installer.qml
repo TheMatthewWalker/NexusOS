@@ -35,6 +35,8 @@ NexusWindow {
     // The choices.
     property string disk: ""
     property bool alongside: false
+    // A partition to replace (its path), instead of the whole disk or its free space.
+    property string partition: ""
     property bool encrypt: true
     property string fullName: ""
     property string login: ""
@@ -63,6 +65,7 @@ NexusWindow {
         disk = path;
         // Alongside first when it is possible: it keeps what is there.
         alongside = choices.alongside.possible;
+        partition = "";
     }
     // The password typed next must be the one that unlocks the disk at start-up, with the same layout.
     function setKeyboard(id) {
@@ -74,14 +77,16 @@ NexusWindow {
         if (!loginEdited) login = I.suggestLogin(text);
     }
     function summaryState() {
-        return { disk: disk, diskInfo: diskInfo, alongside: alongside, systems: choices.alongside.systems,
+        return { disk: disk, diskInfo: diskInfo, alongside: alongside, partition: partition,
+                 partitionInfo: choices.replace.partitions.find(p => p.path === partition) || null, systems: choices.alongside.systems,
                  freeBytes: choices.alongside.freeBytes, encrypt: encrypt, fullName: fullName, login: login,
                  host: host, timezone: timezone, keyboard: keyboard };
     }
     function canNext() {
         switch (step) {
             case "welcome": return !!probe;
-            case "disk": return disk !== "" && (alongside ? choices.alongside.possible : choices.erase.possible);
+            case "disk": return disk !== "" && (partition !== "" ? choices.replace.partitions.some(p => p.path === partition && p.possible)
+                                                : alongside ? choices.alongside.possible : choices.erase.possible);
             case "keyboard": return keyboard !== "";
             case "you": return I.youReady({ fullName: fullName, login: login, password: password, again: again, host: host });
             case "time": return timezone !== "";
@@ -242,7 +247,7 @@ NexusWindow {
                     width: parent.width; wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 15; lineHeight: 1.3
                     text: "Restart the computer and remove the USB stick when the screen goes dark." +
                           (win.encrypt ? " When it starts, type your password to unlock the disk, then again to log in." : "") +
-                          (win.alongside ? " The start-up menu lists NexusOS and Windows; NexusOS starts unless you choose Windows." : "")
+                          (win.alongside || win.partition ? " The start-up menu lists NexusOS and any other system on the disk; NexusOS starts unless you choose another." : "")
                 }
             }
         }
@@ -276,8 +281,8 @@ NexusWindow {
                 visible: win.step !== "install" && win.step !== "done"
                 enabled: win.step === "summary" || win.canNext()
                 theme: win.theme; primary: true
-                danger: win.step === "summary" && !win.alongside
-                label: win.step === "summary" ? (win.alongside ? "Install" : "Erase and install") : "Next"
+                danger: win.step === "summary" && (!win.alongside || win.partition !== "")
+                label: win.step === "summary" ? (win.partition ? "Replace and install" : win.alongside ? "Install" : "Erase and install") : "Next"
                 onClicked: win.next()
             }
             Button {

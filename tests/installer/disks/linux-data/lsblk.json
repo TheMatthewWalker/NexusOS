@@ -1,0 +1,5 @@
+{"blockdevices": [{"path": "/dev/sdb", "fstype": null, "children": [
+  {"path": "/dev/sdb1", "fstype": "vfat", "label": "BOOT", "mountpoints": [null]},
+  {"path": "/dev/sdb2", "fstype": "ext4", "label": "ubuntu", "mountpoints": [null]},
+  {"path": "/dev/sdb3", "fstype": "swap", "label": null, "mountpoints": [null]},
+  {"path": "/dev/sdb4", "fstype": "exfat", "label": "Shared", "mountpoints": ["/run/media/nixos/Shared"]}]}]}

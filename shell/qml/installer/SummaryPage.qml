@@ -13,7 +13,7 @@ Column {
     Text { text: "Ready to install"; color: page.theme.ink; font.pixelSize: 24; font.weight: 600 }
     Text {
         width: parent.width; wrapMode: Text.Wrap; color: page.theme.inkSecondary; font.pixelSize: 13
-        text: "Nothing has changed yet. Check these, then press " + (page.app.alongside ? "Install." : "Erase and install.")
+        text: "Nothing has changed yet. Check these, then press " + (page.app.partition ? "Replace and install." : page.app.alongside ? "Install." : "Erase and install.")
     }
     Repeater {
         model: I.summaryRows(page.app.summaryState(), page.app.probe)
@@ -26,7 +26,7 @@ Column {
         }
     }
     Repeater {
-        model: page.app.alongside ? (page.app.choices.alongside.warnings || []) : []
+        model: page.app.partition ? [] : page.app.alongside ? (page.app.choices.alongside.warnings || []) : []
         delegate: Text { required property var modelData; width: page.width; wrapMode: Text.Wrap
                          text: modelData; color: "#FFD166"; font.pixelSize: 12 }
     }

@@ -80,6 +80,26 @@ test("keyboard layouts are found by name, and the keyboard comes before the pass
   assert.ok(I.STEPS.indexOf("keyboard") < I.STEPS.indexOf("you"));
 });
 
+test("a partition can be replaced, only where nexus-install's plan says so", () => {
+  const replace = { possible: true, esp: "/dev/sdb1", partitions: [
+    { path: "/dev/sdb2", size: 200 * GiB, what: "Linux (ext4)", label: "ubuntu", possible: true, reason: "", warning: "Everything on it is deleted." },
+    { path: "/dev/sdb3", size: 8 * GiB, what: "Linux swap", label: "", possible: false, reason: "It is 8.0 GB; NexusOS needs at least 32 GB." }] };
+  const c = I.diskChoices({ ...disk(), replace }, 32 * GiB);
+  assert.equal(c.replace.possible, true);
+  assert.equal(c.replace.partitions.length, 2);
+  assert.equal(I.partitionTitle(replace.partitions[0]), "Linux (ext4), ubuntu, 200 GB");
+  assert.equal(I.diskChoices({ ...disk(), inUse: true, replace }, 32 * GiB).replace.possible, false);
+  const s = { disk: "/dev/sdb", login: "ada", host: "nexus", timezone: "Europe/London", alongside: false, encrypt: true,
+              partition: "/dev/sdb2", partitionInfo: replace.partitions[0], diskInfo: disk() };
+  const args = I.installArgs(s);
+  assert.deepEqual(args.slice(args.indexOf("--partition"), args.indexOf("--partition") + 2), ["--partition", "/dev/sdb2"]);
+  assert.ok(!args.includes("--alongside"));
+  const rows = Object.fromEntries(I.summaryRows(s, { hardware: {} }).map(r => [r.label, r]));
+  assert.match(rows.Disk.value, /^Replace \/dev\/sdb2 \(Linux \(ext4\), ubuntu, 200 GB\)/);
+  assert.match(rows.Disk.value, /rest of the disk is not changed/);
+  assert.ok(rows.Disk.danger);
+});
+
 test("the flags drive nexus-install, with the password on standard input", () => {
   const s = { disk: "/dev/nvme0n1", login: "ada", fullName: "Ada Lovelace", host: "nexus", timezone: "Europe/London", alongside: true, encrypt: true };
   const args = I.installArgs(s);

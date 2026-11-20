@@ -386,7 +386,9 @@ in
     environment.systemPackages = [ cfg.shellPackage pkgs.gtk3 pkgs.hyprsunset pkgs.brightnessctl pkgs.pciutils pkgs.xdg-utils
                                    pkgs.orca pkgs.adwaita-icon-theme pkgs.grim pkgs.slurp pkgs.wl-clipboard pkgs.rsync
                                    # notify-send: scripts and terminal commands can notify too (Notifications.qml shows them).
-                                   pkgs.libnotify ]
+                                   pkgs.libnotify
+                                   # gdbus: the shell watches logind to lock the screen before sleep (Idle.qml).
+                                   pkgs.glib.bin ]
       ++ lib.optionals cfg.installDefaultApps [ pkgs.kitty pkgs.thunar ];
 
     # The shell is Nexus, the top bar and the session's polkit agent (the

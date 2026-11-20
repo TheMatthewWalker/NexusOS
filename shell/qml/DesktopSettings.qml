@@ -27,6 +27,10 @@ Item {
     property alias highContrast: store.highContrast
     property alias cursorSize: store.cursorSize
     property alias doNotDisturb: store.doNotDisturb
+    property alias screenOffMinutes: store.screenOffMinutes
+    property alias sleepBatteryMinutes: store.sleepBatteryMinutes
+    property alias sleepPluggedMinutes: store.sleepPluggedMinutes
+    property alias lidAction: store.lidAction
     // False while game mode has blur and animations off, so applying settings does not undo it.
     property bool gameMode: false
     // Each change goes in the activity journal with its old value, so the Timeline can undo it.
@@ -42,6 +46,10 @@ Item {
         case "highContrast": return "High contrast " + (value ? "on" : "off");
         case "cursorSize": return "Pointer size " + value;
         case "doNotDisturb": return "Do not disturb " + (value ? "on" : "off");
+        case "screenOffMinutes": return "Screen off after " + (value ? value + " minutes" : "never");
+        case "sleepBatteryMinutes": return "Sleep on battery after " + (value ? value + " minutes" : "never");
+        case "sleepPluggedMinutes": return "Sleep plugged in after " + (value ? value + " minutes" : "never");
+        case "lidAction": return "Closing the lid: " + ({ sleep: "sleep", lock: "lock the screen", nothing: "do nothing" })[value];
         default: return key;
         }
     }
@@ -78,6 +86,10 @@ Item {
             property bool highContrast: false
             property int cursorSize: 24
             property bool doNotDisturb: false
+            property int screenOffMinutes: 5
+            property int sleepBatteryMinutes: 15
+            property int sleepPluggedMinutes: 30
+            property string lidAction: "sleep"
         }
     }
 

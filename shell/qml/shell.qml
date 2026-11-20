@@ -227,6 +227,8 @@ ShellRoot {
     Guardian { id: guardianWin; theme: root.dark; bridge: bridge }
     // Notifications from apps: cards, and the centre behind the bell in the top bar.
     Notifications { id: notifications; theme: root.dark; desktop: desktop }
+    // Screen off, sleep, the lid, and locking before every sleep (Settings, Power).
+    Idle { desktop: desktop }
     TopBar { theme: root.dark; settings: settings; guardian: guardianWin; notifications: notifications; onOpenNexus: root.expanded ? root.collapse() : root.open()
              onOpenApps: appsWin.open("all") }
     OrbitalControls { theme: root.dark; settings: settings; reduced: root.reduced }

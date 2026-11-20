@@ -822,5 +822,19 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("/run/current-system/sw/bin/nexus-account-password</annotate>", policy)
         self.run_node_test("accounts.test.mjs")
 
+    def test_the_screen_locks_before_every_sleep_and_sleep_follows_settings(self):
+        idle = (self.out / "Idle.qml").read_text()
+        # A delay inhibitor holds sleep back until the lock screen is up, then is let go.
+        self.assertIn('"systemd-inhibit", "--what=sleep", "--mode=delay"', idle)
+        self.assertIn('"gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1"', idle)
+        self.assertIn("idle.lock();\n                    release.restart();", idle)
+        self.assertEqual(idle.count("respectInhibitors: true"), 2)     # videos and calls keep the screen on
+        self.assertIn('"--what=handle-lid-switch", "--mode=block"', idle)
+        self.assertIn("Idle { desktop: desktop }", (self.out / "shell.qml").read_text())
+        power = (self.out / "settings/PowerPage.qml").read_text()
+        for key in ("screenOffMinutes", "sleepBatteryMinutes", "sleepPluggedMinutes", "lidAction"):
+            self.assertIn('page.desktop.set("%s"' % key, power)
+        self.run_node_test("power.test.mjs")
+
 if __name__ == "__main__":
     unittest.main()

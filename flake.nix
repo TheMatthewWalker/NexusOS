@@ -29,6 +29,18 @@
       # repository's release branch. An image built from a commit (a clean tree)
       # records it, and the installer pins the installed system to it.
       nexusRelease = { owner = "TheMatthewWalker"; repo = "NexusOS"; ref = "release"; };
+      installerWith = model: nixpkgs.lib.nixosSystem {
+        inherit system;
+        specialArgs = {
+          nexusSource = self;
+          nixpkgsSource = nixpkgs.outPath;
+          referenceSystem = self.nixosConfigurations.nexus-reference.config.system.build.toplevel;
+          referenceSystemNvidia = self.nixosConfigurations.nexus-reference-nvidia.config.system.build.toplevel;
+          inherit referenceInitrdInputs nexusRelease;
+          bundledModel = model;
+        };
+        modules = [ ./nix/installer/iso.nix ];
+      };
     in {
       packages.${system} = {
         nexus-guardian = pkgs.callPackage ./nix/packages/nexus-guardian.nix { };
@@ -37,6 +49,8 @@
         nexus-install = pkgs.callPackage ./nix/packages/nexus-install.nix { };
         # The installer image: `nix build .#iso`, then write result/iso/*.iso to a USB stick.
         iso = self.nixosConfigurations.installer.config.system.build.isoImage;
+        # `nix build .#iso-slim`: the installer image without the local AI model.
+        iso-slim = self.nixosConfigurations.installer-slim.config.system.build.isoImage;
         nexus-try = pkgs.callPackage ./nix/packages/nexus-try.nix { };
         colibri = pkgs.callPackage ./nix/packages/colibri.nix { };
         nexusos-plymouth-theme = pkgs.callPackage ./nix/packages/nexus-plymouth.nix { };
@@ -72,18 +86,10 @@
         nexus-reference-nvidia = self.lib.mkSystem {
           modules = [ ./nix/installer/reference.nix { nexusos.nvidia.enable = true; } ];
         };
-        installer = nixpkgs.lib.nixosSystem {
-          inherit system;
-          specialArgs = {
-            nexusSource = self;
-            nixpkgsSource = nixpkgs.outPath;
-            referenceSystem = self.nixosConfigurations.nexus-reference.config.system.build.toplevel;
-            referenceSystemNvidia = self.nixosConfigurations.nexus-reference-nvidia.config.system.build.toplevel;
-            inherit referenceInitrdInputs nexusRelease;
-            inherit bundledModel;
-          };
-          modules = [ ./nix/installer/iso.nix ];
-        };
+        installer = installerWith bundledModel;
+        # The slim download: the same installer without the local AI model,
+        # which then downloads once the installed computer is online.
+        installer-slim = installerWith null;
       };
 
       # `desktop` builds and tests the Nexus shell (shell/); `spaceui-spike` is the

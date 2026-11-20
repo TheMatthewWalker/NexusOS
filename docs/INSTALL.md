@@ -18,6 +18,7 @@ The easy way is to download a release. Its image is published in parts (GitHub l
 
 - **Windows:** download `Get-NexusOS.cmd` from the [newest release](https://github.com/TheMatthewWalker/NexusOS/releases/latest) and double-click it. The image goes to your Downloads folder, and the folder opens when it is ready.
 - **Linux or Mac:** `curl -fsSL https://raw.githubusercontent.com/TheMatthewWalker/NexusOS/main/scripts/release/get-nexusos.sh | sh` (into the current folder; add a version, `| sh -s v0.1.0`, for an older release).
+- **The slim image** is about 2.5 GB smaller: it leaves out the local AI model, which then downloads once NexusOS is online (until then, Nexus says the model is missing and everything else works). On Windows use `Get-NexusOS-Slim.cmd`; on Linux or Mac, `| sh -s -- --slim`.
 
 It goes on where it stopped if the connection drops: run it again. It needs about twice the image's size free while it works.
 

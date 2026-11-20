@@ -38,7 +38,7 @@ in
 
   system.nixos.distroName = "NexusOS";
   system.nixos.distroId = "nexusos";
-  image.baseName = lib.mkForce "nexusos-${config.system.nixos.release}-live-${pkgs.stdenv.hostPlatform.system}";
+  image.baseName = lib.mkForce "nexusos-${config.system.nixos.release}-live${lib.optionalString (bundledModel == null) "-slim"}-${pkgs.stdenv.hostPlatform.system}";
   isoImage.volumeID = lib.mkForce "NEXUSOS";
   # installation-cd-minimal turns udisks off; the desktop (Move in, Disks) uses it.
   services.udisks2.enable = lib.mkForce true;

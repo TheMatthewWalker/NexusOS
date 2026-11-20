@@ -8,6 +8,8 @@ The installer image is several GB, more than GitHub allows in one file, so it is
   curl -fsSL https://raw.githubusercontent.com/TheMatthewWalker/NexusOS/main/scripts/release/get-nexusos.sh | sh
   ```
 
+**Two images:** the standard one carries the local AI model, so Nexus works straight after installing, even with no internet. The **slim** one is about 2.5 GB smaller and downloads the model once the installed computer is online: on Windows use **Get-NexusOS-Slim.cmd**; on Linux or Mac add `-s -- --slim` after `sh`.
+
 Then write the `.iso` to a USB stick of 8 GB or more with [Rufus](https://rufus.ie) or [balenaEtcher](https://etcher.balena.io), and start the computer from it. Full steps: [docs/INSTALL.md](https://github.com/TheMatthewWalker/NexusOS/blob/main/docs/INSTALL.md).
 
 To join the parts by hand instead, see README.txt.

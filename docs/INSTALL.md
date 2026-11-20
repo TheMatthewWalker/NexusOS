@@ -100,7 +100,7 @@ The installer refuses, and says why, when: there is no free space (or less than 
 
 Each start, NexusOS asks for your password twice: first on the NexusOS start-up screen, to unlock the encrypted disk (before anything else runs), then on the login screen. Press Esc on the start-up screen to see the start-up messages.
 
-The disk is encrypted (LUKS2) so a lost or stolen computer shows nothing without the password. If you change your login password later, the disk keeps the old one until you change it too: `sudo cryptsetup luksChangeKey /dev/disk/by-label/nexusos-crypt`. To install without encryption, run `sudo nexus-install --no-encrypt`.
+The disk is encrypted (LUKS2) so a lost or stolen computer shows nothing without the password. Change your password in **Settings, Accounts**: the disk's password changes with it, so the same password still unlocks the disk at start-up. (If the disk's password was different, Accounts asks for it and brings it in step.) Accounts also adds and removes accounts for other people, with an administrator's password. To install without encryption, run `sudo nexus-install --no-encrypt`.
 
 ![The installed system's login screen, then the NexusOS desktop](evidence/img/M7-installed-desktop.png)
  If the stick carried the local model, Nexus can answer straight away. Otherwise NexusOS downloads the model in the background once it is online (about 5 GB); until then, Nexus says it is unavailable and apps work as normal.

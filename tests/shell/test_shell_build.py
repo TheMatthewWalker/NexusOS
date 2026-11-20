@@ -805,5 +805,22 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('page.desktop.set("doNotDisturb"', (self.out / "settings/DesktopPage.qml").read_text())
         self.run_node_test("notifications.test.mjs")
 
+    def test_accounts_change_the_password_with_the_disk_and_never_put_it_on_a_command_line(self):
+        page = (self.out / "settings/AccountsPage.qml").read_text()
+        # Through pkexec, the setuid wrapper, and the paths the polkit policy names.
+        self.assertIn('"/run/wrappers/bin/pkexec", "/run/current-system/sw/bin/" + helper, operation]', page)
+        self.assertIn("onStarted: { write(request + \"\\n\"); stdinEnabled = false }", page)
+        for line in page.splitlines():
+            if "command = " in line or "command: [" in line:
+                self.assertNotIn("password", line.replace("nexus-account-password", ""))
+        self.assertEqual(page.count("password: true"), 7)
+        settings = (self.out / "Settings.qml").read_text()
+        self.assertIn('accounts: "AccountsPage"', settings)
+        policy = (ROOT / "nix/modules/accounts.nix").read_text()
+        self.assertIn("<allow_active>auth_self</allow_active>", policy)
+        self.assertIn("<allow_active>auth_admin</allow_active>", policy)
+        self.assertIn("/run/current-system/sw/bin/nexus-account-password</annotate>", policy)
+        self.run_node_test("accounts.test.mjs")
+
 if __name__ == "__main__":
     unittest.main()

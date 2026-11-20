@@ -58,6 +58,7 @@ NexusWindow {
         { id: "timeline", label: "Timeline", colour: "#FFA65C", icon: "time" },
         { id: "automations", label: "Automations", colour: "#7FE0B0", icon: "spark" },
         { id: "accessibility", label: "Accessibility", colour: "#86A8FF", icon: "accessibility" },
+        { id: "accounts", label: "Accounts", colour: "#9C8FFF", icon: "accounts" },
         { id: "health", label: "Health", colour: "#7FE0B0", icon: "health" },
         { id: "about", label: "About", colour: "#9AA9C9", icon: "about" }
     ]
@@ -68,7 +69,7 @@ NexusWindow {
     readonly property var allGroups: [
         { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth"] },
         { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power"] },
-        { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "accessibility", "privacy"] },
+        { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "accounts", "accessibility", "privacy"] },
         { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "timeline", "automations", "search", "about"] }
     ]
     // Only the pages this Settings shows (`only`); a group left empty is not shown.
@@ -117,6 +118,8 @@ NexusWindow {
         ["desktop", "blur", "Blur", "blur glass transparency effects"],
         ["desktop", "animations", "Animations", "animations motion effects reduce"],
         ["desktop", "shortcuts", "Keyboard shortcuts", "keyboard shortcuts keys hotkeys super"],
+        ["accounts", "password", "Change your password", "password change passphrase login disk unlock encryption"],
+        ["accounts", "accounts", "Accounts for other people", "accounts users people family add remove administrator user"],
         ["desktop", "donotdisturb", "Do not disturb", "notifications notify do not disturb quiet bell alerts popups"],
         ["privacy", "model", "AI model", "model ai ollama qwen llm assistant nexus"],
         ["privacy", "largemodel", "Large model", "large model bigger smarter mixture of experts moe gpt-oss llama memory"],
@@ -449,7 +452,7 @@ NexusWindow {
                 id: pageLoader
                 width: scroller.width
                 readonly property string file: "settings/" + ({ network: "NetworkPage", bluetooth: "BluetoothPage", sound: "SoundPage",
-                    display: "DisplayPage", power: "PowerPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
+                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
                     timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage",
                     search: "SearchPage" })[win.page] + ".qml"
                 function reload() {

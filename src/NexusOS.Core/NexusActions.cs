@@ -64,7 +64,7 @@ public static class NexusActions
 {
     public static readonly string[] SettingsPages =
         ["network", "bluetooth", "sound", "display", "power", "desktop", "privacy", "search", "timeline", "automations",
-         "accessibility", "health", "about"];
+         "accessibility", "accounts", "health", "about"];
     public static readonly string[] PersonalSettings =
         ["volume", "night_light", "scale", "windows", "blur", "animations", "high_contrast"];
     public static readonly string[] Roles = ["files", "browser", "terminal", "settings", "studio"];

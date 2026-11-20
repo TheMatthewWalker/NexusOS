@@ -119,6 +119,11 @@ def check(updates_dir, host_dir, *, runner=run_command, free=system_update.free_
         shutil.copytree(host_dir, flake, symlinks=True)
         old = (host_dir / "flake.lock").read_bytes()
         if follows_release(old):
+            # The channel the person chose (Settings, Updates): the copy follows its branch.
+            flake_nix = flake / "flake.nix"
+            if flake_nix.exists():
+                system_update.write_file(flake_nix, system_update.set_flake_branch(
+                    flake_nix.read_text(), system_update.wanted_channel(host_dir)).encode(), 0o644)
             status, _, err = runner(NIX + ["flake", "update", system_update.NEXUS_INPUT, "--flake", f"path:{flake}"], 1800)
             if status != 0:
                 print(f"nexus-update-check: nix flake update nexusos failed: {err}", file=sys.stderr, flush=True)

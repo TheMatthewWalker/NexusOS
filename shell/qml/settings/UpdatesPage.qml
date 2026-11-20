@@ -3,7 +3,12 @@ import Quickshell
 import Quickshell.Io
 import "../lib/firmware.mjs" as F
 
-// Settings, Updates. Firmware: the computer's own firmware (UEFI/BIOS,
+// Settings, Updates. NexusOS: what Guardian's update check last found
+// (GET /guardian/updates; updates are approved in Guardian's window), a check
+// now, and the channel: stable (releases) or testing (pre-releases first).
+// The channel is a root file written by nexus-update-channel through pkexec
+// (nix/modules/updates.nix); moving is then a normal, forward-only update.
+// Firmware: the computer's own firmware (UEFI/BIOS,
 // Thunderbolt, docks, SSDs, mice and keyboards) from the Linux Vendor
 // Firmware Service, through fwupd (nix/modules/firmware.nix). fwupdmgr runs as
 // you; fwupd asks for an administrator's password before it writes firmware,
@@ -23,9 +28,44 @@ Column {
     property bool needsRestart: false
     property string expanded: ""
 
+    // ---- NexusOS ----
+    readonly property var bridge: host.bridge
+    property var system: null
+    property int systemId: -1
+    property int checkId: -1
+    property string channel: "stable"
+    property bool followsRelease: true
+    function refreshSystem() { if (bridge && bridge.online) systemId = bridge.api("GET", "/guardian/updates") }
+    Connections {
+        target: page.bridge
+        function onResult(id, type, data) {
+            if (id === page.systemId) page.system = data;
+            else if (id === page.checkId) { page.say(data.message || "Checking for updates.", false); page.refreshSystem() }
+        }
+        function onFailed(id, message) { if (id === page.systemId || id === page.checkId) page.say(message, true) }
+    }
+    FileView { path: "/etc/nixos/nexusos-channel"; onLoaded: page.channel = text().trim() === "testing" ? "testing" : "stable" }
+    FileView { path: "/etc/nixos/flake.nix"; onLoaded: page.followsRelease = text().indexOf('inputs.nexusos.url = "github:') >= 0 }
+    Process {
+        id: channelSetter
+        stdout: StdioCollector { id: channelOut }
+        onExited: code => {
+            let r = {}; try { r = JSON.parse(channelOut.text || "{}") } catch (e) {}
+            if (code === 0 && r.message) { page.channel = channelSetter.wanted; page.say(r.message, false) }
+            else page.say(r.error || "The channel was not changed (the password was not given).", true);
+        }
+        property string wanted: ""
+    }
+    function setChannel(c) {
+        if (channelSetter.running || (c !== "stable" && c !== "testing") || c === channel) return;
+        channelSetter.wanted = c;
+        channelSetter.command = [Quickshell.env("NEXUS_PKEXEC") || "/run/wrappers/bin/pkexec", "/run/current-system/sw/bin/nexus-update-channel", c];
+        channelSetter.running = true;
+    }
+
     function say(text, error) { message = text; messageIsError = !!error }
     function check() { if (!finder.running) { checked = false; finder.running = true; lister.running = true } }
-    Component.onCompleted: check()
+    Component.onCompleted: { check(); refreshSystem() }
 
     Process {
         id: finder
@@ -73,6 +113,26 @@ Column {
         onClicked: Quickshell.execDetached(["systemctl", "reboot"])
     }
 
+    SettingRow {
+        theme: page.theme; label: "NexusOS"; highlighted: page.host.highlight === "system"
+        detail: !page.system ? "…" : page.system.guardian ? page.system.guardian
+            : (page.system.updates && page.system.updates.message ? page.system.updates.message + " "
+               : page.system.lastCheck ? (page.system.lastCheck.message || "") + " " : "") +
+              (page.system.lastCheck && page.system.lastCheck.when ? "Last checked " + page.system.lastCheck.when + ". " : "") +
+              "Updates are built and tested first, and you approve each one; it is used from the next restart, and the one before stays if anything goes wrong."
+        Button { theme: page.theme; label: "Check now"; enabled: !!page.bridge && page.bridge.online
+                 onClicked: page.checkId = page.bridge.api("POST", "/guardian/updates/check", {}) }
+    }
+    SettingRow {
+        visible: page.followsRelease
+        theme: page.theme; label: "Channel"; highlighted: page.host.highlight === "channel"
+        detail: page.channel === "testing"
+            ? "Testing: new versions before they are released to everyone, to help find problems. Back to stable whenever you like: you then move on once stable is newer."
+            : "Stable: tested releases. Testing gets new versions first, for people who like to help find problems."
+        Choice { theme: page.theme; name: "Channel"; current: page.channel
+                 options: [{ value: "stable", label: "Stable" }, { value: "testing", label: "Testing" }]
+                 onChose: v => page.setChannel(v) }
+    }
     SettingRow {
         theme: page.theme; label: "Firmware"; highlighted: page.host.highlight === "firmware"
         detail: F.summary(page.firmware, page.checked) +

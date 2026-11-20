@@ -871,6 +871,11 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("services.fwupd.enable", module)
         self.assertIn("../modules/firmware.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
         self.run_node_test("firmware.test.mjs")
+        self.assertIn('"/run/current-system/sw/bin/nexus-update-channel", c]', page)
+        self.assertIn('page.bridge.api("POST", "/guardian/updates/check", {})', page)
+        updates = (ROOT / "nix/modules/updates.nix").read_text()
+        self.assertIn("stable|testing) ;;", updates)
+        self.assertIn("org.nexusos.updates.channel", updates)
 
     def test_language_and_region_are_per_person_and_checked(self):
         page = (self.out / "settings/RegionPage.qml").read_text()

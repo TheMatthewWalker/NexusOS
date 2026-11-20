@@ -173,6 +173,8 @@ NexusWindow {
         ["storage", "systemversions", "Earlier system versions", "old versions generations garbage collect clean nix store free space"],
         ["feedback", "report", "Report a problem or an idea", "feedback report bug problem idea suggestion issue github send tell developers"],
         ["feedback", "crashnotices", "Crash notices", "crash crashed stopped unexpectedly crash report notify coredump"],
+        ["updates", "system", "NexusOS updates", "update updates upgrade security patches new version check for updates nexusos"],
+        ["updates", "channel", "Update channel", "channel stable testing beta preview pre-release early updates"],
         ["updates", "firmware", "Firmware", "firmware bios uefi update fwupd thunderbolt dock ssd lvfs"],
         ["about", "secureboot", "Secure Boot", "secure boot uefi signed keys tamper firmware bios security anti cheat"],
         ["about", "name", "Computer name", "about computer name hostname version"],

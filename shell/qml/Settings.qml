@@ -61,6 +61,7 @@ NexusWindow {
         { id: "accessibility", label: "Accessibility", colour: "#86A8FF", icon: "accessibility" },
         { id: "accounts", label: "Accounts", colour: "#9C8FFF", icon: "accounts" },
         { id: "health", label: "Health", colour: "#7FE0B0", icon: "health" },
+        { id: "backups", label: "Backups", colour: "#7FE0B0", icon: "backup" },
         { id: "about", label: "About", colour: "#9AA9C9", icon: "about" }
     ]
     // The pages in four groups, so the orbit stays readable on a small
@@ -71,7 +72,7 @@ NexusWindow {
         { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth", "printers"] },
         { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power"] },
         { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "accounts", "accessibility", "privacy"] },
-        { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "timeline", "automations", "search", "about"] }
+        { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "backups", "timeline", "automations", "search", "about"] }
     ]
     // Only the pages this Settings shows (`only`); a group left empty is not shown.
     readonly property var groups: allGroups.map(g => Object.assign({}, g, { members: g.members.filter(m => pages.some(p => p.id === m)) }))
@@ -147,6 +148,9 @@ NexusWindow {
         ["accessibility", "voice", "Voice control", "voice speech talk microphone dictate push to talk"],
         ["accessibility", "spoken", "Spoken replies", "read aloud speak text to speech voice replies"],
         ["health", "", "Health", "health report problems disk smart updates check status"],
+        ["backups", "backups", "Backups", "backup back up copy files drive usb external disk restic time machine schedule daily"],
+        ["backups", "backupdrive", "Backup drive", "backup drive usb external disk change another drive password"],
+        ["backups", "restore", "Restore files", "restore recover deleted lost file get back earlier version backup"],
         ["about", "name", "Computer name", "about computer name hostname version"],
         ["about", "storage", "Storage", "storage disk space full free files"],
         ["about", "welcome", "Welcome setup", "welcome first run setup bundles start again apps for studying gaming office coding"],
@@ -458,7 +462,7 @@ NexusWindow {
                 id: pageLoader
                 width: scroller.width
                 readonly property string file: "settings/" + ({ network: "NetworkPage", bluetooth: "BluetoothPage", sound: "SoundPage",
-                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
+                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", backups: "BackupsPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
                     timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage",
                     search: "SearchPage" })[win.page] + ".qml"
                 function reload() {

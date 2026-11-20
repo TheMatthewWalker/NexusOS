@@ -848,5 +848,18 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("../modules/printing.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
         self.run_node_test("printers.test.mjs")
 
+    def test_backups_run_as_the_person_and_restore_beside_the_files(self):
+        page = (self.out / "settings/BackupsPage.qml").read_text()
+        self.assertIn('command: ["nexus-backup", "status"]', page)
+        self.assertIn('worker.command = ["nexus-backup", operation].concat(args || [])', page)
+        self.assertNotIn("pkexec", page)                       # never as root
+        self.assertIn('page.work("setup", ["--dest", page.chosenDrive], password.text', page)   # password on stdin
+        self.assertIn("B.restorePath(page.home, modelData)", page)
+        module = (ROOT / "nix/modules/backups.nix").read_text()
+        for line in ("systemd.user.timers.nexus-backup", "nexus-backup auto", "pkgs.restic"):
+            self.assertIn(line, module)
+        self.assertIn("../modules/backups.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.run_node_test("backups.test.mjs")
+
 if __name__ == "__main__":
     unittest.main()

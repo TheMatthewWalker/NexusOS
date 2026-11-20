@@ -28,6 +28,7 @@ NexusWindow {
     signal fixIt(string problem)
     signal openWelcome()
     signal moveIn()
+    signal proposeSystem(var plan)       // a system change for Guardian to check and the person to approve
 
     title: "Settings"
     visible: false
@@ -170,6 +171,7 @@ NexusWindow {
         ["storage", "caches", "Clear caches", "cache caches clear temporary files"],
         ["storage", "systemversions", "Earlier system versions", "old versions generations garbage collect clean nix store free space"],
         ["updates", "firmware", "Firmware", "firmware bios uefi update fwupd thunderbolt dock ssd lvfs"],
+        ["about", "secureboot", "Secure Boot", "secure boot uefi signed keys tamper firmware bios security anti cheat"],
         ["about", "name", "Computer name", "about computer name hostname version"],
         ["about", "storage", "Storage", "storage disk space full free files"],
         ["about", "welcome", "Welcome setup", "welcome first run setup bundles start again apps for studying gaming office coding"],

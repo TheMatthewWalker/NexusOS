@@ -911,5 +911,17 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("../modules/storage.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
         self.run_node_test("storage.test.mjs")
 
+    def test_secure_boot_goes_through_guardian_then_one_root_step(self):
+        page = (self.out / "settings/AboutPage.qml").read_text()
+        self.assertIn("page.host.proposeSystem(SB.PLAN)", page)
+        self.assertIn('"/run/current-system/sw/bin/nexus-secure-boot-enroll"', page)
+        self.assertIn("onProposeSystem: plan => guardianWin.openPlan(plan, \"user\")", (self.out / "shell.qml").read_text())
+        schema = json.loads((ROOT / "schema/guardian-options.json").read_text())
+        self.assertEqual(schema["options"]["nexusos.secureBoot.enable"]["risk"], "elevated")
+        module = (ROOT / "nix/modules/secure-boot.nix").read_text()
+        self.assertIn("boot.loader.systemd-boot.editor = lib.mkForce false", module)
+        self.assertIn('"enroll-keys", "--microsoft", "--firmware-builtin"', (ROOT / "scripts/boot/nexus_secure_boot.py").read_text())
+        self.run_node_test("secureboot.test.mjs")
+
 if __name__ == "__main__":
     unittest.main()

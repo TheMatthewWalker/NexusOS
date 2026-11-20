@@ -206,6 +206,7 @@ ShellRoot {
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
         onFixIt: problem => fixItWin.open(problem)
         onAppChange: perform => appsWin.perform(perform)
+        onProposeSystem: plan => guardianWin.openPlan(plan, "user")
         onOpenWelcome: firstRun.open()
         onMoveIn: moveInWin.open()
     }

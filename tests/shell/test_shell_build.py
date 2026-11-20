@@ -861,5 +861,15 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("../modules/backups.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
         self.run_node_test("backups.test.mjs")
 
+    def test_firmware_updates_go_through_fwupd_with_checked_ids(self):
+        page = (self.out / "settings/UpdatesPage.qml").read_text()
+        self.assertIn('command: ["fwupdmgr", "get-updates", "--json"]', page)
+        self.assertIn('updater.command = ["fwupdmgr", "update", "--assume-yes", "--no-reboot-check"].concat(ok.map(u => u.id))', page)
+        self.assertIn("/^[0-9a-f]{40}$/.test(u.id)", page)
+        module = (ROOT / "nix/modules/firmware.nix").read_text()
+        self.assertIn("services.fwupd.enable", module)
+        self.assertIn("../modules/firmware.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.run_node_test("firmware.test.mjs")
+
 if __name__ == "__main__":
     unittest.main()

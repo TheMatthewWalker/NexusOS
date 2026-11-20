@@ -117,6 +117,7 @@ NexusWindow {
         ["desktop", "blur", "Blur", "blur glass transparency effects"],
         ["desktop", "animations", "Animations", "animations motion effects reduce"],
         ["desktop", "shortcuts", "Keyboard shortcuts", "keyboard shortcuts keys hotkeys super"],
+        ["desktop", "donotdisturb", "Do not disturb", "notifications notify do not disturb quiet bell alerts popups"],
         ["privacy", "model", "AI model", "model ai ollama qwen llm assistant nexus"],
         ["privacy", "largemodel", "Large model", "large model bigger smarter mixture of experts moe gpt-oss llama memory"],
         ["privacy", "verylargemodel", "Very large model", "very large huge model colibri disk experts deepseek qwen glm download"],

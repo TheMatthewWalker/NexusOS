@@ -787,5 +787,23 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('"verylargemodel", "Very large model"', (self.out / "Settings.qml").read_text())
 
 
+    def test_apps_notifications_pop_up_and_wait_in_the_centre_as_plain_text(self):
+        qml = (self.out / "Notifications.qml").read_text()
+        self.assertIn("NotificationServer {", qml)
+        # An app cannot put markup or links in front of the person.
+        self.assertIn("bodyMarkupSupported: false", qml)
+        self.assertIn("bodyHyperlinksSupported: false", qml)
+        self.assertIn("n.tracked = true", qml)                        # kept for the centre until dismissed
+        self.assertIn("N.showCard(n.urgency === NotificationUrgency.Critical, notifications.doNotDisturb", qml)
+        card = (self.out / "NotificationCard.qml").read_text()
+        self.assertEqual(card.count("textFormat: Text.PlainText"), 3)
+        self.assertIn("Notifications { id: notifications;", (self.out / "shell.qml").read_text())
+        bar = (self.out / "TopBar.qml").read_text()
+        self.assertIn('source: "icons/bell.svg"', bar)
+        self.assertIn("bar.notifications.centreOpen = !bar.notifications.centreOpen", bar)
+        self.assertIn("property bool doNotDisturb: false", (self.out / "DesktopSettings.qml").read_text())
+        self.assertIn('page.desktop.set("doNotDisturb"', (self.out / "settings/DesktopPage.qml").read_text())
+        self.run_node_test("notifications.test.mjs")
+
 if __name__ == "__main__":
     unittest.main()

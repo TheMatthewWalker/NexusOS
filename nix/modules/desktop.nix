@@ -384,7 +384,9 @@ in
     # points with slurp, takes the area's picture with grim and reads the
     # selected text with wl-paste (wl-clipboard).
     environment.systemPackages = [ cfg.shellPackage pkgs.gtk3 pkgs.hyprsunset pkgs.brightnessctl pkgs.pciutils pkgs.xdg-utils
-                                   pkgs.orca pkgs.adwaita-icon-theme pkgs.grim pkgs.slurp pkgs.wl-clipboard pkgs.rsync ]
+                                   pkgs.orca pkgs.adwaita-icon-theme pkgs.grim pkgs.slurp pkgs.wl-clipboard pkgs.rsync
+                                   # notify-send: scripts and terminal commands can notify too (Notifications.qml shows them).
+                                   pkgs.libnotify ]
       ++ lib.optionals cfg.installDefaultApps [ pkgs.kitty pkgs.thunar ];
 
     # The shell is Nexus, the top bar and the session's polkit agent (the

@@ -225,7 +225,9 @@ ShellRoot {
              onUseAsWallpaper: path => wallpaper.set(path) }
     // System changes waiting for approval, and how they are going (Guardian.qml).
     Guardian { id: guardianWin; theme: root.dark; bridge: bridge }
-    TopBar { theme: root.dark; settings: settings; guardian: guardianWin; onOpenNexus: root.expanded ? root.collapse() : root.open()
+    // Notifications from apps: cards, and the centre behind the bell in the top bar.
+    Notifications { id: notifications; theme: root.dark; desktop: desktop }
+    TopBar { theme: root.dark; settings: settings; guardian: guardianWin; notifications: notifications; onOpenNexus: root.expanded ? root.collapse() : root.open()
              onOpenApps: appsWin.open("all") }
     OrbitalControls { theme: root.dark; settings: settings; reduced: root.reduced }
     Process { id: hypr }

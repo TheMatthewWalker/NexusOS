@@ -26,6 +26,7 @@ Item {
     property alias warmth: store.warmth
     property alias highContrast: store.highContrast
     property alias cursorSize: store.cursorSize
+    property alias doNotDisturb: store.doNotDisturb
     // False while game mode has blur and animations off, so applying settings does not undo it.
     property bool gameMode: false
     // Each change goes in the activity journal with its old value, so the Timeline can undo it.
@@ -40,6 +41,7 @@ Item {
         case "warmth": return "Night light warmth " + value + " K";
         case "highContrast": return "High contrast " + (value ? "on" : "off");
         case "cursorSize": return "Pointer size " + value;
+        case "doNotDisturb": return "Do not disturb " + (value ? "on" : "off");
         default: return key;
         }
     }
@@ -75,6 +77,7 @@ Item {
             property int warmth: 4500
             property bool highContrast: false
             property int cursorSize: 24
+            property bool doNotDisturb: false
         }
     }
 

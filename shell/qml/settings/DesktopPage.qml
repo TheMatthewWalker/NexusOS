@@ -32,6 +32,14 @@ Column {
                  onToggled: page.desktop.set("animations", !page.desktop.animations) }
     }
     SettingRow {
+        theme: page.theme; label: "Do not disturb"; highlighted: page.host.highlight === "donotdisturb"
+        detail: page.desktop.doNotDisturb
+            ? "Notifications wait quietly behind the bell in the top bar; only urgent ones pop up."
+            : "Notifications from apps pop up in the top right, and wait behind the bell in the top bar."
+        Switch { theme: page.theme; name: "Do not disturb"; checked: page.desktop.doNotDisturb
+                 onToggled: page.desktop.set("doNotDisturb", !page.desktop.doNotDisturb) }
+    }
+    SettingRow {
         theme: page.theme; label: "Keyboard shortcuts"; highlighted: page.host.highlight === "shortcuts"
         detail: "Super+Space Nexus · Super+Return terminal · Super+E files · Super+I Settings · Super+Q close · " +
                 "Super+M maximise · Super+F fullscreen · Super+1–5 workspaces · Super+L lock"

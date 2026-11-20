@@ -17,6 +17,8 @@ Scope {
     id: notifications
     property var theme
     property var desktop                 // DesktopSettings: doNotDisturb
+    property var translations: null
+    function tr(text) { return translations ? translations.t(text) : text }
     property bool centreOpen: false
     readonly property bool doNotDisturb: !!desktop && desktop.doNotDisturb
     // Newest first, from the server's tracked notifications.
@@ -116,24 +118,24 @@ Scope {
                     spacing: 10
                     Item {
                         width: parent.width; height: 28
-                        Text { anchors.verticalCenter: parent.verticalCenter; text: "Notifications"
+                        Text { anchors.verticalCenter: parent.verticalCenter; text: notifications.tr("Notifications")
                                color: notifications.theme.ink; font.pixelSize: 16; font.weight: 600 }
                         Row {
                             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                             spacing: 14
                             Text {
-                                text: notifications.doNotDisturb ? "Do not disturb: on" : "Do not disturb: off"
+                                text: notifications.tr("Do not disturb") + ": " + notifications.tr(notifications.doNotDisturb ? "On" : "Off")
                                 color: notifications.doNotDisturb ? notifications.theme.focus : notifications.theme.inkSecondary
                                 font.pixelSize: 12
                                 HoverHandler { cursorShape: Qt.PointingHandCursor }
                                 TapHandler { onTapped: notifications.desktop.set("doNotDisturb", !notifications.doNotDisturb) }
                                 Accessible.role: Accessible.CheckBox
                                 Accessible.checked: notifications.doNotDisturb
-                                Accessible.name: "Do not disturb"
+                                Accessible.name: notifications.tr("Do not disturb")
                             }
                             Text {
                                 visible: notifications.count > 0
-                                text: "Clear all"; color: notifications.theme.inkSecondary; font.pixelSize: 12
+                                text: notifications.tr("Clear all"); color: notifications.theme.inkSecondary; font.pixelSize: 12
                                 HoverHandler { cursorShape: Qt.PointingHandCursor }
                                 TapHandler { onTapped: notifications.clearAll() }
                                 Accessible.role: Accessible.Button
@@ -144,7 +146,7 @@ Scope {
                     Text {
                         visible: notifications.count === 0
                         width: parent.width; wrapMode: Text.Wrap
-                        text: "Nothing new. Notifications from apps appear here until you clear them."
+                        text: notifications.tr("Nothing new. Notifications from apps appear here until you clear them.")
                         color: notifications.theme.inkSecondary; font.pixelSize: 13
                     }
                     Repeater {

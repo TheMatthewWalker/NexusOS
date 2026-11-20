@@ -6,7 +6,21 @@ let
   cfg = config.services.nexus-desktop;
   # start-hyprland runs Hyprland under its watchdog, as Hyprland asks; started
   # directly, Hyprland shows a warning on every login.
-  hyprland = "${config.programs.hyprland.package}/bin/start-hyprland -- --config /etc/nexus/hyprland.conf";
+  # The person's language, formats and time zone (Settings, Language and
+  # region) are read from ~/.config/nexusos/region.env first: only these
+  # names, and only values made of locale and time-zone characters.
+  session = pkgs.writeShellScript "nexus-session" ''
+    region="''${XDG_CONFIG_HOME:-$HOME/.config}/nexusos/region.env"
+    if [ -r "$region" ]; then
+      while IFS='=' read -r key value; do
+        case "$key" in LANG|LANGUAGE|LC_TIME|LC_NUMERIC|LC_MONETARY|LC_PAPER|LC_MEASUREMENT|TZ) ;; *) continue ;; esac
+        case "$value" in ""|*[!A-Za-z0-9_.@:/+-]*) continue ;; esac
+        export "$key=$value"
+      done < "$region"
+    fi
+    exec ${config.programs.hyprland.package}/bin/start-hyprland -- --config /etc/nexus/hyprland.conf
+  '';
+  hyprland = "${session}";
   terminal = cfg.apps.terminal or "kitty";
   files = cfg.apps.files or "thunar";
   hyprctl = "${config.programs.hyprland.package}/bin/hyprctl";
@@ -86,6 +100,7 @@ let
     env = NEXUS_BRIGHTNESSCTL,${pkgs.brightnessctl}/bin/brightnessctl
     env = NEXUS_LOCK,${config.programs.hyprlock.package}/bin/hyprlock --config /etc/nexus/hyprlock.conf
     env = NEXUS_TERMINAL,${terminal}
+    env = NEXUS_KEYBOARD_LAYOUT,${cfg.keyboardLayout}
     # First-run setup: the Welcome window opens once, after the first login.
     ${lib.optionalString cfg.firstRun "env = NEXUS_FIRST_RUN,1"}
     # The shell runs as a user service, nexus-shell.service, so it comes back

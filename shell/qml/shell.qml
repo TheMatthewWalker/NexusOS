@@ -180,6 +180,7 @@ ShellRoot {
         }
     }
     AppDirectory { id: apps }
+    Translations { id: translations }
     DesktopSettings { id: desktop; gameMode: root.gameMode; bridge: bridge }
     RuleRunner { bridge: bridge; desktop: desktop; wallpaper: wallpaper; apps: apps; wifi: settings.wifi }
     // Voice control and Describe this, on this computer (Voice.qml, Describe.qml).
@@ -200,6 +201,7 @@ ShellRoot {
     Settings {
         id: settings
         theme: root.dark; bridge: bridge; desktop: desktop; reduced: root.reduced; cardHost: actionCards
+        translations: translations
         voice: voiceCtl; describer: describer
         onAskNexus: text => { root.open(); input.text = text; root.ask(text) }
         onFixIt: problem => fixItWin.open(problem)
@@ -226,7 +228,7 @@ ShellRoot {
     // System changes waiting for approval, and how they are going (Guardian.qml).
     Guardian { id: guardianWin; theme: root.dark; bridge: bridge }
     // Notifications from apps: cards, and the centre behind the bell in the top bar.
-    Notifications { id: notifications; theme: root.dark; desktop: desktop }
+    Notifications { id: notifications; theme: root.dark; desktop: desktop; translations: translations }
     // Screen off, sleep, the lid, and locking before every sleep (Settings, Power).
     Idle { desktop: desktop }
     TopBar { theme: root.dark; settings: settings; guardian: guardianWin; notifications: notifications; onOpenNexus: root.expanded ? root.collapse() : root.open()

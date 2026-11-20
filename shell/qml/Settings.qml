@@ -45,7 +45,11 @@ NexusWindow {
 
     // The live installer shows only some pages (live.qml: Network); empty means all.
     property var only: []
-    readonly property var pages: only.length ? allPages.filter(p => only.includes(p.id)) : allPages
+    // Labels in the person's language (Translations.qml); ids stay English.
+    property var translations: null
+    function tr(text, args) { return translations ? translations.t(text, args) : text }
+    readonly property var pages: (only.length ? allPages.filter(p => only.includes(p.id)) : allPages)
+        .map(p => Object.assign({}, p, { label: tr(p.label) }))
     readonly property var allPages: [
         { id: "network", label: "Network", colour: "#86A8FF", icon: "network" },
         { id: "bluetooth", label: "Bluetooth", colour: "#86A8FF", icon: "bluetooth" },
@@ -54,6 +58,7 @@ NexusWindow {
         { id: "display", label: "Display", colour: "#FFA65C", icon: "display" },
         { id: "power", label: "Power", colour: "#7FE0B0", icon: "power" },
         { id: "desktop", label: "Desktop", colour: "#9C8FFF", icon: "desktop" },
+        { id: "language", label: "Language and region", colour: "#9C8FFF", icon: "language" },
         { id: "privacy", label: "Privacy and AI", colour: "#9C8FFF", icon: "privacy" },
         { id: "search", label: "Search", colour: "#86A8FF", icon: "search" },
         { id: "timeline", label: "Timeline", colour: "#FFA65C", icon: "time" },
@@ -72,11 +77,11 @@ NexusWindow {
     readonly property var allGroups: [
         { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth", "printers"] },
         { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power"] },
-        { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "accounts", "accessibility", "privacy"] },
+        { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "language", "accounts", "accessibility", "privacy"] },
         { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "backups", "updates", "timeline", "automations", "search", "about"] }
     ]
     // Only the pages this Settings shows (`only`); a group left empty is not shown.
-    readonly property var groups: allGroups.map(g => Object.assign({}, g, { members: g.members.filter(m => pages.some(p => p.id === m)) }))
+    readonly property var groups: allGroups.map(g => Object.assign({}, g, { label: tr(g.label), members: g.members.filter(m => pages.some(p => p.id === m)) }))
                                            .filter(g => g.members.length > 0)
     function groupOf(pageId) { return groups.find(g => g.members.includes(pageId)) || groups[0] }
     readonly property string expandedGroup: groupOf(page).key
@@ -152,6 +157,10 @@ NexusWindow {
         ["backups", "backups", "Backups", "backup back up copy files drive usb external disk restic time machine schedule daily"],
         ["backups", "backupdrive", "Backup drive", "backup drive usb external disk change another drive password"],
         ["backups", "restore", "Restore files", "restore recover deleted lost file get back earlier version backup"],
+        ["language", "language", "Language", "language translate english french german spanish locale"],
+        ["language", "formats", "Formats", "formats date time number currency money paper size a4 letter units region locale"],
+        ["language", "timezone", "Time zone", "time zone timezone clock travel hour wrong time"],
+        ["language", "keyboards", "Keyboard layouts", "keyboard layout input language switch alt shift qwerty azerty qwertz dvorak"],
         ["updates", "firmware", "Firmware", "firmware bios uefi update fwupd thunderbolt dock ssd lvfs"],
         ["about", "name", "Computer name", "about computer name hostname version"],
         ["about", "storage", "Storage", "storage disk space full free files"],
@@ -422,7 +431,7 @@ NexusWindow {
                     Text {
                         y: planet.size / 2 + (planet.isGroup ? 10 : 6); x: -width / 2
                         horizontalAlignment: Text.AlignHCenter
-                        text: planet.item.label + (planet.isGroup ? "\n" + planet.modelData.group.members.length + " pages" : "")
+                        text: planet.item.label + (planet.isGroup ? "\n" + win.tr("{0} pages", [planet.modelData.group.members.length]) : "")
                         color: planet.current ? win.theme.ink : win.theme.inkSecondary
                         font.pixelSize: 12; lineHeight: 1.1
                     }
@@ -464,7 +473,7 @@ NexusWindow {
                 id: pageLoader
                 width: scroller.width
                 readonly property string file: "settings/" + ({ network: "NetworkPage", bluetooth: "BluetoothPage", sound: "SoundPage",
-                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", backups: "BackupsPage", updates: "UpdatesPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
+                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", backups: "BackupsPage", language: "RegionPage", updates: "UpdatesPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
                     timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage",
                     search: "SearchPage" })[win.page] + ".qml"
                 function reload() {

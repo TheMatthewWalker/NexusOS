@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import json
 import unittest
 from pathlib import Path
 
@@ -870,6 +871,24 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("services.fwupd.enable", module)
         self.assertIn("../modules/firmware.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
         self.run_node_test("firmware.test.mjs")
+
+    def test_language_and_region_are_per_person_and_checked(self):
+        page = (self.out / "settings/RegionPage.qml").read_text()
+        self.assertIn('regionFile.setText(R.envFile(next))', page)
+        self.assertIn('command: ["timedatectl", "list-timezones"]', page)
+        self.assertNotIn("pkexec", page)
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn("LANG|LANGUAGE|LC_TIME|LC_NUMERIC|LC_MONETARY|LC_PAPER|LC_MEASUREMENT|TZ", desktop)
+        self.assertIn('*[!A-Za-z0-9_.@:/+-]*) continue', desktop)
+        settings = (self.out / "DesktopSettings.qml").read_text()
+        self.assertIn('"keyword input:kb_layout " + kb.layout', settings)
+        # Every catalogue translates only texts the shell has, and is valid JSON.
+        sources = "".join(p.read_text() for p in self.out.rglob("*.qml"))
+        self.assertEqual(sorted(c.stem for c in (self.out / "i18n").glob("*.json")), ["de", "es", "fr"])
+        for catalogue in (self.out / "i18n").glob("*.json"):
+            for text in json.loads(catalogue.read_text()):
+                self.assertTrue('"%s"' % text in sources, "%s translates %r, which the shell does not have" % (catalogue.name, text))
+        self.run_node_test("region.test.mjs")
 
 if __name__ == "__main__":
     unittest.main()

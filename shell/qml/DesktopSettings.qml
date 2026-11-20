@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import "lib/region.mjs" as R
 
 // The person's desktop choices from Settings, kept in
 // ~/.config/nexusos/desktop.json and applied to Hyprland at run time with
@@ -31,6 +32,8 @@ Item {
     property alias sleepBatteryMinutes: store.sleepBatteryMinutes
     property alias sleepPluggedMinutes: store.sleepPluggedMinutes
     property alias lidAction: store.lidAction
+    property alias keyboardLayouts: store.keyboardLayouts
+    readonly property string baseLayout: Quickshell.env("NEXUS_KEYBOARD_LAYOUT") || "us"
     // False while game mode has blur and animations off, so applying settings does not undo it.
     property bool gameMode: false
     // Each change goes in the activity journal with its old value, so the Timeline can undo it.
@@ -49,6 +52,7 @@ Item {
         case "screenOffMinutes": return "Screen off after " + (value ? value + " minutes" : "never");
         case "sleepBatteryMinutes": return "Sleep on battery after " + (value ? value + " minutes" : "never");
         case "sleepPluggedMinutes": return "Sleep plugged in after " + (value ? value + " minutes" : "never");
+        case "keyboardLayouts": return "Keyboard layouts: " + [baseLayout].concat(value ? value.split(",") : []).join(", ");
         case "lidAction": return "Closing the lid: " + ({ sleep: "sleep", lock: "lock the screen", nothing: "do nothing" })[value];
         default: return key;
         }
@@ -64,6 +68,7 @@ Item {
         store[key] = value;
         file.writeAdapter();
         if (key === "windows") applyWindows(wasTiling);
+        else if (key === "keyboardLayouts" && !value) run(["keyword", "input:kb_layout", baseLayout]);
         else apply();
     }
 
@@ -90,6 +95,7 @@ Item {
             property int sleepBatteryMinutes: 15
             property int sleepPluggedMinutes: 30
             property string lidAction: "sleep"
+            property string keyboardLayouts: ""    // extra XKB layouts, "fr,de"; Alt+Shift switches
         }
     }
 
@@ -115,6 +121,8 @@ Item {
             k.push("keyword animations:enabled " + store.animations);
         }
         if (store.scale !== 1) k.push("keyword monitor ,preferred,auto," + store.scale);
+        const kb = R.keyboard(baseLayout, store.keyboardLayouts);
+        if (kb) k.push("keyword input:kb_layout " + kb.layout, "keyword input:kb_options " + kb.options);
         return k;
     }
     function apply() { run(["--batch", keywords().join(" ; ")]) }

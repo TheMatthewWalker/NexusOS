@@ -890,5 +890,14 @@ class ShellBuild(unittest.TestCase):
                 self.assertTrue('"%s"' % text in sources, "%s translates %r, which the shell does not have" % (catalogue.name, text))
         self.run_node_test("region.test.mjs")
 
+    def test_screens_are_arranged_with_a_way_back(self):
+        page = (self.out / "settings/DisplayPage.qml").read_text()
+        self.assertIn("countdown = 15", page)
+        self.assertIn("page.revert()", page)
+        settings = (self.out / "DesktopSettings.qml").read_text()
+        self.assertIn('command: [desktop.hyprctl, "monitors", "all", "-j"]', settings)
+        self.assertIn("function onScreensChanged()", settings)
+        self.run_node_test("displays.test.mjs")
+
 if __name__ == "__main__":
     unittest.main()

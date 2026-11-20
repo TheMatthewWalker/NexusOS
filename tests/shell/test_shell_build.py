@@ -938,5 +938,13 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("property bool crashNotices: false", (self.out / "DesktopSettings.qml").read_text())
         self.run_node_test("feedback.test.mjs")
 
+    def test_help_is_the_user_guide_and_follows_only_safe_links(self):
+        self.assertEqual((ROOT / "docs/USER-GUIDE.md").read_text(), (self.out / "help/user-guide.md").read_text())
+        page = (self.out / "settings/HelpPage.qml").read_text()
+        self.assertIn("onLinkActivated: href => page.follow(href)", page)
+        self.assertIn("const l = H.link(href, pageIds);", page)
+        self.assertIn("../../docs/USER-GUIDE.md", (ROOT / "nix/packages/nexus-shell.nix").read_text())
+        self.run_node_test("help.test.mjs")
+
 if __name__ == "__main__":
     unittest.main()

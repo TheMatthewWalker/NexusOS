@@ -138,6 +138,9 @@ def main(argv):
     if out.exists():
         shutil.rmtree(out)
     shutil.copytree(SHELL / "qml", out)
+    # The user guide (docs/USER-GUIDE.md), for Settings, Help.
+    (out / "help").mkdir(exist_ok=True)
+    shutil.copyfile(ROOT / "docs/USER-GUIDE.md", out / "help/user-guide.md")
     lib = out / "lib"
     (lib / "tokens.mjs").write_text(tokens_module(args.design))
     (lib / "bundles.mjs").write_text(bundles_module())

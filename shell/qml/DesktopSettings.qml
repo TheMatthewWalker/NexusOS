@@ -35,6 +35,7 @@ Item {
     property alias lidAction: store.lidAction
     property alias keyboardLayouts: store.keyboardLayouts
     property alias monitorLayout: store.monitorLayout
+    property alias crashNotices: store.crashNotices
     property var monitors: []            // the screens connected now (hyprctl monitors all -j), for Settings, Display
     readonly property string baseLayout: Quickshell.env("NEXUS_KEYBOARD_LAYOUT") || "us"
     // False while game mode has blur and animations off, so applying settings does not undo it.
@@ -57,6 +58,7 @@ Item {
         case "sleepPluggedMinutes": return "Sleep plugged in after " + (value ? value + " minutes" : "never");
         case "keyboardLayouts": return "Keyboard layouts: " + [baseLayout].concat(value ? value.split(",") : []).join(", ");
         case "monitorLayout": return "Screen arrangement";
+        case "crashNotices": return "Crash notices " + (value ? "on" : "off");
         case "lidAction": return "Closing the lid: " + ({ sleep: "sleep", lock: "lock the screen", nothing: "do nothing" })[value];
         default: return key;
         }
@@ -102,6 +104,7 @@ Item {
             property string lidAction: "sleep"
             property string keyboardLayouts: ""    // extra XKB layouts, "fr,de"; Alt+Shift switches
             property string monitorLayout: "{}"    // lib/displays.mjs: where each screen goes, its mode and scale
+            property bool crashNotices: false      // say when an app crashes (CrashWatcher.qml); off until chosen
         }
     }
 

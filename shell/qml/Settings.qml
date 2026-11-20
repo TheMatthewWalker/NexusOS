@@ -71,6 +71,7 @@ NexusWindow {
         { id: "backups", label: "Backups", colour: "#7FE0B0", icon: "backup" },
         { id: "updates", label: "Updates", colour: "#7FE0B0", icon: "update" },
         { id: "storage", label: "Storage", colour: "#7FE0B0", icon: "storage" },
+        { id: "feedback", label: "Feedback", colour: "#9AA9C9", icon: "feedback" },
         { id: "about", label: "About", colour: "#9AA9C9", icon: "about" }
     ]
     // The pages in four groups, so the orbit stays readable on a small
@@ -81,7 +82,7 @@ NexusWindow {
         { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth", "printers"] },
         { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power"] },
         { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "language", "defaults", "accounts", "accessibility", "privacy"] },
-        { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "storage", "backups", "updates", "timeline", "automations", "search", "about"] }
+        { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "storage", "backups", "updates", "timeline", "automations", "search", "feedback", "about"] }
     ]
     // Only the pages this Settings shows (`only`); a group left empty is not shown.
     readonly property var groups: allGroups.map(g => Object.assign({}, g, { label: tr(g.label), members: g.members.filter(m => pages.some(p => p.id === m)) }))
@@ -170,6 +171,8 @@ NexusWindow {
         ["storage", "trash", "Empty the trash", "trash bin recycle empty deleted files"],
         ["storage", "caches", "Clear caches", "cache caches clear temporary files"],
         ["storage", "systemversions", "Earlier system versions", "old versions generations garbage collect clean nix store free space"],
+        ["feedback", "report", "Report a problem or an idea", "feedback report bug problem idea suggestion issue github send tell developers"],
+        ["feedback", "crashnotices", "Crash notices", "crash crashed stopped unexpectedly crash report notify coredump"],
         ["updates", "firmware", "Firmware", "firmware bios uefi update fwupd thunderbolt dock ssd lvfs"],
         ["about", "secureboot", "Secure Boot", "secure boot uefi signed keys tamper firmware bios security anti cheat"],
         ["about", "name", "Computer name", "about computer name hostname version"],
@@ -483,7 +486,7 @@ NexusWindow {
                 id: pageLoader
                 width: scroller.width
                 readonly property string file: "settings/" + ({ network: "NetworkPage", bluetooth: "BluetoothPage", sound: "SoundPage",
-                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", backups: "BackupsPage", language: "RegionPage", defaults: "DefaultAppsPage", storage: "StoragePage", updates: "UpdatesPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
+                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", backups: "BackupsPage", language: "RegionPage", defaults: "DefaultAppsPage", storage: "StoragePage", feedback: "FeedbackPage", updates: "UpdatesPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
                     timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage",
                     search: "SearchPage" })[win.page] + ".qml"
                 function reload() {

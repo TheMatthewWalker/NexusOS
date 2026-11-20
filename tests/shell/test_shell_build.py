@@ -923,5 +923,15 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('"enroll-keys", "--microsoft", "--firmware-builtin"', (ROOT / "scripts/boot/nexus_secure_boot.py").read_text())
         self.run_node_test("secureboot.test.mjs")
 
+    def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
+        page = (self.out / "settings/FeedbackPage.qml").read_text()
+        self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)
+        self.assertIn("text: page.built.title + \"\\n\\n\" + page.built.body", page)   # the preview is the report
+        self.assertNotIn("curl", page)
+        watcher = (self.out / "CrashWatcher.qml").read_text()
+        self.assertIn("running: !!watcher.desktop && watcher.desktop.crashNotices", watcher)
+        self.assertIn("property bool crashNotices: false", (self.out / "DesktopSettings.qml").read_text())
+        self.run_node_test("feedback.test.mjs")
+
 if __name__ == "__main__":
     unittest.main()

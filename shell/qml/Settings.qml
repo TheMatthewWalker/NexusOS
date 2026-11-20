@@ -49,6 +49,7 @@ NexusWindow {
     readonly property var allPages: [
         { id: "network", label: "Network", colour: "#86A8FF", icon: "network" },
         { id: "bluetooth", label: "Bluetooth", colour: "#86A8FF", icon: "bluetooth" },
+        { id: "printers", label: "Printers", colour: "#86A8FF", icon: "printer" },
         { id: "sound", label: "Sound", colour: "#9C8FFF", icon: "sound" },
         { id: "display", label: "Display", colour: "#FFA65C", icon: "display" },
         { id: "power", label: "Power", colour: "#7FE0B0", icon: "power" },
@@ -67,7 +68,7 @@ NexusWindow {
     // planet each that opens the page last used in it. Deep links still name
     // a page (open("health", "")): its group opens with it.
     readonly property var allGroups: [
-        { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth"] },
+        { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth", "printers"] },
         { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power"] },
         { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "accounts", "accessibility", "privacy"] },
         { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "timeline", "automations", "search", "about"] }
@@ -121,6 +122,8 @@ NexusWindow {
         ["desktop", "blur", "Blur", "blur glass transparency effects"],
         ["desktop", "animations", "Animations", "animations motion effects reduce"],
         ["desktop", "shortcuts", "Keyboard shortcuts", "keyboard shortcuts keys hotkeys super"],
+        ["printers", "printers", "Printers", "printer printing print default test page cups network usb"],
+        ["printers", "scanning", "Scanning", "scan scanner scanning document all-in-one"],
         ["accounts", "password", "Change your password", "password change passphrase login disk unlock encryption"],
         ["accounts", "accounts", "Accounts for other people", "accounts users people family add remove administrator user"],
         ["desktop", "donotdisturb", "Do not disturb", "notifications notify do not disturb quiet bell alerts popups"],
@@ -455,7 +458,7 @@ NexusWindow {
                 id: pageLoader
                 width: scroller.width
                 readonly property string file: "settings/" + ({ network: "NetworkPage", bluetooth: "BluetoothPage", sound: "SoundPage",
-                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
+                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
                     timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage",
                     search: "SearchPage" })[win.page] + ".qml"
                 function reload() {

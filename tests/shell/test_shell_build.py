@@ -836,5 +836,17 @@ class ShellBuild(unittest.TestCase):
             self.assertIn('page.desktop.set("%s"' % key, power)
         self.run_node_test("power.test.mjs")
 
+    def test_printers_appear_by_themselves_and_names_are_checked(self):
+        page = (self.out / "settings/PrintersPage.qml").read_text()
+        self.assertIn('command: ["lpstat", "-e"]', page)
+        self.assertIn('setDefault.command = ["lpoptions", "-d", modelData]', page)
+        self.assertEqual(page.count("P.validName("), 2)
+        self.assertIn('print.command = ["lp", "-d", name, "-t", "NexusOS test page"]', page)
+        module = (ROOT / "nix/modules/printing.nix").read_text()
+        for line in ("services.ipp-usb.enable", "nssmdns4", "pkgs.sane-airscan", "pkgs.simple-scan"):
+            self.assertIn(line, module)
+        self.assertIn("../modules/printing.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.run_node_test("printers.test.mjs")
+
 if __name__ == "__main__":
     unittest.main()

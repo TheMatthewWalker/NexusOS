@@ -31,7 +31,7 @@ LOGIN = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
 RESERVED = {"root", "nixos", "nobody", "nexus-guardian", "greeter"}
 MIN_PASSWORD = 10
 ROOT_MAPPER = "nexusos-root"
-GROUPS = ["networkmanager", "video", "audio"]
+GROUPS = ["networkmanager", "video", "audio", "scanner", "lp"]
 
 
 class AccountError(Exception):

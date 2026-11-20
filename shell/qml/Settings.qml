@@ -59,6 +59,7 @@ NexusWindow {
         { id: "power", label: "Power", colour: "#7FE0B0", icon: "power" },
         { id: "desktop", label: "Desktop", colour: "#9C8FFF", icon: "desktop" },
         { id: "language", label: "Language and region", colour: "#9C8FFF", icon: "language" },
+        { id: "defaults", label: "Default apps", colour: "#9C8FFF", icon: "defaults" },
         { id: "privacy", label: "Privacy and AI", colour: "#9C8FFF", icon: "privacy" },
         { id: "search", label: "Search", colour: "#86A8FF", icon: "search" },
         { id: "timeline", label: "Timeline", colour: "#FFA65C", icon: "time" },
@@ -68,6 +69,7 @@ NexusWindow {
         { id: "health", label: "Health", colour: "#7FE0B0", icon: "health" },
         { id: "backups", label: "Backups", colour: "#7FE0B0", icon: "backup" },
         { id: "updates", label: "Updates", colour: "#7FE0B0", icon: "update" },
+        { id: "storage", label: "Storage", colour: "#7FE0B0", icon: "storage" },
         { id: "about", label: "About", colour: "#9AA9C9", icon: "about" }
     ]
     // The pages in four groups, so the orbit stays readable on a small
@@ -77,8 +79,8 @@ NexusWindow {
     readonly property var allGroups: [
         { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth", "printers"] },
         { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power"] },
-        { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "language", "accounts", "accessibility", "privacy"] },
-        { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "backups", "updates", "timeline", "automations", "search", "about"] }
+        { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "language", "defaults", "accounts", "accessibility", "privacy"] },
+        { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "storage", "backups", "updates", "timeline", "automations", "search", "about"] }
     ]
     // Only the pages this Settings shows (`only`); a group left empty is not shown.
     readonly property var groups: allGroups.map(g => Object.assign({}, g, { label: tr(g.label), members: g.members.filter(m => pages.some(p => p.id === m)) }))
@@ -162,6 +164,11 @@ NexusWindow {
         ["language", "formats", "Formats", "formats date time number currency money paper size a4 letter units region locale"],
         ["language", "timezone", "Time zone", "time zone timezone clock travel hour wrong time"],
         ["language", "keyboards", "Keyboard layouts", "keyboard layout input language switch alt shift qwerty azerty qwertz dvorak"],
+        ["defaults", "defaults", "Default apps", "default apps browser email mail open with pdf music video photos pictures text editor file manager"],
+        ["storage", "storage", "Storage", "storage disk space full free clean up delete large files"],
+        ["storage", "trash", "Empty the trash", "trash bin recycle empty deleted files"],
+        ["storage", "caches", "Clear caches", "cache caches clear temporary files"],
+        ["storage", "systemversions", "Earlier system versions", "old versions generations garbage collect clean nix store free space"],
         ["updates", "firmware", "Firmware", "firmware bios uefi update fwupd thunderbolt dock ssd lvfs"],
         ["about", "name", "Computer name", "about computer name hostname version"],
         ["about", "storage", "Storage", "storage disk space full free files"],
@@ -474,7 +481,7 @@ NexusWindow {
                 id: pageLoader
                 width: scroller.width
                 readonly property string file: "settings/" + ({ network: "NetworkPage", bluetooth: "BluetoothPage", sound: "SoundPage",
-                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", backups: "BackupsPage", language: "RegionPage", updates: "UpdatesPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
+                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", backups: "BackupsPage", language: "RegionPage", defaults: "DefaultAppsPage", storage: "StoragePage", updates: "UpdatesPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
                     timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage",
                     search: "SearchPage" })[win.page] + ".qml"
                 function reload() {

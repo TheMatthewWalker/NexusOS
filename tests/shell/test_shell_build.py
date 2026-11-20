@@ -899,5 +899,17 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("function onScreensChanged()", settings)
         self.run_node_test("displays.test.mjs")
 
+    def test_storage_and_default_apps(self):
+        page = (self.out / "settings/StoragePage.qml").read_text()
+        self.assertIn('"/run/current-system/sw/bin/nexus-storage-clean"', page)
+        self.assertIn('command: ["nexus-storage", "report"]', page)
+        apps = (self.out / "settings/DefaultAppsPage.qml").read_text()
+        self.assertIn('setter.command = ["nexus-default-apps", "set", category, app]', apps)
+        module = (ROOT / "nix/modules/storage.nix").read_text()
+        self.assertIn("org.nexusos.storage.clean", module)
+        self.assertIn("report|empty-trash|clear-cache)", module)      # the person's command never cleans the system
+        self.assertIn("../modules/storage.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.run_node_test("storage.test.mjs")
+
 if __name__ == "__main__":
     unittest.main()

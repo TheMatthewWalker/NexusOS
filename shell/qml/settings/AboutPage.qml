@@ -50,7 +50,7 @@ Column {
     SettingRow {
         theme: page.theme; label: "Storage"; highlighted: page.host.highlight === "storage"
         detail: D.disk(page.volumes)
-        Button { theme: page.theme; visible: D.diskLow(page.volumes); label: "Show biggest files"; onClicked: page.host.openFolder(Quickshell.env("HOME")) }
+        Button { theme: page.theme; label: "Manage storage"; onClicked: page.host.open("storage", "") }
     }
     SettingRow { theme: page.theme; label: "Kernel"; detail: page.info.kernel || "…" }
     SettingRow {

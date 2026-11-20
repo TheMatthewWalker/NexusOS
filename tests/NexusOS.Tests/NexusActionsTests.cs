@@ -172,6 +172,21 @@ public sealed class NexusActionsTests : IDisposable
     }
 
     [Fact]
+    public async Task Do_not_disturb_is_a_desktop_setting_the_shell_applies()
+    {
+        var stub = Model(Calls("change_setting", new { setting = "do_not_disturb", value = "on" }));
+        using var factory = Factory(stub);
+        var client = factory.Authorized();
+        var action = OfType(await Ask(client, "stop notifications for now"), "action").Single();
+        Assert.Equal("Turn do not disturb on", action.GetProperty("summary").GetString());
+        using var response = await client.PostAsync($"/actions/{action.GetProperty("id").GetString()}/confirm", null);
+        var perform = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("perform");
+        Assert.Equal("desktop.set", perform.GetProperty("op").GetString());
+        Assert.Equal("doNotDisturb", perform.GetProperty("key").GetString());
+        Assert.True(perform.GetProperty("value").GetBoolean());
+    }
+
+    [Fact]
     public async Task Do_it_hands_the_shell_its_instruction_once()
     {
         var stub = Model(Calls("open_app", new { app = "firefox" }));

@@ -25,7 +25,8 @@
 },
 {
 "locale": "en_IN.UTF-8",
-"name": "English (India)"
+"name": "English (India)",
+"glibc": "en_IN/UTF-8"
 },
 {
 "locale": "en_ZA.UTF-8",
@@ -193,7 +194,8 @@
 },
 {
 "locale": "hi_IN.UTF-8",
-"name": "हिन्दी"
+"name": "हिन्दी",
+"glibc": "hi_IN/UTF-8"
 },
 {
 "locale": "ar_EG.UTF-8",

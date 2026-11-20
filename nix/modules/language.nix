@@ -15,7 +15,9 @@ in
   config = {
     i18n.supportedLocales = lib.mkDefault (lib.unique (
       [ "C.UTF-8/UTF-8" "${config.i18n.defaultLocale}/UTF-8" ]
-      ++ map (l: "${l.locale}/UTF-8") locales));
+      # glibc's own name (SUPPORTED), which for a few is without ".UTF-8"
+      # (en_IN/UTF-8); LANG=en_IN.UTF-8 still finds it.
+      ++ map (l: l.glibc or "${l.locale}/UTF-8") locales));
     environment.etc."nexus/locales.json".source = ./locales.json;
     environment.etc."nexus/keyboards.json".source = ../installer/keyboards.json;
   };

@@ -3,7 +3,10 @@
 # checks it and puts it together, ready to write to a USB stick.
 #
 #   curl -fsSL https://raw.githubusercontent.com/TheMatthewWalker/NexusOS/main/scripts/release/get-nexusos.sh | sh
-#   sh get-nexusos.sh [v0.1.0]          (a given release instead of the newest)
+#   sh get-nexusos.sh [--slim] [v0.1.0] (--slim: the smaller image without the local AI
+#                                        model, which downloads once NexusOS is online;
+#                                        a version: that release instead of the newest)
+#   ... | sh -s -- --slim
 #
 # GitHub limits each release file to 2 GB, so the image is published in
 # parts. This fetches every part (going on where it stopped if interrupted),
@@ -14,6 +17,8 @@ set -eu
 
 REPO="${NEXUSOS_REPO:-TheMatthewWalker/NexusOS}"
 API="${NEXUSOS_API:-https://api.github.com/repos/$REPO/releases}"
+EDITION="${NEXUSOS_EDITION:-full}"
+if [ "${1:-}" = "--slim" ]; then EDITION=slim; shift; fi
 TAG="${1:-latest}"
 DIR="${NEXUSOS_DIR:-$(pwd)}"
 
@@ -38,10 +43,17 @@ cd "$DIR"
 sums_url="$(asset SHA256SUMS)"
 [ -n "$sums_url" ] || fail "release $version has no SHA256SUMS"
 curl -fsSL -o SHA256SUMS "$sums_url"
-iso="$(grep -v '\.part-' SHA256SUMS | awk '{print $2}' | head -n1)"
-iso_sum="$(grep -v '\.part-' SHA256SUMS | awk '{print $1}' | head -n1)"
+# The images (lines without .part-): the full one, and from 0.2 a -slim one.
+images="$(grep -v '\.part-' SHA256SUMS | awk '{print $2}')"
+if [ "$EDITION" = slim ]; then
+  iso="$(printf '%s\n' "$images" | grep -- '-slim-' | head -n1)"
+  [ -n "$iso" ] || fail "release $version has no slim image; run without --slim"
+else
+  iso="$(printf '%s\n' "$images" | grep -v -- '-slim-' | head -n1)"
+fi
 [ -n "$iso" ] || fail "SHA256SUMS does not name the image"
-parts="$(grep '\.part-' SHA256SUMS | awk '{print $2}' | sort)"
+iso_sum="$(awk -v f="$iso" '$2 == f {print $1}' SHA256SUMS | head -n1)"
+parts="$(awk '{print $2}' SHA256SUMS | grep -F -- "$iso.part-" | sort)"
 [ -n "$parts" ] || fail "SHA256SUMS lists no parts"
 
 if [ -f "$iso" ] && [ "$(hash "$iso")" = "$iso_sum" ]; then

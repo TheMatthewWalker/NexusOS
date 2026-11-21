@@ -18,20 +18,26 @@ ROOT = Path(__file__).resolve().parents[2]
 SH = ROOT / "scripts/release/get-nexusos.sh"
 PS1 = ROOT / "scripts/release/get-nexusos.ps1"
 ISO = "nexusos-9.9.9-x86_64.iso"
+SLIM = "nexusos-9.9.9-slim-x86_64.iso"
 
 
 class FakeGitHub:
-    def __init__(self, corrupt_first=None, missing=None):
+    def __init__(self, corrupt_first=None, missing=None, slim=False):
         self.dir = tempfile.TemporaryDirectory()
         root = Path(self.dir.name)
         self.image = os.urandom(300_000) + b"NexusOS"
+        self.slim = os.urandom(150_000) + b"slim"
         size = 100_000
-        parts = {f"{ISO}.part-{i:02d}": self.image[i * size:(i + 1) * size] for i in range((len(self.image) + size - 1) // size)}
         (root / "files").mkdir()
-        sums = [f"{hashlib.sha256(self.image).hexdigest()}  {ISO}"]
-        for name, data in parts.items():
-            (root / "files" / name).write_bytes(data)
-            sums.append(f"{hashlib.sha256(data).hexdigest()}  {name}")
+        parts, sums = {}, []
+        # As release.yml writes it: the full image and its parts, then the slim one and its parts.
+        for iso, image in [(ISO, self.image)] + ([(SLIM, self.slim)] if slim else []):
+            sums.append(f"{hashlib.sha256(image).hexdigest()}  {iso}")
+            for i in range((len(image) + size - 1) // size):
+                name, data = f"{iso}.part-{i:02d}", image[i * size:(i + 1) * size]
+                parts[name] = data
+                (root / "files" / name).write_bytes(data)
+                sums.append(f"{hashlib.sha256(data).hexdigest()}  {name}")
         (root / "files" / "SHA256SUMS").write_text("\n".join(sums) + "\n")
         self.parts, self.served, self.corrupt_first, self.missing = parts, [], corrupt_first, missing
         fake = self
@@ -108,21 +114,45 @@ class GetNexusOS(unittest.TestCase):
         self.assertIn("has no", run.stderr)
         self.assertFalse((Path(self.out.name) / ISO).exists())
 
+    def test_the_full_image_unless_slim_is_asked_for(self):
+        fake = FakeGitHub(slim=True)
+        self.addCleanup(fake.close)
+        run = self.run_sh(fake)
+        self.assertEqual(run.returncode, 0, run.stderr + run.stdout)
+        self.assertEqual(sorted(p.name for p in Path(self.out.name).iterdir()), sorted([ISO, "SHA256SUMS"]))
+        self.assertFalse([p for p in fake.served if SLIM in p])
+        slim = self.run_sh(fake, "--slim", "v9.9.9")
+        self.assertEqual(slim.returncode, 0, slim.stderr + slim.stdout)
+        self.assertEqual(fake.slim, (Path(self.out.name) / SLIM).read_bytes())
+
+    def test_slim_from_a_release_without_one_says_so(self):
+        fake = FakeGitHub()
+        self.addCleanup(fake.close)
+        run = self.run_sh(fake, "--slim")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("no slim image", run.stderr)
+
     @unittest.skipUnless(shutil.which("pwsh"), "PowerShell not installed")
     def test_the_windows_script_does_the_same(self):
-        fake = FakeGitHub(corrupt_first=f"{ISO}.part-00")
+        fake = FakeGitHub(corrupt_first=f"{ISO}.part-00", slim=True)
         self.addCleanup(fake.close)
         env = {**os.environ, "NEXUSOS_API": f"http://127.0.0.1:{fake.port}/releases", "NEXUSOS_DIR": self.out.name}
         run = subprocess.run(["pwsh", "-NoProfile", "-File", str(PS1)], capture_output=True, text=True, env=env, timeout=180)
         self.assertEqual(run.returncode, 0, run.stderr + run.stdout)
         self.assertEqual(fake.image, (Path(self.out.name) / ISO).read_bytes())
         self.assertEqual(sorted(p.name for p in Path(self.out.name).iterdir()), sorted([ISO, "SHA256SUMS"]))
+        slim = subprocess.run(["pwsh", "-NoProfile", "-File", str(PS1)], capture_output=True, text=True,
+                              env={**env, "NEXUSOS_EDITION": "slim"}, timeout=180)
+        self.assertEqual(slim.returncode, 0, slim.stderr + slim.stdout)
+        self.assertEqual(fake.slim, (Path(self.out.name) / SLIM).read_bytes())
 
-    def test_the_double_click_wrapper_runs_the_powershell_script_from_the_repository(self):
-        cmd = (ROOT / "scripts/release/Get-NexusOS.cmd").read_bytes()
-        self.assertIn(b"\r\n", cmd)                                   # Windows line ends
-        self.assertIn(b"raw.githubusercontent.com/TheMatthewWalker/NexusOS/main/scripts/release/get-nexusos.ps1", cmd)
-        self.assertIn(b"-ExecutionPolicy Bypass", cmd)
+    def test_the_double_click_wrappers_run_the_powershell_script_from_the_repository(self):
+        for wrapper in ("Get-NexusOS.cmd", "Get-NexusOS-Slim.cmd"):
+            cmd = (ROOT / "scripts/release" / wrapper).read_bytes()
+            self.assertIn(b"\r\n", cmd)                               # Windows line ends
+            self.assertIn(b"raw.githubusercontent.com/TheMatthewWalker/NexusOS/main/scripts/release/get-nexusos.ps1", cmd)
+            self.assertIn(b"-ExecutionPolicy Bypass", cmd)
+        self.assertIn(b"$env:NEXUSOS_EDITION='slim'", (ROOT / "scripts/release/Get-NexusOS-Slim.cmd").read_bytes())
 
 
 if __name__ == "__main__":

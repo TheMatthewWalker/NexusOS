@@ -63,10 +63,10 @@ public sealed class ActionRejectedException(string message, bool malformed = fal
 public static class NexusActions
 {
     public static readonly string[] SettingsPages =
-        ["network", "bluetooth", "sound", "display", "power", "desktop", "privacy", "search", "timeline", "automations",
-         "accessibility", "health", "about"];
+        ["network", "bluetooth", "printers", "sound", "display", "power", "desktop", "language", "defaults", "privacy", "search", "timeline", "automations",
+         "accessibility", "accounts", "health", "backups", "updates", "storage", "feedback", "help", "about"];
     public static readonly string[] PersonalSettings =
-        ["volume", "night_light", "scale", "windows", "blur", "animations", "high_contrast"];
+        ["volume", "night_light", "scale", "windows", "blur", "animations", "high_contrast", "do_not_disturb"];
     public static readonly string[] Roles = ["files", "browser", "terminal", "settings", "studio"];
 
     // Descriptions are kept short: they go to the model with every question
@@ -108,7 +108,7 @@ public static class NexusActions
              new("item", "string", "Item to highlight, e.g. wifi, volume, nightlight.",
                  Required: false, MaxLength: 20, Pattern: "[a-z]{1,20}")]),
         new("change_setting", ActionSafety.Personal,
-            "Change a personal setting. volume 0-100; night_light, blur, animations, high_contrast on/off; " +
+            "Change a personal setting. volume 0-100; night_light, blur, animations, high_contrast, do_not_disturb on/off; " +
             "scale 1, 1.25, 1.5, 1.75 or 2; windows floating/tiled.",
             [new("setting", "string", "", Choices: PersonalSettings),
              new("value", "value", "", MaxLength: 16)]),

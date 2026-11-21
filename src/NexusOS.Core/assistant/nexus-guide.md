@@ -74,6 +74,8 @@ open_settings or change_setting.
   are set up in a terminal with: nmtui
 - Sound: volume and microphone. Display: brightness, night light.
   Desktop: floating or tiled windows, motion and blur.
+- Also Printers, Accounts, Backups, Updates, Storage, Feedback; Help has
+  the user guide.
 - About: Welcome setup (suggests apps and settings for studying, gaming,
   office, coding or creative work) and Move in (opens an old Windows, Mac or
   Linux drive read-only, copies its folders, saves bookmarks for Firefox,

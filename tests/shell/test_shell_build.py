@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import json
 import unittest
 from pathlib import Path
 
@@ -786,6 +787,164 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("AVX2", page)
         self.assertIn('"verylargemodel", "Very large model"', (self.out / "Settings.qml").read_text())
 
+
+    def test_apps_notifications_pop_up_and_wait_in_the_centre_as_plain_text(self):
+        qml = (self.out / "Notifications.qml").read_text()
+        self.assertIn("NotificationServer {", qml)
+        # An app cannot put markup or links in front of the person.
+        self.assertIn("bodyMarkupSupported: false", qml)
+        self.assertIn("bodyHyperlinksSupported: false", qml)
+        self.assertIn("n.tracked = true", qml)                        # kept for the centre until dismissed
+        self.assertIn("N.showCard(n.urgency === NotificationUrgency.Critical, notifications.doNotDisturb", qml)
+        card = (self.out / "NotificationCard.qml").read_text()
+        self.assertEqual(card.count("textFormat: Text.PlainText"), 3)
+        self.assertIn("Notifications { id: notifications;", (self.out / "shell.qml").read_text())
+        bar = (self.out / "TopBar.qml").read_text()
+        self.assertIn('source: "icons/bell.svg"', bar)
+        self.assertIn("bar.notifications.centreOpen = !bar.notifications.centreOpen", bar)
+        self.assertIn("property bool doNotDisturb: false", (self.out / "DesktopSettings.qml").read_text())
+        self.assertIn('page.desktop.set("doNotDisturb"', (self.out / "settings/DesktopPage.qml").read_text())
+        self.run_node_test("notifications.test.mjs")
+
+    def test_accounts_change_the_password_with_the_disk_and_never_put_it_on_a_command_line(self):
+        page = (self.out / "settings/AccountsPage.qml").read_text()
+        # Through pkexec, the setuid wrapper, and the paths the polkit policy names.
+        self.assertIn('"/run/wrappers/bin/pkexec", "/run/current-system/sw/bin/" + helper, operation]', page)
+        self.assertIn("onStarted: { write(request + \"\\n\"); stdinEnabled = false }", page)
+        for line in page.splitlines():
+            if "command = " in line or "command: [" in line:
+                self.assertNotIn("password", line.replace("nexus-account-password", ""))
+        self.assertEqual(page.count("password: true"), 7)
+        settings = (self.out / "Settings.qml").read_text()
+        self.assertIn('accounts: "AccountsPage"', settings)
+        policy = (ROOT / "nix/modules/accounts.nix").read_text()
+        self.assertIn("<allow_active>auth_self</allow_active>", policy)
+        self.assertIn("<allow_active>auth_admin</allow_active>", policy)
+        self.assertIn("/run/current-system/sw/bin/nexus-account-password</annotate>", policy)
+        self.run_node_test("accounts.test.mjs")
+
+    def test_the_screen_locks_before_every_sleep_and_sleep_follows_settings(self):
+        idle = (self.out / "Idle.qml").read_text()
+        # A delay inhibitor holds sleep back until the lock screen is up, then is let go.
+        self.assertIn('"systemd-inhibit", "--what=sleep", "--mode=delay"', idle)
+        self.assertIn('"gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1"', idle)
+        self.assertIn("idle.lock();\n                    release.restart();", idle)
+        self.assertEqual(idle.count("respectInhibitors: true"), 2)     # videos and calls keep the screen on
+        self.assertIn('"--what=handle-lid-switch", "--mode=block"', idle)
+        self.assertIn("Idle { desktop: desktop }", (self.out / "shell.qml").read_text())
+        power = (self.out / "settings/PowerPage.qml").read_text()
+        for key in ("screenOffMinutes", "sleepBatteryMinutes", "sleepPluggedMinutes", "lidAction"):
+            self.assertIn('page.desktop.set("%s"' % key, power)
+        self.run_node_test("power.test.mjs")
+
+    def test_printers_appear_by_themselves_and_names_are_checked(self):
+        page = (self.out / "settings/PrintersPage.qml").read_text()
+        self.assertIn('command: ["lpstat", "-e"]', page)
+        self.assertIn('setDefault.command = ["lpoptions", "-d", modelData]', page)
+        self.assertEqual(page.count("P.validName("), 2)
+        self.assertIn('print.command = ["lp", "-d", name, "-t", "NexusOS test page"]', page)
+        module = (ROOT / "nix/modules/printing.nix").read_text()
+        for line in ("services.ipp-usb.enable", "nssmdns4", "pkgs.sane-airscan", "pkgs.simple-scan"):
+            self.assertIn(line, module)
+        self.assertIn("../modules/printing.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.run_node_test("printers.test.mjs")
+
+    def test_backups_run_as_the_person_and_restore_beside_the_files(self):
+        page = (self.out / "settings/BackupsPage.qml").read_text()
+        self.assertIn('command: ["nexus-backup", "status"]', page)
+        self.assertIn('worker.command = ["nexus-backup", operation].concat(args || [])', page)
+        self.assertNotIn("pkexec", page)                       # never as root
+        self.assertIn('page.work("setup", ["--dest", page.chosenDrive], password.text', page)   # password on stdin
+        self.assertIn("B.restorePath(page.home, modelData)", page)
+        module = (ROOT / "nix/modules/backups.nix").read_text()
+        for line in ("systemd.user.timers.nexus-backup", "nexus-backup auto", "pkgs.restic"):
+            self.assertIn(line, module)
+        self.assertIn("../modules/backups.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.run_node_test("backups.test.mjs")
+
+    def test_firmware_updates_go_through_fwupd_with_checked_ids(self):
+        page = (self.out / "settings/UpdatesPage.qml").read_text()
+        self.assertIn('command: ["fwupdmgr", "get-updates", "--json"]', page)
+        self.assertIn('updater.command = ["fwupdmgr", "update", "--assume-yes", "--no-reboot-check"].concat(ok.map(u => u.id))', page)
+        self.assertIn("/^[0-9a-f]{40}$/.test(u.id)", page)
+        module = (ROOT / "nix/modules/firmware.nix").read_text()
+        self.assertIn("services.fwupd.enable", module)
+        self.assertIn("../modules/firmware.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.run_node_test("firmware.test.mjs")
+        self.assertIn('"/run/current-system/sw/bin/nexus-update-channel", c]', page)
+        self.assertIn('page.bridge.api("POST", "/guardian/updates/check", {})', page)
+        updates = (ROOT / "nix/modules/updates.nix").read_text()
+        self.assertIn("stable|testing) ;;", updates)
+        self.assertIn("org.nexusos.updates.channel", updates)
+
+    def test_language_and_region_are_per_person_and_checked(self):
+        page = (self.out / "settings/RegionPage.qml").read_text()
+        self.assertIn('regionFile.setText(R.envFile(next))', page)
+        self.assertIn('command: ["timedatectl", "list-timezones"]', page)
+        self.assertNotIn("pkexec", page)
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn("LANG|LANGUAGE|LC_TIME|LC_NUMERIC|LC_MONETARY|LC_PAPER|LC_MEASUREMENT|TZ", desktop)
+        self.assertIn('*[!A-Za-z0-9_.@:/+-]*) continue', desktop)
+        settings = (self.out / "DesktopSettings.qml").read_text()
+        self.assertIn('"keyword input:kb_layout " + kb.layout', settings)
+        # Every catalogue translates only texts the shell has, and is valid JSON.
+        sources = "".join(p.read_text() for p in self.out.rglob("*.qml"))
+        self.assertEqual(sorted(c.stem for c in (self.out / "i18n").glob("*.json")), ["de", "es", "fr"])
+        for catalogue in (self.out / "i18n").glob("*.json"):
+            for text in json.loads(catalogue.read_text()):
+                self.assertTrue('"%s"' % text in sources, "%s translates %r, which the shell does not have" % (catalogue.name, text))
+        self.run_node_test("region.test.mjs")
+
+    def test_screens_are_arranged_with_a_way_back(self):
+        page = (self.out / "settings/DisplayPage.qml").read_text()
+        self.assertIn("countdown = 15", page)
+        self.assertIn("page.revert()", page)
+        settings = (self.out / "DesktopSettings.qml").read_text()
+        self.assertIn('command: [desktop.hyprctl, "monitors", "all", "-j"]', settings)
+        self.assertIn("function onScreensChanged()", settings)
+        self.run_node_test("displays.test.mjs")
+
+    def test_storage_and_default_apps(self):
+        page = (self.out / "settings/StoragePage.qml").read_text()
+        self.assertIn('"/run/current-system/sw/bin/nexus-storage-clean"', page)
+        self.assertIn('command: ["nexus-storage", "report"]', page)
+        apps = (self.out / "settings/DefaultAppsPage.qml").read_text()
+        self.assertIn('setter.command = ["nexus-default-apps", "set", category, app]', apps)
+        module = (ROOT / "nix/modules/storage.nix").read_text()
+        self.assertIn("org.nexusos.storage.clean", module)
+        self.assertIn("report|empty-trash|clear-cache)", module)      # the person's command never cleans the system
+        self.assertIn("../modules/storage.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.run_node_test("storage.test.mjs")
+
+    def test_secure_boot_goes_through_guardian_then_one_root_step(self):
+        page = (self.out / "settings/AboutPage.qml").read_text()
+        self.assertIn("page.host.proposeSystem(SB.PLAN)", page)
+        self.assertIn('"/run/current-system/sw/bin/nexus-secure-boot-enroll"', page)
+        self.assertIn("onProposeSystem: plan => guardianWin.openPlan(plan, \"user\")", (self.out / "shell.qml").read_text())
+        schema = json.loads((ROOT / "schema/guardian-options.json").read_text())
+        self.assertEqual(schema["options"]["nexusos.secureBoot.enable"]["risk"], "elevated")
+        module = (ROOT / "nix/modules/secure-boot.nix").read_text()
+        self.assertIn("boot.loader.systemd-boot.editor = lib.mkForce false", module)
+        self.assertIn('"enroll-keys", "--microsoft", "--firmware-builtin"', (ROOT / "scripts/boot/nexus_secure_boot.py").read_text())
+        self.run_node_test("secureboot.test.mjs")
+
+    def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
+        page = (self.out / "settings/FeedbackPage.qml").read_text()
+        self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)
+        self.assertIn("text: page.built.title + \"\\n\\n\" + page.built.body", page)   # the preview is the report
+        self.assertNotIn("curl", page)
+        watcher = (self.out / "CrashWatcher.qml").read_text()
+        self.assertIn("running: !!watcher.desktop && watcher.desktop.crashNotices", watcher)
+        self.assertIn("property bool crashNotices: false", (self.out / "DesktopSettings.qml").read_text())
+        self.run_node_test("feedback.test.mjs")
+
+    def test_help_is_the_user_guide_and_follows_only_safe_links(self):
+        self.assertEqual((ROOT / "docs/USER-GUIDE.md").read_text(), (self.out / "help/user-guide.md").read_text())
+        page = (self.out / "settings/HelpPage.qml").read_text()
+        self.assertIn("onLinkActivated: href => page.follow(href)", page)
+        self.assertIn("const l = H.link(href, pageIds);", page)
+        self.assertIn("../../docs/USER-GUIDE.md", (ROOT / "nix/packages/nexus-shell.nix").read_text())
+        self.run_node_test("help.test.mjs")
 
 if __name__ == "__main__":
     unittest.main()

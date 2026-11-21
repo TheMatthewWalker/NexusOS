@@ -11,6 +11,7 @@ stdenvNoCC.mkDerivation {
       ../../shell/tools
       ../../shell/layout.json
       ../../docs/design/spaceui/design-tokens.json
+      ../../docs/USER-GUIDE.md
       ../../nix/bundles
       ../../schema/guardian-options.json
     ];

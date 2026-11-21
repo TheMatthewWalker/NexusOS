@@ -21,7 +21,39 @@
       # and font, the unlock prompt's keymaps...). They are copied into the initrd, so
       # they are not in the finished system's closure; the image carries them so that
       # installing builds that initrd with no internet.
-      referenceInitrdInputs = pkgs.lib.concatMap (name: let s = self.nixosConfigurations.${name}.config.boot.initrd.systemd; in
+      # What each computer's system-path is made from: every output of every
+      # installed package that it takes (the package's own outputs plus man,
+      # info and doc), not only those the finished system keeps. system-path
+      # is rebuilt on each install (it holds per-computer commands), and an
+      # output missing from the image would mean building that package, and
+      # all it is built with, from source with no internet.
+      referencePackageOutputs = pkgs.lib.concatMap (name: let
+          c = self.nixosConfigurations.${name}.config;
+          outputsOf = p: p.outputs or [ "out" ];
+          wanted = p: pkgs.lib.unique (builtins.filter (o: builtins.elem o (outputsOf p))
+            ((p.meta.outputsToInstall or [ (builtins.head (outputsOf p)) ]) ++ c.environment.extraOutputsToInstall));
+        in pkgs.lib.concatMap (p: map (o: p.${o}) (wanted p)) c.environment.systemPackages)
+        [ "nexus-reference" "nexus-reference-nvidia" ];
+      # Likewise what other per-computer parts copy files from rather than
+      # refer to: udev's rules and hardware database (from every udev package,
+      # such as sane's net.conf), and the session's environment, whose values
+      # name store paths (CUPS_DATADIR). A file naming them keeps them on the image.
+      # CUPS's program tree (cups-progs) is a buildEnv that Nix always builds
+      # where it is installed, never copies: it needs each of its packages'
+      # installed outputs (Ghostscript's man pages too) on the image.
+      outputsToInstall = p: let outs = p.outputs or [ "out" ]; in
+        map (o: p.${o}) (builtins.filter (o: builtins.elem o outs) (p.meta.outputsToInstall or [ (builtins.head outs) ]));
+      referenceCopiedInputs = pkgs.lib.concatMap (name: let
+          s = self.nixosConfigurations.${name};
+          c = s.config;
+        in c.services.udev.packages ++ [ (pkgs.writeText "nexusos-${name}-environment.json"
+            (builtins.toJSON (c.environment.sessionVariables // c.environment.variables))) ]
+          ++ pkgs.lib.optionals c.services.printing.enable (pkgs.lib.concatMap outputsToInstall
+            ([ c.services.printing.package s.pkgs.ghostscript s.pkgs.cups-filters s.pkgs.libcupsfilters ]
+             ++ pkgs.lib.optional c.services.printing.browsed.enable c.services.printing.browsed.package
+             ++ c.services.printing.drivers)))
+        [ "nexus-reference" "nexus-reference-nvidia" ];
+      referenceInitrdInputs = referencePackageOutputs ++ referenceCopiedInputs ++ pkgs.lib.concatMap (name: let s = self.nixosConfigurations.${name}.config.boot.initrd.systemd; in
           map (p: if builtins.isAttrs p then p.source else p) (builtins.filter (p: !(builtins.isAttrs p) || p.enable) s.storePaths)
           ++ builtins.filter (x: x != null) (map (c: if c.enable or true then c.source or null else null) (builtins.attrValues s.contents)))
         [ "nexus-reference" "nexus-reference-nvidia" ];
@@ -29,6 +61,18 @@
       # repository's release branch. An image built from a commit (a clean tree)
       # records it, and the installer pins the installed system to it.
       nexusRelease = { owner = "TheMatthewWalker"; repo = "NexusOS"; ref = "release"; };
+      installerWith = model: nixpkgs.lib.nixosSystem {
+        inherit system;
+        specialArgs = {
+          nexusSource = self;
+          nixpkgsSource = nixpkgs.outPath;
+          referenceSystem = self.nixosConfigurations.nexus-reference.config.system.build.toplevel;
+          referenceSystemNvidia = self.nixosConfigurations.nexus-reference-nvidia.config.system.build.toplevel;
+          inherit referenceInitrdInputs nexusRelease;
+          bundledModel = model;
+        };
+        modules = [ ./nix/installer/iso.nix ];
+      };
     in {
       packages.${system} = {
         nexus-guardian = pkgs.callPackage ./nix/packages/nexus-guardian.nix { };
@@ -37,6 +81,8 @@
         nexus-install = pkgs.callPackage ./nix/packages/nexus-install.nix { };
         # The installer image: `nix build .#iso`, then write result/iso/*.iso to a USB stick.
         iso = self.nixosConfigurations.installer.config.system.build.isoImage;
+        # `nix build .#iso-slim`: the installer image without the local AI model.
+        iso-slim = self.nixosConfigurations.installer-slim.config.system.build.isoImage;
         nexus-try = pkgs.callPackage ./nix/packages/nexus-try.nix { };
         colibri = pkgs.callPackage ./nix/packages/colibri.nix { };
         nexusos-plymouth-theme = pkgs.callPackage ./nix/packages/nexus-plymouth.nix { };
@@ -72,18 +118,10 @@
         nexus-reference-nvidia = self.lib.mkSystem {
           modules = [ ./nix/installer/reference.nix { nexusos.nvidia.enable = true; } ];
         };
-        installer = nixpkgs.lib.nixosSystem {
-          inherit system;
-          specialArgs = {
-            nexusSource = self;
-            nixpkgsSource = nixpkgs.outPath;
-            referenceSystem = self.nixosConfigurations.nexus-reference.config.system.build.toplevel;
-            referenceSystemNvidia = self.nixosConfigurations.nexus-reference-nvidia.config.system.build.toplevel;
-            inherit referenceInitrdInputs nexusRelease;
-            inherit bundledModel;
-          };
-          modules = [ ./nix/installer/iso.nix ];
-        };
+        installer = installerWith bundledModel;
+        # The slim download: the same installer without the local AI model,
+        # which then downloads once the installed computer is online.
+        installer-slim = installerWith null;
       };
 
       # `desktop` builds and tests the Nexus shell (shell/); `spaceui-spike` is the

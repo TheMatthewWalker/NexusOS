@@ -641,6 +641,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                     "night_light" => ("nightLight", "night light"),
                     "blur" => ("blur", "blur"),
                     "animations" => ("animations", "animations"),
+                    "do_not_disturb" => ("doNotDisturb", "do not disturb"),
                     _ => ("highContrast", "high contrast"),
                 };
                 return pending.Add(action, args, $"Turn {label} {Word(on)}", Desktop(key, on));

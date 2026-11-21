@@ -38,9 +38,20 @@
       # refer to: udev's rules and hardware database (from every udev package,
       # such as sane's net.conf), and the session's environment, whose values
       # name store paths (CUPS_DATADIR). A file naming them keeps them on the image.
-      referenceCopiedInputs = pkgs.lib.concatMap (name: let c = self.nixosConfigurations.${name}.config; in
-          c.services.udev.packages ++ [ (pkgs.writeText "nexusos-${name}-environment.json"
-            (builtins.toJSON (c.environment.sessionVariables // c.environment.variables))) ])
+      # CUPS's program tree (cups-progs) is a buildEnv that Nix always builds
+      # where it is installed, never copies: it needs each of its packages'
+      # installed outputs (Ghostscript's man pages too) on the image.
+      outputsToInstall = p: let outs = p.outputs or [ "out" ]; in
+        map (o: p.${o}) (builtins.filter (o: builtins.elem o outs) (p.meta.outputsToInstall or [ (builtins.head outs) ]));
+      referenceCopiedInputs = pkgs.lib.concatMap (name: let
+          s = self.nixosConfigurations.${name};
+          c = s.config;
+        in c.services.udev.packages ++ [ (pkgs.writeText "nexusos-${name}-environment.json"
+            (builtins.toJSON (c.environment.sessionVariables // c.environment.variables))) ]
+          ++ pkgs.lib.optionals c.services.printing.enable (pkgs.lib.concatMap outputsToInstall
+            ([ c.services.printing.package s.pkgs.ghostscript s.pkgs.cups-filters s.pkgs.libcupsfilters ]
+             ++ pkgs.lib.optional c.services.printing.browsed.enable c.services.printing.browsed.package
+             ++ c.services.printing.drivers)))
         [ "nexus-reference" "nexus-reference-nvidia" ];
       referenceInitrdInputs = referencePackageOutputs ++ referenceCopiedInputs ++ pkgs.lib.concatMap (name: let s = self.nixosConfigurations.${name}.config.boot.initrd.systemd; in
           map (p: if builtins.isAttrs p then p.source else p) (builtins.filter (p: !(builtins.isAttrs p) || p.enable) s.storePaths)

@@ -34,7 +34,15 @@
             ((p.meta.outputsToInstall or [ (builtins.head (outputsOf p)) ]) ++ c.environment.extraOutputsToInstall));
         in pkgs.lib.concatMap (p: map (o: p.${o}) (wanted p)) c.environment.systemPackages)
         [ "nexus-reference" "nexus-reference-nvidia" ];
-      referenceInitrdInputs = referencePackageOutputs ++ pkgs.lib.concatMap (name: let s = self.nixosConfigurations.${name}.config.boot.initrd.systemd; in
+      # Likewise what other per-computer parts copy files from rather than
+      # refer to: udev's rules and hardware database (from every udev package,
+      # such as sane's net.conf), and the session's environment, whose values
+      # name store paths (CUPS_DATADIR). A file naming them keeps them on the image.
+      referenceCopiedInputs = pkgs.lib.concatMap (name: let c = self.nixosConfigurations.${name}.config; in
+          c.services.udev.packages ++ [ (pkgs.writeText "nexusos-${name}-environment.json"
+            (builtins.toJSON (c.environment.sessionVariables // c.environment.variables))) ])
+        [ "nexus-reference" "nexus-reference-nvidia" ];
+      referenceInitrdInputs = referencePackageOutputs ++ referenceCopiedInputs ++ pkgs.lib.concatMap (name: let s = self.nixosConfigurations.${name}.config.boot.initrd.systemd; in
           map (p: if builtins.isAttrs p then p.source else p) (builtins.filter (p: !(builtins.isAttrs p) || p.enable) s.storePaths)
           ++ builtins.filter (x: x != null) (map (c: if c.enable or true then c.source or null else null) (builtins.attrValues s.contents)))
         [ "nexus-reference" "nexus-reference-nvidia" ];

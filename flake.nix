@@ -21,7 +21,20 @@
       # and font, the unlock prompt's keymaps...). They are copied into the initrd, so
       # they are not in the finished system's closure; the image carries them so that
       # installing builds that initrd with no internet.
-      referenceInitrdInputs = pkgs.lib.concatMap (name: let s = self.nixosConfigurations.${name}.config.boot.initrd.systemd; in
+      # What each computer's system-path is made from: every output of every
+      # installed package that it takes (the package's own outputs plus man,
+      # info and doc), not only those the finished system keeps. system-path
+      # is rebuilt on each install (it holds per-computer commands), and an
+      # output missing from the image would mean building that package, and
+      # all it is built with, from source with no internet.
+      referencePackageOutputs = pkgs.lib.concatMap (name: let
+          c = self.nixosConfigurations.${name}.config;
+          outputsOf = p: p.outputs or [ "out" ];
+          wanted = p: pkgs.lib.unique (builtins.filter (o: builtins.elem o (outputsOf p))
+            ((p.meta.outputsToInstall or [ (builtins.head (outputsOf p)) ]) ++ c.environment.extraOutputsToInstall));
+        in pkgs.lib.concatMap (p: map (o: p.${o}) (wanted p)) c.environment.systemPackages)
+        [ "nexus-reference" "nexus-reference-nvidia" ];
+      referenceInitrdInputs = referencePackageOutputs ++ pkgs.lib.concatMap (name: let s = self.nixosConfigurations.${name}.config.boot.initrd.systemd; in
           map (p: if builtins.isAttrs p then p.source else p) (builtins.filter (p: !(builtins.isAttrs p) || p.enable) s.storePaths)
           ++ builtins.filter (x: x != null) (map (c: if c.enable or true then c.source or null else null) (builtins.attrValues s.contents)))
         [ "nexus-reference" "nexus-reference-nvidia" ];

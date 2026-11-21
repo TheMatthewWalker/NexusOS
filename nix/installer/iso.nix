@@ -51,7 +51,8 @@ in
   isoImage.storeContents = [ referenceSystem referenceSystemNvidia nixpkgsSource ]
     # The tools that build those parts, so installing works with no internet.
     ++ import ./offline-deps.nix pkgs
-    # And what the initrd is made from (flake.nix, referenceInitrdInputs).
+    # And what the initrd and system-path are made from (flake.nix,
+    # referenceInitrdInputs, which includes referencePackageOutputs).
     ++ referenceInitrdInputs
     # The local model, when pinned (nix/models/); nexus-install copies it to the disk.
     ++ lib.optional (bundledModel != null) bundledModel;

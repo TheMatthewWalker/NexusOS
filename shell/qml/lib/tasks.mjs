@@ -79,7 +79,7 @@ export function apps(clients, snap, use) {
     const pids = tree(snap.procs, a.pid);
     const cpu = pids.reduce((s, p) => s + ((use.procs[p] || {}).cpu || 0), 0);
     const memory = pids.reduce((s, p) => s + ((use.procs[p] || {}).memory || 0), 0);
-    return { ...a, pids, cpu, memory, title: a.titles[0] || "" };
+    return Object.assign({}, a, { pids, cpu, memory, title: a.titles[0] || "" });
   }).sort((x, y) => y.cpu - x.cpu || y.memory - x.memory);
 }
 

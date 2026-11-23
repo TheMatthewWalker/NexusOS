@@ -1134,6 +1134,12 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("../modules/sharing.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
         self.run_node_test("network.test.mjs")
 
+    def test_start_fresh_keeps_files_and_can_be_undone(self):
+        reset = (ROOT / "scripts/desktop/nexus-reset-settings.sh").read_text()
+        self.assertIn('mv "$current" "$config/nexusos-before-reset-', reset)          # moved aside, never deleted
+        self.assertNotIn("rm -", reset)
+        self.assertIn('Quickshell.execDetached(["nexus-reset-settings", "undo"])', (self.out / "settings/AboutPage.qml").read_text())
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

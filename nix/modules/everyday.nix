@@ -45,6 +45,11 @@ let
     runtimeInputs = with pkgs; [ grim slurp wl-clipboard libnotify coreutils gnused ] ++ [ tesseract ];
     text = builtins.readFile ../../scripts/desktop/nexus-ocr.sh;
   };
+  resetSettings = pkgs.writeShellApplication {
+    name = "nexus-reset-settings";
+    runtimeInputs = with pkgs; [ coreutils findutils systemd ];
+    text = builtins.readFile ../../scripts/desktop/nexus-reset-settings.sh;
+  };
   windows = pkgs.writeShellApplication {
     name = "nexus-windows";
     runtimeInputs = with pkgs; [ systemd gnugrep coreutils libnotify zenity ];
@@ -96,7 +101,7 @@ in
                                    pkgs.cliphist pkgs.wtype pkgs.wl-clipboard
                                    pkgs.networkmanagerapplet pkgs.zenity pkgs.wireguard-tools
                                    pkgs.p7zip pkgs.unar pkgs.adw-gtk3 pkgs.adwaita-qt pkgs.adwaita-qt6 pkgs.dconf
-                                   record startup permissions windows ocr pkgs.libva-utils pkgs.git-credential-manager ];
+                                   record startup permissions windows ocr resetSettings pkgs.libva-utils pkgs.git-credential-manager ];
 
     # The computer starts NexusOS straight away: no start-up menu (holding
     # Space while it starts shows it, for an earlier NexusOS version). Windows,

@@ -215,6 +215,7 @@ NexusWindow {
         ["about", "welcome", "Welcome setup", "welcome first run setup bundles start again apps for studying gaming office coding"],
         ["about", "movein", "Bring files from Windows or macOS", "move in old computer windows mac macos transfer copy files documents photos drive"],
         ["about", "generations", "Earlier versions", "rollback undo update generation boot earlier version"]
+        ["about", "reset", "Start fresh", "reset settings start fresh factory default restore defaults keep files"],
     ]
     function search(text) {
         const q = text.trim().toLowerCase();

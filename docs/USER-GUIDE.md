@@ -164,6 +164,14 @@ Everything Nexus does stays on this computer unless you choose otherwise. Settin
 - **Tell the NexusOS project**: Settings, Feedback writes a report of the problem or idea. You see all of it first; sending opens it on GitHub, where you can still change it. Nothing is sent by itself. [Open Feedback](settings:feedback/report)
 - **The computer does not start properly after an update**: restart, hold **Space** as it starts, and choose an earlier version in the start-up menu.
 
+## Getting help from someone
+
+To let a friend or a support person see your screen and help, as with Windows' Quick Assist, get **RustDesk** from Apps (search for it), on both computers. You give them the number and password RustDesk shows; only someone you give them to can connect, and you can end it at any time. On NexusOS they see your screen and you stay in control of the mouse and keyboard.
+
+## Starting fresh
+
+Settings, About, **Start fresh** puts your desktop, language and Nexus settings back to how they came and restarts the desktop. Your files and apps stay, and the old settings are kept: **Put back** brings them back. For the system itself, every change makes a new version, and an earlier one can be chosen as the computer starts (hold Space). [Open Start fresh](settings:about/reset)
+
 ## Where to learn more
 
 - Installing: [INSTALL.md](https://github.com/TheMatthewWalker/NexusOS/blob/main/docs/INSTALL.md)

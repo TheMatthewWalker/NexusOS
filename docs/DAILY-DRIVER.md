@@ -170,7 +170,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Disk encryption | P1 | ✅ | LUKS2 |
-| Unlock the disk with the TPM (no second password) | P2 | ⬜ | systemd-cryptenroll; keep the password as a fallback |
+| Unlock the disk with the TPM (no second password) | P2 | ✅ | Settings, Accounts: systemd-cryptenroll bound to Secure Boot (PCR 7), only with Secure Boot on; the password stays (0.9) |
 | Secure Boot | P2 | ✅ | Own keys, guided |
 | Automatic security updates | P1 | ✅ | Guardian |
 | Firewall, with a simple Settings page | P2 | ✅ | On; Settings, Network says in words what is let in (0.8) |

@@ -23,7 +23,8 @@ let
     exec ${pkgs.python3}/bin/python3 -I ${../../scripts/accounts/nexus_account.py} "$1"
   '';
   passwordHelper = helper "nexus-account-password" [ "password" "disk" ];
-  manageHelper = helper "nexus-account-manage" [ "add" "remove" ];
+  # The TPM unlocking the disk is for the whole computer, so an administrator approves it too.
+  manageHelper = helper "nexus-account-manage" [ "add" "remove" "tpm" ];
   commands = pkgs.runCommand "nexus-account" { } ''
     mkdir -p $out/bin
     ln -s ${passwordHelper} $out/bin/nexus-account-password

@@ -58,6 +58,8 @@ Column {
                 current.clear(); newPassword.clear(); again.clear();
             } else if (operation === "disk") {
                 page.diskDiffers = false; diskPassword.clear();
+            } else if (operation === "tpm") {
+                page.tpmOn = !!r.tpm; page.tpmAsking = false; tpmPassword.clear();
             } else {
                 page.adding = false; page.confirmRemove = "";
                 fullName.clear(); login.clear(); accountPassword.clear(); accountAgain.clear();
@@ -122,6 +124,37 @@ Column {
         Button { theme: page.theme; label: "Change the disk's password"
                  enabled: !root.running && diskPassword.text !== "" && diskNew.text.length >= A.MIN_PASSWORD
                  onClicked: page.runAs("nexus-account-password", "disk", { disk: diskPassword.text, new: diskNew.text }) }
+    }
+
+    // The disk unlocking itself at start-up with the TPM (as BitLocker), for an
+    // encrypted disk; the password keeps working. nexus-account tpm, as root.
+    property bool encrypted: false
+    property bool tpmOn: false
+    property bool tpmAsking: false
+    property bool tpmTurningOn: true
+    Process { running: true; command: ["sh", "-c", "test -e /dev/mapper/nexusos-root"]; onExited: (code) => page.encrypted = code === 0 }
+    Process { running: true; command: ["sh", "-c", "test -e /var/lib/nexus/tpm-unlock"]; onExited: (code) => page.tpmOn = code === 0 }
+    SettingRow {
+        visible: page.encrypted
+        theme: page.theme; label: "Unlock the disk by itself"; highlighted: page.host.highlight === "tpm"
+        detail: page.tpmOn
+            ? "The computer's TPM unlocks the disk when NexusOS starts, so it does not ask for the password then. Your password still works, and is asked for if the start-up changes."
+            : "With Secure Boot on, the computer's TPM chip can unlock the disk when NexusOS starts, as Windows' BitLocker does. Anyone who can sign in still needs a password."
+        Button { theme: page.theme; label: page.tpmOn ? "Turn off…" : "Turn on…"; enabled: !root.running
+                 onClicked: { page.tpmTurningOn = !page.tpmOn; page.tpmAsking = true } }
+    }
+    Column {
+        visible: page.tpmAsking
+        spacing: 8; leftPadding: 4
+        TextField { id: tpmPassword; theme: page.theme; label: "The disk's password (the one asked for at start-up)"; password: true
+                    onAccepted: tpmGo.clicked() }
+        Row {
+            spacing: 8
+            Button { theme: page.theme; label: "Cancel"; onClicked: { page.tpmAsking = false; tpmPassword.clear() } }
+            Button { id: tpmGo; theme: page.theme; primary: true; label: page.tpmTurningOn ? "Turn on" : "Turn off"
+                     enabled: !root.running && tpmPassword.text !== ""
+                     onClicked: page.runAs("nexus-account-manage", "tpm", { disk: tpmPassword.text, on: page.tpmTurningOn }) }
+        }
     }
 
     SettingRow {

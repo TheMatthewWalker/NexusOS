@@ -5,6 +5,7 @@
   nexus-account disk       {disk, new}               the disk's password only (it differed from the login one)
   nexus-account add        {login, fullName, password, admin}
   nexus-account remove     {login, keepFiles}
+  nexus-account tpm        {disk, on}                unlock the disk with the TPM at start-up, or stop
   nexus-account list                                  (no root needed)
 
 Secrets come as one JSON object on standard input, never as arguments. Polkit
@@ -18,6 +19,12 @@ own copy of the password. A change adds the new password to the disk first,
 then changes the login password, and only then removes the old one from the
 disk; if a step fails, what was done is undone, so the disk always opens with
 one of the two and the person is told which.
+
+The disk can also unlock itself at start-up with the computer's TPM, as
+Windows' BitLocker does, while the password keeps working too. The key is
+bound to the Secure Boot state (PCR 7), so it is only offered with Secure
+Boot on: then only NexusOS's own signed start-up gets the key, and anything
+else (another system, a changed boot) is asked for the password.
 """
 import json
 import os
@@ -229,9 +236,67 @@ def remove_account(login, keep_files, caller, protected, runner=run):
     return {"removed": login, "message": f"{login} is removed" + (f"; their files stay in {entry.pw_dir}." if keep_files else ", with their files.")}
 
 
+# --- the TPM --------------------------------------------------------------------
+
+SECURE_BOOT_VAR = "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+TPM_VERSION = "/sys/class/tpm/tpm0/tpm_version_major"
+TPM_MARKER = "/var/lib/nexus/tpm-unlock"
+
+
+def secure_boot_on(path=SECURE_BOOT_VAR):
+    try:
+        with open(path, "rb") as stream:
+            data = stream.read()
+        return len(data) >= 5 and data[4] == 1          # 4 bytes of attributes, then the value
+    except OSError:
+        return False
+
+
+def tpm2_present(path=TPM_VERSION):
+    try:
+        with open(path) as stream:
+            return stream.read().strip() == "2"
+    except OSError:
+        return False
+
+
+def set_tpm_unlock(disk_password, on, runner=run, secure_boot=secure_boot_on, tpm=tpm2_present, marker=TPM_MARKER):
+    device = disk_device(runner)
+    if device is None:
+        raise AccountError("This computer's disk is not encrypted.")
+    if on and not tpm():
+        raise AccountError("This computer has no TPM 2.0 chip, so the disk cannot unlock itself.")
+    if on and not secure_boot():
+        raise AccountError("Turn on Secure Boot first (Settings, About): without it, the TPM would give the disk's key "
+                           "to any system started on this computer.")
+    if not disk_opens_with(device, disk_password, runner):
+        raise AccountError("That is not the disk's password.")
+    with KeyFiles(disk_password) as (key,):
+        command = ["systemd-cryptenroll", "--unlock-key-file=" + key, "--wipe-slot=tpm2"]
+        if on:
+            command += ["--tpm2-device=auto", "--tpm2-pcrs=7"]
+        status, _, err = runner(command + [device])
+    if status != 0:
+        raise AccountError("The TPM could not be set up: " + (err.strip().splitlines() or ["systemd-cryptenroll failed"])[-1])
+    try:
+        if on:
+            os.makedirs(os.path.dirname(marker), exist_ok=True)
+            with open(marker, "w") as stream:
+                stream.write("pcr7\n")
+            os.chmod(marker, 0o644)
+        elif os.path.exists(marker):
+            os.unlink(marker)
+    except OSError:
+        pass
+    if on:
+        return {"tpm": True, "message": "The disk now unlocks itself when NexusOS starts. Your password still unlocks it too, "
+                                        "and is asked for if the start-up changes (another system, or Secure Boot turned off)."}
+    return {"tpm": False, "message": "The disk asks for its password at start-up again."}
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    if not argv or argv[0] not in ("password", "disk", "add", "remove", "list"):
+    if not argv or argv[0] not in ("password", "disk", "add", "remove", "tpm", "list"):
         print(__doc__, file=sys.stderr)
         return 2
     command = argv[0]
@@ -252,6 +317,8 @@ def main(argv=None):
                 result = change_password(caller, str(request.get("current", "")), request.get("new"))
             elif command == "disk":
                 result = change_disk_password(str(request.get("disk", "")), request.get("new"))
+            elif command == "tpm":
+                result = set_tpm_unlock(str(request.get("disk", "")), bool(request.get("on")))
             elif command == "add":
                 result = add_account(request.get("login"), request.get("fullName", ""), request.get("password"), bool(request.get("admin")))
             else:

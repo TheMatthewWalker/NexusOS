@@ -826,7 +826,7 @@ class ShellBuild(unittest.TestCase):
         for line in page.splitlines():
             if "command = " in line or "command: [" in line:
                 self.assertNotIn("password", line.replace("nexus-account-password", "").replace("nexus-keyring-password", ""))
-        self.assertEqual(page.count("password: true"), 8)      # 7 account fields and the Nextcloud app password
+        self.assertEqual(page.count("password: true"), 9)      # 7 account fields, the TPM disk password and the Nextcloud app password
         settings = (self.out / "Settings.qml").read_text()
         self.assertIn('accounts: "AccountsPage"', settings)
         policy = (ROOT / "nix/modules/accounts.nix").read_text()

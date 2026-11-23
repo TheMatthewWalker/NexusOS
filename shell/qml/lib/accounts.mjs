@@ -48,7 +48,8 @@ export function refusal(code) {
 
 export function working(operation) {
   return ({ password: "Changing your password…", disk: "Changing the disk's password…",
-            add: "Adding the account…", remove: "Removing the account…" })[operation] || "Working…";
+            add: "Adding the account…", remove: "Removing the account…",
+            tpm: "Setting up the TPM…" })[operation] || "Working…";
 }
 
 // Cloud drives (nexus-cloud): the folder's name, as the script checks it.

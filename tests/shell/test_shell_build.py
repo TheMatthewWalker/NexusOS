@@ -1066,6 +1066,23 @@ class ShellBuild(unittest.TestCase):
         self.run_node_test("tasks.test.mjs")
         self.run_node_test("onscreen.test.mjs")
 
+    def test_startup_apps_permissions_recording_and_devices(self):
+        defaults = (self.out / "settings/DefaultAppsPage.qml").read_text()
+        self.assertIn('startupSetter.command = ["nexus-startup"].concat(args);', defaults)
+        self.assertEqual(defaults.count("Component.onCompleted"), 1)
+        privacy = (self.out / "settings/PrivacyPage.qml").read_text()
+        self.assertIn('permSet.command = ["nexus-permissions"].concat(args);', privacy)
+        self.assertEqual(privacy.count("Component.onCompleted"), 1)
+        everyday = (ROOT / "nix/modules/everyday.nix").read_text()
+        for line in ("dex --autostart --search-paths %h/.config/autostart", "services.hardware.bolt.enable",
+                     "pkgs.intel-media-driver", "services.udev.packages = [ pkgs.libfido2 ];",
+                     'credential = { helper = "manager"; credentialStore = "secretservice"; };'):
+            self.assertIn(line, everyday)
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        for line in ("bind = SUPER ALT, R, exec, /run/current-system/sw/bin/nexus-record screen",
+                     "gesture = 3, up, dispatcher, global, nexus:overview"):
+            self.assertIn(line, desktop)
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

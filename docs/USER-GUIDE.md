@@ -33,6 +33,7 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 | Super+Left / Right | Snap the window to that half of the screen |
 | Super+Up / Down | Maximise the window / put it back |
 | Super+Shift+S | Screenshot of an area (Print: the whole screen; Alt+Print: the window) |
+| Super+Alt+R | Record the screen, with its sound (Super+Shift+R: an area); press again to stop. Saved in Videos, Screen recordings |
 | Ctrl+Shift+Esc | Task manager: what is running, how busy the processor, memory, disk and graphics are, and End task for an app that has stopped responding |
 | Super+Shift+V | Clipboard history: paste something you copied earlier |
 | Super+. | Emoji |
@@ -58,6 +59,8 @@ Windows float like on Windows or macOS; you can switch to tiled windows in Setti
 **Web apps**: Apps, Web apps turns a website into an app with its own window, in All apps and Alt+Tab: Outlook, Teams, Microsoft 365, Google Docs, WhatsApp and others are suggested, or type any address. You stay signed in, as in Chromium. You can also ask Nexus: "make Outlook an app".
 
 **Default apps** decide which app opens web links, email, folders, music, videos, pictures, text files and PDFs. [Open Default apps](settings:defaults/defaults)
+
+**Startup apps**, on the same page, are the apps that open when you log in: apps such as Steam and Discord add themselves when you ask them to start with the computer, and you can turn each off or add your own. [Open Startup apps](settings:defaults/startup)
 
 ## Windows programs and games
 
@@ -85,7 +88,7 @@ Printers and scanners on your network, or plugged in with USB, **appear by thems
 
 ## Mouse and touchpad
 
-Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed buttons and scrolling direction, and for touchpads tap to click and natural scrolling. Swipe three fingers sideways to move between workspaces. [Open Mouse and touchpad](settings:mouse/taptoclick)
+Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed buttons and scrolling direction, and for touchpads tap to click and natural scrolling. Swipe three fingers sideways to move between workspaces, or up to see all windows. [Open Mouse and touchpad](settings:mouse/taptoclick)
 
 ## Bluetooth and passwords
 
@@ -139,9 +142,11 @@ Secure Boot makes the computer start only software signed with trusted keys. Nex
 
 ## For developers
 
-Settings, Developer has your SSH keys (create one and copy it for GitHub, GitLab or a server; the keyring keeps it unlocked while you are logged in). In a project folder, `nexus-dev init python` (or node, rust, go, java, dotnet, c) sets the project up: its tools are there whenever you are in the folder. `docker` and `docker compose` work, on Podman, without anything running as root. `pip install --user`, `pipx install` and `npm install -g` install into your home folder, as on other systems. Arduino, ESP32 and other boards can be programmed straight away, and virtual machines can be turned on there too. [Open Developer](settings:developer/ssh)
+Settings, Developer has your SSH keys (create one and copy it for GitHub, GitLab or a server; the keyring keeps it unlocked while you are logged in). In a project folder, `nexus-dev init python` (or node, rust, go, java, dotnet, c) sets the project up: its tools are there whenever you are in the folder. `docker` and `docker compose` work, on Podman, without anything running as root. `pip install --user`, `pipx install` and `npm install -g` install into your home folder, as on other systems. `git` over HTTPS signs in to GitHub, GitLab or Azure DevOps in the browser once, as on Windows, and keeps the sign-in in your keyring. Security keys (YubiKey and other FIDO2 keys) work in browsers. Arduino, ESP32 and other boards can be programmed straight away, and virtual machines can be turned on there too. [Open Developer](settings:developer/ssh)
 
 ## Privacy
+
+**App permissions**, in Settings, Privacy and AI, show what each app from Flathub may reach (the internet, your files, the camera and devices, running in the background) and let you turn each off, for you only. [Open App permissions](settings:privacy/permissions)
 
 Everything Nexus does stays on this computer unless you choose otherwise. Settings, Privacy and AI shows what Nexus remembers, how long, and which model answers; a cloud model is used only if you add one. The **Timeline** lists every change Nexus or you made, and most can be undone from there. [Open Privacy and AI](settings:privacy/notes)
 

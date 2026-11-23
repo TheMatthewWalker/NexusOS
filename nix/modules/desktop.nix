@@ -126,6 +126,8 @@ let
     }
     # Three fingers sideways: the next or previous workspace.
     gesture = 3, horizontal, workspace
+    # Three fingers up: all windows (the overview, as Super+Tab).
+    gesture = 3, up, dispatcher, global, nexus:overview
     general {
       gaps_in = 6
       gaps_out = 14
@@ -196,6 +198,10 @@ let
     bind = SUPER SHIFT, S, exec, /run/current-system/sw/bin/nexus-screenshot area
     bind = , Print, exec, /run/current-system/sw/bin/nexus-screenshot screen
     bind = ALT, Print, exec, /run/current-system/sw/bin/nexus-screenshot window
+    # Screen recording, as Windows' Win+Alt+R: the screen (Super+Shift+R an
+    # area), with what is playing; the same keys stop it.
+    bind = SUPER ALT, R, exec, /run/current-system/sw/bin/nexus-record screen
+    bind = SUPER SHIFT, R, exec, /run/current-system/sw/bin/nexus-record area
     # Volume, microphone and brightness keys: the shell changes them and shows
     # how much (OnScreen.qml); they repeat while held and work on the lock screen.
     bindel = , XF86AudioRaiseVolume, global, nexus:volup

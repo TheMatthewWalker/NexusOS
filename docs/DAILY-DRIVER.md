@@ -22,7 +22,7 @@ the owner agrees it is ready.**
 | Bluetooth turned on (bluez, audio, input devices) | P1 | ✅ | On at start-up, battery levels (0.2) |
 | Bluetooth audio codecs (AAC, aptX, LDAC) and headset profiles | P2 | 🔍 | PipeWire picks them with bluez on; check with real headphones |
 | Touchpad: tap to click, natural scrolling, two-finger scroll, speed | P1 | ✅ | Settings, Mouse and touchpad (0.2) |
-| Touchpad gestures (swipe between workspaces, overview) | P2 | 🟡 | Three-finger swipe between workspaces (0.2); overview gesture to add |
+| Touchpad gestures (swipe between workspaces, overview) | P2 | ✅ | Three fingers sideways between workspaces (0.2), up for the overview (0.4) |
 | Mouse: speed, acceleration, left-handed, scroll direction | P1 | ✅ | Settings, Mouse and touchpad (0.2) |
 | On-screen indicators for volume, brightness, caps lock, media keys | P1 | ✅ | Volume, mute, microphone, brightness and media keys (0.2); Caps Lock (0.4) |
 | Keyboard backlight control | P3 | ⬜ | brightnessctl, kbd_backlight |
@@ -30,7 +30,7 @@ the owner agrees it is ready.**
 | Fingerprint login and unlock (fprintd) | P2 | ⬜ | Settings, Accounts; PAM for login, lock, sudo/polkit |
 | Touchscreen, screen rotation on convertibles, on-screen keyboard | P3 | ⬜ | iio-sensor-proxy, squeekboard/wvkbd |
 | Graphics tablets and pens (Wacom) | P3 | ⬜ | libwacom, Settings |
-| Thunderbolt devices and docks authorised (bolt) | P2 | ⬜ | |
+| Thunderbolt devices and docks authorised (bolt) | P2 | ✅ | bolt (0.4) |
 | Battery charge limit (80%) for laptop battery health | P2 | ⬜ | Where firmware supports it |
 | Hibernate (suspend to disk) | P3 | ⬜ | Needs swap sized to RAM, resume from an encrypted disk |
 | Power profiles (performance / balanced / saver) | P1 | ✅ | Settings, Power |
@@ -39,7 +39,7 @@ the owner agrees it is ready.**
 | Printers and scanners | P1 | ✅ | Found by themselves |
 | Firmware updates | P2 | ✅ | fwupd, Settings, Updates |
 | NVIDIA, AMD, Intel graphics | P1 | 🟡 | NVIDIA driver and PRIME offload built; hardware checks outstanding |
-| Hardware video decoding (VA-API) in browsers and players | P2 | ⬜ | Battery life and smooth video |
+| Hardware video decoding (VA-API) in browsers and players | P2 | 🟡 | Intel and AMD drivers (0.4); check in Firefox and VLC on hardware |
 | Supported-hardware list, tested laptops | P1 | ⬜ | Needs real machines |
 | Mobile broadband (WWAN), NFC | P3 | ⬜ | ModemManager is present |
 
@@ -53,7 +53,7 @@ the owner agrees it is ready.**
 | Media controls (play/pause/next, now playing) from any app | P2 | ✅ | Media keys (0.2); now playing in the top bar (0.3) |
 | Per-app volume and output device | P2 | 🔍 | Settings, Sound |
 | Screenshots: whole screen, window, area; Super+Shift+S like Windows | P1 | ✅ | Super+Shift+S, Print, Alt+Print; copied and saved (0.2) |
-| Screen recording | P2 | ⬜ | wf-recorder or OBS; portal for apps |
+| Screen recording | P2 | ✅ | Super+Alt+R, with sound (0.4); OBS on Flathub |
 | Clipboard history (Super+V on Windows) | P2 | ✅ | Super+Shift+V (Super+V is push-to-talk) (0.3) |
 | Emoji and symbol picker (Super+. on Windows) | P2 | ✅ | Super+. (0.3) |
 | Windows-like shortcuts: Super+D show desktop, Super+E files, Ctrl+Shift+Esc task manager, Super+arrows snap | P1 | ✅ | (0.2, 0.3) |
@@ -151,7 +151,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Task manager: apps and processes, CPU/memory/disk/GPU, end a frozen app | P1 | ✅ | Ctrl+Shift+Esc (0.3); disk, and graphics where the driver reports it (0.4) |
-| Startup apps (what runs at login) | P2 | ⬜ | Settings |
+| Startup apps (what runs at login) | P2 | ✅ | Settings, Default apps (0.4) |
 | Disk and partition tools | P2 | ✅ | GNOME Disks |
 | System information, health check | P1 | ✅ | About, Health |
 | Logs, for when something goes wrong | P3 | 🟡 | Nexus reads the journal |
@@ -173,8 +173,8 @@ the owner agrees it is ready.**
 | Automatic security updates | P1 | ✅ | Guardian |
 | Firewall, with a simple Settings page | P2 | 🟡 | NixOS firewall on; no page |
 | Camera, microphone and screen-sharing in use: indicators | P1 | ✅ | Top bar, with the app's name (0.3) |
-| App permissions (Flatpak: files, camera, location) | P2 | ⬜ | A Settings page over portals/Flatseal |
-| Passkeys and security keys (FIDO2, YubiKey) | P2 | 🔍 | udev rules for U2F |
+| App permissions (Flatpak: files, camera, location) | P2 | ✅ | Settings, Privacy: internet, files, devices, camera, background (0.4); location later |
+| Passkeys and security keys (FIDO2, YubiKey) | P2 | 🟡 | libfido2's udev rules (0.4); check with a real key |
 | Password manager | P2 | 🟡 | Browsers; Bitwarden/KeePassXC on Flathub |
 | Malware scanning of downloads (optional) | P3 | ⬜ | ClamAV on demand |
 
@@ -204,7 +204,7 @@ the owner agrees it is ready.**
 | Kubernetes and cloud CLIs (kubectl, aws, az, gcloud) | P3 | ⬜ | Through project shells |
 | Databases for development (PostgreSQL, MySQL, Redis) | P3 | ⬜ | Containers |
 | Local AI coding help | P2 | ✅ | Code (Super+C) |
-| GitHub/GitLab sign-in for git (credential helper) | P2 | 🟡 | SSH keys (0.3); HTTPS credential helper to add |
+| GitHub/GitLab sign-in for git (credential helper) | P2 | ✅ | SSH keys (0.3); Git Credential Manager with the keyring (0.4) |
 | man pages and documentation offline | P3 | 🟡 | |
 
 ## 13. Accessibility
@@ -266,5 +266,6 @@ new features, patch for fixes only).
 | 6 | Email/calendar (Thunderbird); cloud drives (OneDrive, Google Drive, Dropbox, Nextcloud); web apps; PDF tools; spell checking | 0.4.0 |
 | 7 | Accessibility: magnifier and colour filters (keyboard aids and live captions later) | 0.4.0 |
 | 8 | P1 polish: Alt+Tab switcher, Caps Lock indicator, light/dark apps, 7z and RAR, disk and graphics in the task manager, pip and npm -g | 0.4.0 |
-| 9 | Parental controls, TPM unlock, app permissions, remote help, reset | |
+| 9 | Startup apps, app permissions, screen recording, Thunderbolt, video decoding, security keys, git sign-in, overview gesture | 0.4.0 |
+| 10 | Parental controls, TPM unlock, remote help, reset, CJK input | |
 | … | The rest of the list, by priority | |

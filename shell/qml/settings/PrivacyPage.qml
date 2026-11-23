@@ -1,11 +1,14 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
+import "../lib/storage.mjs" as S
 
 // Settings, Privacy and AI: today at a glance (feature 12, Privacy
 // dashboard: what Nexus read, what left the computer, which apps used the
 // microphone or camera, and Forget today), which model answers, what may
 // leave the computer, conversation history, and the notes Nexus reads (the
 // person's own "training documents": AssistantContext.cs adds them to every question).
+// App permissions: what each Flathub app may reach (nexus-permissions).
 Column {
     id: page
     property var theme
@@ -88,7 +91,7 @@ Column {
         const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
         todayListId = bridge.api("GET", "/journal?limit=60&since=" + encodeURIComponent(midnight.toISOString()));
     }
-    Component.onCompleted: refresh()
+    Component.onCompleted: { refresh(); permApps.running = true }
     Connections {
         target: page.bridge
         function onOnlineChanged() { page.refresh() }
@@ -258,4 +261,60 @@ Column {
         width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
         text: page.message; color: page.theme.inkSecondary; font.pixelSize: 13
     }
+
+    // ---- app permissions (Flathub apps) ----
+    property var flatApps: []
+    property string permApp: ""
+    property var perms: []
+    property string permNote: ""
+    Process { id: permApps; command: ["nexus-permissions", "apps"]
+              stdout: StdioCollector { onStreamFinished: { const v = S.parse(text); page.flatApps = Array.isArray(v) ? v : [] } } }
+    Process { id: permShow
+              stdout: StdioCollector { onStreamFinished: { const v = S.parse(text); page.perms = v.permissions || []; if (v.error) page.permNote = v.error } } }
+    Process {
+        id: permSet
+        stdout: StdioCollector { id: permOut }
+        onExited: { const v = S.parse(permOut.text); page.permNote = v.error || v.message || ""; page.showPerms(page.permApp) }
+    }
+    function showPerms(app) {
+        permApp = app; perms = [];
+        if (!app) return;
+        permShow.command = ["nexus-permissions", "show", app]; permShow.running = true;
+    }
+    function setPerm(args) {
+        if (permSet.running) return;
+        permSet.command = ["nexus-permissions"].concat(args); permSet.running = true;
+    }
+
+    SettingRow {
+        theme: page.theme; label: "App permissions"; highlighted: page.host.highlight === "permissions"
+        detail: page.flatApps.length === 0
+            ? "Apps from Flathub show here, with what each may reach: the internet, your files, the camera and devices."
+            : "What each app from Flathub may reach. A change is for you only and applies the next time the app starts."
+    }
+    Flow {
+        width: page.width; spacing: 6
+        Repeater {
+            model: page.flatApps
+            delegate: Button {
+                required property var modelData
+                theme: page.theme; label: modelData.name; primary: page.permApp === modelData.id
+                onClicked: page.showPerms(page.permApp === modelData.id ? "" : modelData.id)
+            }
+        }
+    }
+    Text { visible: page.permNote !== "" && page.permApp !== ""; width: page.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+           text: page.permNote; color: page.theme.inkSecondary; font.pixelSize: 12 }
+    Repeater {
+        model: page.permApp ? page.perms : []
+        delegate: SettingRow {
+            required property var modelData
+            theme: page.theme; label: modelData.label
+            detail: modelData.asked ? "" : "The app did not ask for this."
+            Switch { theme: page.theme; name: modelData.label; checked: modelData.on
+                     onToggled: page.setPerm(["set", page.permApp, modelData.kind, modelData.on ? "off" : "on"]) }
+        }
+    }
+    Button { visible: page.permApp !== ""; theme: page.theme; label: "Back to what the app asked for"
+             onClicked: page.setPerm(["reset", page.permApp]) }
 }

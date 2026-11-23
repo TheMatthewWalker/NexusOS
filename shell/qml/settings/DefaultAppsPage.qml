@@ -6,6 +6,8 @@ import "../lib/storage.mjs" as S
 // Settings, Default apps: which app opens web links, email, folders, music,
 // videos, pictures, text files and PDFs. nexus-default-apps (as you) finds the
 // apps that can and writes ~/.config/mimeapps.list, which every app reads.
+// Startup apps: what opens at login (nexus-startup, the person's own
+// ~/.config/autostart).
 Column {
     id: page
     property var theme
@@ -17,7 +19,7 @@ Column {
     property string message: ""
     property string open: ""
 
-    Component.onCompleted: lister.running = true
+    Component.onCompleted: { lister.running = true; startupLister.running = true }
     Process { id: lister; command: ["nexus-default-apps", "list"]
               stdout: StdioCollector { onStreamFinished: page.categories = S.parse(text).categories || [] } }
     Process {
@@ -61,6 +63,58 @@ Column {
                         onClicked: page.choose(page.open, modelData.id)
                     }
                 }
+            }
+        }
+    }
+
+    // ---- startup apps ----
+    property var startup: []
+    property bool adding: false
+    Process { id: startupLister; command: ["nexus-startup", "list"]
+              stdout: StdioCollector { onStreamFinished: page.startup = Array.isArray(S.parse(text)) ? S.parse(text) : [] } }
+    Process {
+        id: startupSetter
+        stdout: StdioCollector { id: startupOut }
+        onExited: { const r = S.parse(startupOut.text); page.message = r.error || r.message || ""; startupLister.running = true }
+    }
+    function startupRun(args) {
+        if (startupSetter.running) return;
+        startupSetter.command = ["nexus-startup"].concat(args);
+        startupSetter.running = true;
+    }
+
+    SettingRow {
+        theme: page.theme; label: "Startup apps"; highlighted: page.host.highlight === "startup"
+        detail: page.startup.length === 0
+            ? "No apps open when you log in. Apps such as Steam and Discord add themselves here when you ask them to start with the computer."
+            : "These open when you log in. Turning one off makes logging in quicker."
+        Button { theme: page.theme; label: page.adding ? "Close" : "Add an app"; onClicked: page.adding = !page.adding }
+    }
+    Repeater {
+        model: page.startup
+        delegate: SettingRow {
+            required property var modelData
+            theme: page.theme; label: modelData.name
+            Row {
+                spacing: 8
+                Button { visible: modelData.added; theme: page.theme; label: "Remove"; onClicked: page.startupRun(["remove", modelData.id]) }
+                Switch { theme: page.theme; name: "Open " + modelData.name + " at login"; checked: modelData.on
+                         onToggled: page.startupRun(["set", modelData.id, modelData.on ? "off" : "on"]) }
+            }
+        }
+    }
+    TextField { id: startupFilter; visible: page.adding; theme: page.theme; label: "Find an app to open at login" }
+    Flow {
+        visible: page.adding
+        width: page.width; spacing: 6
+        Repeater {
+            model: page.adding ? DesktopEntries.applications.values
+                .filter(e => !e.noDisplay && e.id && e.name.toLowerCase().includes(startupFilter.text.trim().toLowerCase()))
+                .slice(0, 24) : []
+            delegate: Button {
+                required property var modelData
+                theme: page.theme; label: modelData.name
+                onClicked: { page.startupRun(["add", modelData.id + ".desktop"]); page.adding = false }
             }
         }
     }

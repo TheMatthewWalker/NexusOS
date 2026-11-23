@@ -32,6 +32,17 @@ let
     runtimeInputs = with pkgs; [ grim slurp jq wl-clipboard libnotify xdg-user-dirs coreutils config.programs.hyprland.package ];
     text = builtins.readFile ../../scripts/desktop/nexus-screenshot.sh;
   };
+  record = pkgs.writeShellApplication {
+    name = "nexus-record";
+    runtimeInputs = with pkgs; [ wf-recorder slurp jq libnotify xdg-user-dirs coreutils config.programs.hyprland.package ];
+    text = builtins.readFile ../../scripts/desktop/nexus-record.sh;
+  };
+  startup = pkgs.writeShellScriptBin "nexus-startup" ''
+    exec ${pkgs.python3}/bin/python3 -I ${../../scripts/desktop/nexus_startup.py} "$@"
+  '';
+  permissions = pkgs.writeShellScriptBin "nexus-permissions" ''
+    exec ${pkgs.python3}/bin/python3 -I ${../../scripts/desktop/nexus_permissions.py} "$@"
+  '';
   snap = pkgs.writeShellApplication {
     name = "nexus-snap";
     runtimeInputs = with pkgs; [ jq gawk config.programs.hyprland.package ];
@@ -71,7 +82,34 @@ in
                                    pkgs.cifs-utils pkgs.exfatprogs pkgs.ntfs3g pkgs.docker-compose
                                    pkgs.cliphist pkgs.wtype pkgs.wl-clipboard
                                    pkgs.networkmanagerapplet pkgs.zenity pkgs.wireguard-tools
-                                   pkgs.p7zip pkgs.unar pkgs.adw-gtk3 pkgs.adwaita-qt pkgs.adwaita-qt6 pkgs.dconf ];
+                                   pkgs.p7zip pkgs.unar pkgs.adw-gtk3 pkgs.adwaita-qt pkgs.adwaita-qt6 pkgs.dconf
+                                   record startup permissions pkgs.libva-utils pkgs.git-credential-manager ];
+
+    # Startup apps (Settings, Default apps): the person's own autostart
+    # entries, which Steam, Discord and Flatpak apps write when told to start
+    # at login, are started with the session. /etc/xdg/autostart is left
+    # alone: those are system parts NexusOS starts its own way.
+    systemd.user.services.nexus-startup = {
+      description = "Start the apps chosen to open at login";
+      wantedBy = [ "nexus-session.target" ];
+      partOf = [ "nexus-session.target" ];
+      after = [ "nexus-session.target" "nexus-shell.service" ];
+      environment.XDG_CURRENT_DESKTOP = "Hyprland";
+      serviceConfig = { Type = "oneshot"; ExecStart = "${pkgs.dex}/bin/dex --autostart --search-paths %h/.config/autostart"; };
+    };
+
+    # Docks and Thunderbolt devices are authorised (bolt); videos decode on
+    # the graphics chip (VA-API; Intel's driver here, AMD's is in Mesa), which
+    # saves battery; security keys (FIDO2, U2F: YubiKey, passkeys) work in
+    # browsers for the person at the screen.
+    services.hardware.bolt.enable = lib.mkDefault true;
+    hardware.graphics.extraPackages = lib.optionals pkgs.stdenv.hostPlatform.isx86_64 [ pkgs.intel-media-driver ];
+    services.udev.packages = [ pkgs.libfido2 ];
+
+    # git over HTTPS signs in to GitHub, GitLab or Azure DevOps in the browser
+    # once (Git Credential Manager, as Git for Windows has) and keeps the
+    # token in the keyring.
+    programs.git.config.credential = { helper = "manager"; credentialStore = "secretservice"; };
 
     # Archives: File Roller opens 7z with p7zip and RAR with unar (free, no unrar licence).
     #

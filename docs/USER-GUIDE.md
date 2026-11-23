@@ -28,6 +28,11 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 | Keys | What they do |
 | --- | --- |
 | Super+Space | Nexus |
+| Alt+Tab | Next window (Alt+Shift+Tab: the one before) |
+| Super+D | The desktop (an empty workspace) |
+| Super+Left / Right | Snap the window to that half of the screen |
+| Super+Up / Down | Maximise the window / put it back |
+| Super+Shift+S | Screenshot of an area (Print: the whole screen; Alt+Print: the window) |
 | Super+A | Apps |
 | Super+E | Files |
 | Super+Return or Ctrl+Alt+T | Terminal |
@@ -37,6 +42,8 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 | Super+F / Super+M | Full screen / maximise |
 | Alt+Shift | Next keyboard layout (when you have more than one) |
 | Super+Alt+S | Screen reader on or off |
+
+Screenshots are copied, so you can paste them straight away, and saved in Pictures, Screenshots. The volume, brightness and media keys work as on Windows and show how much on the screen.
 
 Windows float like on Windows or macOS; you can switch to tiled windows in Settings, Desktop. [Open Desktop](settings:desktop/windows)
 
@@ -51,6 +58,14 @@ Windows float like on Windows or macOS; you can switch to tiled windows in Setti
 Choose a Wi-Fi network from the top bar or Settings, Network. Bluetooth devices pair in Settings, Bluetooth.
 
 Printers and scanners on your network, or plugged in with USB, **appear by themselves** within a minute of switching them on. Settings, Printers shows them, sets the default and prints a test page; **Scan a document** opens the scanner app. [Open Printers](settings:printers/printers)
+
+## Mouse and touchpad
+
+Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed buttons and scrolling direction, and for touchpads tap to click and natural scrolling. Swipe three fingers sideways to move between workspaces. [Open Mouse and touchpad](settings:mouse/taptoclick)
+
+## Bluetooth and passwords
+
+Turn Bluetooth on and pair devices in Settings, Bluetooth. Passwords you save in browsers and apps are kept in your keyring, which opens when you log in; Passwords and Keys shows them. When you change your password in Settings, Accounts, the keyring's changes with it.
 
 ## Screens, sound and power
 

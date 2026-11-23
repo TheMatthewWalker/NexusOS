@@ -63,7 +63,7 @@ public sealed class ActionRejectedException(string message, bool malformed = fal
 public static class NexusActions
 {
     public static readonly string[] SettingsPages =
-        ["network", "bluetooth", "printers", "sound", "display", "power", "desktop", "language", "defaults", "privacy", "search", "timeline", "automations",
+        ["network", "bluetooth", "printers", "sound", "display", "power", "mouse", "desktop", "language", "defaults", "privacy", "search", "timeline", "automations",
          "accessibility", "accounts", "health", "backups", "updates", "storage", "feedback", "help", "about"];
     public static readonly string[] PersonalSettings =
         ["volume", "night_light", "scale", "windows", "blur", "animations", "high_contrast", "do_not_disturb"];

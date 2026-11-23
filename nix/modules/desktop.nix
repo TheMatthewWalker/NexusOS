@@ -111,7 +111,17 @@ let
     input {
       kb_layout = ${cfg.keyboardLayout}
       follow_mouse = 1
+      # Laptop touchpads as most people expect them; Settings, Mouse and
+      # touchpad changes these per person (DesktopSettings.qml).
+      touchpad {
+        tap-to-click = true
+        natural_scroll = true
+        disable_while_typing = true
+        clickfinger_behavior = true
+      }
     }
+    # Three fingers sideways: the next or previous workspace.
+    gesture = 3, horizontal, workspace
     general {
       gaps_in = 6
       gaps_out = 14
@@ -150,6 +160,35 @@ let
     bind = CTRL ALT, T, exec, ${pkgs.gtk3}/bin/gtk-launch ${terminal}
     ${lib.optionalString (!cfg.live) "bind = SUPER, E, exec, ${pkgs.gtk3}/bin/gtk-launch ${files}"}
     bind = SUPER, Q, killactive
+    # As on Windows: Alt+Tab between windows, Super+D the desktop (an empty
+    # workspace), Super+arrows snap a window to half the screen or maximise it,
+    # and screenshots with Super+Shift+S (an area), Print (the screen) and
+    # Alt+Print (the window), saved in Pictures, Screenshots, and copied.
+    bind = ALT, Tab, cyclenext
+    bind = ALT, Tab, bringactivetotop
+    bind = ALT SHIFT, Tab, cyclenext, prev
+    bind = ALT SHIFT, Tab, bringactivetotop
+    bind = SUPER, D, workspace, empty
+    bind = SUPER, left, exec, /run/current-system/sw/bin/nexus-snap left
+    bind = SUPER, right, exec, /run/current-system/sw/bin/nexus-snap right
+    bind = SUPER, up, exec, /run/current-system/sw/bin/nexus-snap up
+    bind = SUPER, down, exec, /run/current-system/sw/bin/nexus-snap down
+    bind = SUPER SHIFT, S, exec, /run/current-system/sw/bin/nexus-screenshot area
+    bind = , Print, exec, /run/current-system/sw/bin/nexus-screenshot screen
+    bind = ALT, Print, exec, /run/current-system/sw/bin/nexus-screenshot window
+    # Volume, microphone and brightness keys: the shell changes them and shows
+    # how much (OnScreen.qml); they repeat while held and work on the lock screen.
+    bindel = , XF86AudioRaiseVolume, global, nexus:volup
+    bindel = , XF86AudioLowerVolume, global, nexus:voldown
+    bindl = , XF86AudioMute, global, nexus:mute
+    bindl = , XF86AudioMicMute, global, nexus:micmute
+    bindel = , XF86MonBrightnessUp, global, nexus:brightup
+    bindel = , XF86MonBrightnessDown, global, nexus:brightdown
+    # Media keys play, pause and skip in whichever app is playing.
+    bindl = , XF86AudioPlay, exec, /run/current-system/sw/bin/playerctl play-pause
+    bindl = , XF86AudioPause, exec, /run/current-system/sw/bin/playerctl play-pause
+    bindl = , XF86AudioNext, exec, /run/current-system/sw/bin/playerctl next
+    bindl = , XF86AudioPrev, exec, /run/current-system/sw/bin/playerctl previous
     bind = SUPER SHIFT, E, exit
     bind = SUPER, F, fullscreen
     bind = SUPER, M, fullscreen, 1

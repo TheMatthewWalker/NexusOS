@@ -33,6 +33,7 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 | Super+Left / Right | Snap the window to that half of the screen |
 | Super+Up / Down | Maximise the window / put it back |
 | Super+Shift+S | Screenshot of an area (Print: the whole screen; Alt+Print: the window) |
+| Super+Shift+T | Copy the text in an area of the screen (read on this computer) |
 | Super+Alt+R | Record the screen, with its sound (Super+Shift+R: an area); press again to stop. Saved in Videos, Screen recordings |
 | Ctrl+Shift+Esc | Task manager: what is running, how busy the processor, memory, disk and graphics are, and End task for an app that has stopped responding |
 | Super+Shift+V | Clipboard history: paste something you copied earlier |
@@ -88,7 +89,7 @@ For games, get Steam (most Windows games work through its Proton), and Heroic fo
 
 ## Wi-Fi, Bluetooth and printers
 
-Choose a Wi-Fi network from the top bar or Settings, Network. Bluetooth devices pair in Settings, Bluetooth.
+Choose a Wi-Fi network from the top bar or Settings, Network. **Mobile hotspot** there shares this computer's internet with a phone or another computer over Wi-Fi, and shows the name and password to connect with. Bluetooth devices pair in Settings, Bluetooth.
 
 Printers and scanners on your network, or plugged in with USB, **appear by themselves** within a minute of switching them on. Settings, Printers shows them, sets the default and prints a test page; **Scan a document** opens the scanner app. [Open Printers](settings:printers/printers)
 

@@ -224,6 +224,8 @@ let
     bind = ALT, Print, exec, /run/current-system/sw/bin/nexus-screenshot window
     # Screen recording, as Windows' Win+Alt+R: the screen (Super+Shift+R an
     # area), with what is playing; the same keys stop it.
+    # Super+Shift+T: copy the text in an area of the screen (nexus-ocr).
+    bind = SUPER SHIFT, T, exec, /run/current-system/sw/bin/nexus-ocr
     bind = SUPER ALT, R, exec, /run/current-system/sw/bin/nexus-record screen
     bind = SUPER SHIFT, R, exec, /run/current-system/sw/bin/nexus-record area
     # Volume, microphone and brightness keys: the shell changes them and shows

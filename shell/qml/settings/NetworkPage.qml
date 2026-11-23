@@ -183,6 +183,42 @@ Column {
         }
     }
 
+    // Mobile hotspot: share this computer's internet over Wi-Fi (NetworkManager;
+    // the person at the screen may, without a password). The hotspot's own
+    // password is made here, shown to share, and kept by NetworkManager.
+    property bool hotspotOn: false
+    property string hotspotName: ""
+    property string hotspotKey: ""
+    property string hotspotNote: ""
+    Process {
+        id: hotspotState
+        running: true
+        command: ["sh", "-c", "nmcli -t -f NAME connection show --active | grep -qx Hotspot || exit 0; " +
+                              "printf '%s\\n' \"$(nmcli -g 802-11-wireless.ssid connection show Hotspot)\" \"$(nmcli -s -g 802-11-wireless-security.psk connection show Hotspot)\""]
+        stdout: StdioCollector { onStreamFinished: { const l = text.split("\n"); page.hotspotOn = l[0] !== ""; page.hotspotName = l[0] || ""; page.hotspotKey = l[1] || "" } }
+    }
+    Process {
+        id: hotspotSwitch
+        stdout: StdioCollector { id: hotspotOut }
+        onExited: (code) => { page.hotspotNote = code === 0 ? "" : (hotspotOut.text.trim().split("\n").pop() || "The hotspot could not start: this Wi-Fi may not support it while connected."); hotspotState.running = true }
+    }
+    function hotspot(on) {
+        if (hotspotSwitch.running) return;
+        hotspotSwitch.command = on
+            ? ["sh", "-c", "key=$(tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' </dev/urandom | head -c 10); " +
+                           "nmcli device wifi hotspot con-name Hotspot ssid \"NexusOS-$(hostname)\" password \"$key\" 2>&1"]
+            : ["nmcli", "connection", "down", "Hotspot"];
+        hotspotSwitch.running = true;
+    }
+    SettingRow {
+        theme: page.theme; label: "Mobile hotspot"; highlighted: page.host.highlight === "hotspot"
+        detail: page.hotspotNote || (page.hotspotOn
+            ? "On. Connect a phone or laptop to " + page.hotspotName + " with the password " + page.hotspotKey + "."
+            : "Share this computer's internet with a phone or another computer over Wi-Fi.")
+        Button { theme: page.theme; label: page.hotspotOn ? "Turn off" : "Turn on"; enabled: !hotspotSwitch.running
+                 onClicked: page.hotspot(!page.hotspotOn) }
+    }
+
     SettingRow {
         theme: page.theme; label: "VPN"; highlighted: page.host.highlight === "vpn"
         detail: page.vpnMessage || (page.vpnList.length === 0 ? "None set up. Add one from the file your work, school or VPN provider gave you."

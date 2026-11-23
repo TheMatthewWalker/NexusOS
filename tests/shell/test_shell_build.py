@@ -1115,6 +1115,15 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("virtualisation.libvirtd.qemu.swtpm.enable = true;", (ROOT / "nix/modules/developer.nix").read_text())
         self.assertIn('Quickshell.execDetached(["nexus-windows-vm"])', (self.out / "settings/DeveloperPage.qml").read_text())
 
+    def test_copy_text_from_the_screen_and_mobile_hotspot(self):
+        self.assertIn("bind = SUPER SHIFT, T, exec, /run/current-system/sw/bin/nexus-ocr", (ROOT / "nix/modules/desktop.nix").read_text())
+        ocr = (ROOT / "scripts/desktop/nexus-ocr.sh").read_text()
+        self.assertIn('tesseract "$shot" - -l', ocr)                          # read on this computer
+        self.assertNotIn("curl", ocr)
+        net = (self.out / "settings/NetworkPage.qml").read_text()
+        self.assertIn("nmcli device wifi hotspot con-name Hotspot", net)
+        self.assertIn("tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' </dev/urandom", net)
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

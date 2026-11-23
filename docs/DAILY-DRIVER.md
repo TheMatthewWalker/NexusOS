@@ -57,7 +57,7 @@ the owner agrees it is ready.**
 | Clipboard history (Super+V on Windows) | P2 | ✅ | Super+Shift+V (Super+V is push-to-talk) (0.3) |
 | Emoji and symbol picker (Super+. on Windows) | P2 | ✅ | Super+. (0.3) |
 | Windows-like shortcuts: Super+D show desktop, Super+E files, Ctrl+Shift+Esc task manager, Super+arrows snap | P1 | ✅ | (0.2, 0.3) |
-| Keyboard shortcuts page (see and change them) | P2 | ⬜ | |
+| Keyboard shortcuts page (see and change them) | P2 | 🟡 | All listed in Settings, Help; changing them to add |
 | Light and dark mode, followed by GTK, Qt and Flatpak apps | P1 | 🟡 | GTK 3/4, libadwaita and Qt dark by default, GTK light or dark in Settings (0.4); Qt stays dark; check Flatpak GTK 3 apps |
 | Fonts: good defaults, Microsoft-compatible metrics (Carlito, Caladea, Liberation), emoji, CJK | P1 | ✅ | (0.2) |
 | Icon theme, cursor theme, sound theme consistent | P2 | 🟡 | |
@@ -96,7 +96,7 @@ the owner agrees it is ready.**
 | Chat apps (WhatsApp, Discord, Slack, Signal, Telegram) | P2 | 🟡 | Flathub; offered in Welcome bundles |
 | VPN: WireGuard, OpenVPN, corporate (Cisco AnyConnect, GlobalProtect, Fortinet) | P1 | ✅ | Settings, Network: from a file, or the connection editor (0.3) |
 | Work and school Wi-Fi (802.1X, eduroam) in Settings | P1 | ✅ | The connection editor from Settings (0.3) |
-| Wi-Fi hotspot | P3 | ⬜ | |
+| Wi-Fi hotspot | P3 | ✅ | Settings, Network (0.6) |
 | Proxy settings | P3 | ⬜ | |
 | Install a website as an app (PWA) | P2 | ✅ | Apps, Web apps, or ask Nexus (0.4) |
 
@@ -109,7 +109,7 @@ the owner agrees it is ready.**
 | Microsoft 365 / Google Docs in the browser, as apps | P1 | ✅ | Suggested in Apps, Web apps (0.4) |
 | PDF: read, fill forms, sign, annotate, merge | P1 | ✅ | Papers reads and fills forms; PDF Arranger merges and splits; Xournal++ annotates and signs (0.4) |
 | Notes, to-do, calendar apps | P2 | 🟡 | Calendar and tasks in Thunderbird; notes apps on Flathub |
-| Text recognition (OCR) for scans and screenshots | P3 | ⬜ | Tesseract; local AI |
+| Text recognition (OCR) for scans and screenshots | P3 | ✅ | Super+Shift+T copies the text in an area, on this computer (0.6) |
 | Spell checking in many languages | P2 | ✅ | hunspell dictionaries for the installer's languages, in LibreOffice and Firefox (0.4) |
 
 ## 6. Media and creative

@@ -66,7 +66,9 @@ Windows float like on Windows or macOS; you can switch to tiled windows in Setti
 
 NexusOS does not run Windows programs by itself, but most have a version or an equivalent here. Open a `.exe` or `.msi` you downloaded and NexusOS says what it is and offers the app to use instead (Spotify's installer offers Spotify; Photoshop offers GIMP). For anything else, Bottles runs many Windows programs with Wine.
 
-For games, get Steam (most Windows games work through its Proton), and Heroic for Epic and GOG games, from Apps or Welcome. Xbox, PlayStation and Switch controllers work by cable and Bluetooth.
+For games, get Steam (most Windows games work through its Proton), and Heroic for Epic and GOG games, from Apps or Welcome. Xbox, PlayStation and Switch controllers work by cable and Bluetooth. A few online games refuse Linux because of their anti-cheat (Valorant, Fortnite, Call of Duty and others): ask Nexus "will Valorant work?", and opening such a game's installer says so before anything is installed.
+
+**Windows beside NexusOS**: the computer always starts NexusOS, with no menu to choose from. Where Windows is installed too, **Windows** is in your apps (and in Settings, Power): it restarts into Windows once, and the next start is NexusOS again.
 
 ## Files from your old computer
 
@@ -126,7 +128,7 @@ To get files back, choose a backup and what to bring back (Documents, Picturesâ€
 
 ## Updates
 
-NexusOS updates itself safely. Guardian looks for updates every week; each one is **built and tested first**, then offered for you to approve with your password. It is used from the next restart. If that start goes wrong, the computer goes back to the version before by itself; you can also choose an earlier version in the start-up menu.
+NexusOS updates itself safely. Guardian looks for updates every week; each one is **built and tested first**, then offered for you to approve with your password. It is used from the next restart. If that start goes wrong, the computer goes back to the version before by itself; you can also choose an earlier version in the start-up menu: hold **Space** as the computer starts to see it.
 
 Settings, Updates shows NexusOS's updates and lets you check now. The **channel** is Stable (tested releases) or Testing (new versions first, to help find problems). [Open Updates](settings:updates/system)
 
@@ -155,7 +157,7 @@ Everything Nexus does stays on this computer unless you choose otherwise. Settin
 - **Fix it**: Settings, Health checks the computer (disk, updates, network, sound, battery) and each problem has a Fix it button. You can also tell Nexus what is wrong. [Open Health](settings:health/)
 - **An app stopped**: turn on **Crash notices** in Settings, Feedback to be told when an app crashes.
 - **Tell the NexusOS project**: Settings, Feedback writes a report of the problem or idea. You see all of it first; sending opens it on GitHub, where you can still change it. Nothing is sent by itself. [Open Feedback](settings:feedback/report)
-- **The computer does not start properly after an update**: restart and choose an earlier version in the start-up menu.
+- **The computer does not start properly after an update**: restart, hold **Space** as it starts, and choose an earlier version in the start-up menu.
 
 ## Where to learn more
 

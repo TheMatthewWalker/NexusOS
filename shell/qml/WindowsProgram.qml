@@ -23,15 +23,16 @@ NexusWindow {
     readonly property string fileName: path.split("/").pop()
     property string program: ""
     property var match: null
+    property var game: null              // GameCheck.cs: whether a game runs here (anti-cheat)
     property int callId: -1
     function open(p) {
         path = String(p || "").replace(/^file:\/\//, "");
-        program = ""; match = null; visible = true;
+        program = ""; match = null; game = null; visible = true;
         if (bridge && bridge.online) callId = bridge.api("POST", "/windows-program", { fileName: fileName });
     }
     Connections {
         target: win.bridge
-        function onResult(id, type, data) { if (id === win.callId) { win.program = data.program || ""; win.match = data.match || null } }
+        function onResult(id, type, data) { if (id === win.callId) { win.program = data.program || ""; win.match = data.match || null; win.game = data.game || null } }
     }
     IpcHandler { target: "windows"; function open(path: string): void { win.open(path) } }
     Process { id: copier }
@@ -40,6 +41,18 @@ NexusWindow {
         anchors { fill: parent; margins: 24 }
         spacing: 12
         Text { text: win.fileName; color: win.theme.ink; font.pixelSize: 18; font.weight: 600; width: parent.width; elide: Text.ElideMiddle; textFormat: Text.PlainText }
+        Rectangle {
+            visible: !!win.game
+            width: parent.width; height: gameText.implicitHeight + 24; radius: 12
+            color: win.game && win.game.status === "blocked" ? "#2A1A0C" : win.theme.chip
+            border.color: win.game && win.game.status === "blocked" ? "#FFA65C" : "transparent"
+            Text {
+                id: gameText
+                x: 14; y: 12; width: parent.width - 28; wrapMode: Text.Wrap; textFormat: Text.PlainText; font.pixelSize: 13
+                color: win.game && win.game.status === "blocked" ? "#FFC48F" : win.theme.ink
+                text: win.game ? win.game.message : ""
+            }
+        }
         Text {
             width: parent.width; wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 13; textFormat: Text.PlainText
             text: !win.match ? "This is a program for Windows. NexusOS does not run Windows programs by itself, but most have a version or an equivalent here."

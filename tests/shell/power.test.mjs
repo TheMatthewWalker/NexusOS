@@ -33,3 +33,10 @@ test("battery care is a Guardian change, shown only where the firmware has a lim
   assert.equal(P.chargeLimit(""), null);
   assert.equal(P.chargeLimit("cat: No such file"), null);
 });
+
+test("Windows beside NexusOS is found in the boot menu's entries", () => {
+  assert.equal(P.windowsEntry("nixos-generation-12.conf\nauto-windows\nauto-reboot-to-firmware-setup\n"), "auto-windows");
+  assert.equal(P.windowsEntry("nixos-generation-12.conf\n"), "");
+  assert.equal(P.windowsEntry("windows-11.conf\n"), "windows-11.conf");
+  assert.equal(P.windowsEntry("auto-windows; rm -rf ~\n"), "");
+});

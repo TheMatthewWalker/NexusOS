@@ -47,6 +47,26 @@ Column {
             onChose: v => PowerProfiles.profile = v
         }
     }
+    // Restart into Windows, where it is installed beside NexusOS (systemd-boot's
+    // one-time entry; allowed for the person at the screen without a password).
+    property string windowsEntry: ""
+    property bool confirmWindows: false
+    Process { running: true; command: ["systemctl", "reboot", "--boot-loader-entry=help"]
+              stdout: StdioCollector { onStreamFinished: page.windowsEntry = P.windowsEntry(text) } }
+    SettingRow {
+        visible: page.windowsEntry !== ""
+        theme: page.theme; label: "Restart into Windows"; highlighted: page.host.highlight === "windows"
+        detail: page.confirmWindows ? "Save your work first. The computer starts Windows this once, and NexusOS again the time after."
+                                    : "For games and programs that need Windows. The next restart after that comes back to NexusOS."
+        Row {
+            spacing: 8
+            Button { visible: page.confirmWindows; theme: page.theme; label: "Cancel"; onClicked: page.confirmWindows = false }
+            Button { theme: page.theme; primary: page.confirmWindows; label: page.confirmWindows ? "Restart now" : "Restart into Windows…"
+                     onClicked: { if (!page.confirmWindows) { page.confirmWindows = true; return }
+                                  Quickshell.execDetached(["systemctl", "reboot", "--boot-loader-entry=" + page.windowsEntry]) } }
+        }
+    }
+
     // Battery care: only where the firmware lets Linux stop charging early.
     property var chargeLimit: null
     Process { running: true; command: ["sh", "-c", "cat /sys/class/power_supply/BAT*/charge_control_end_threshold 2>/dev/null"]

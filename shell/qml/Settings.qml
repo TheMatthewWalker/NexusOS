@@ -141,6 +141,7 @@ NexusWindow {
         ["mouse", "gestures", "Gestures", "touchpad gestures swipe three fingers workspaces"],
         ["power", "battery", "Battery", "battery charge charging time left"],
         ["power", "batterycare", "Battery care", "battery health care charge limit 80 percent charging threshold"],
+        ["power", "windows", "Restart into Windows", "windows dual boot restart into windows boot menu games anti-cheat"],
         ["power", "powermode", "Power mode", "power mode performance saver balanced fan"],
         ["power", "screenoff", "Screen off", "screen off blank display timeout idle"],
         ["power", "sleep", "Sleep", "sleep suspend idle standby battery plugged timeout"],

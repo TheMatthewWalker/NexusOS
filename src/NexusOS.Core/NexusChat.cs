@@ -181,6 +181,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
         "get_picture_usage" => "Looking at your pictures",
         "get_app_details" => "Looking the app up on Flathub",
         "get_move_in_report" => "Looking at the old drive",
+        "check_game" => "Checking whether the game runs",
         _ => "Working"
     };
 
@@ -300,6 +301,8 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 return services.GetRequiredService<ImageStudio>().Usage();
             case "get_app_details":
                 return await services.GetRequiredService<FlathubDetails>().GetAsync(Str(args, "app_id"), ct);
+            case "check_game":
+                return GameCheck.Check(Str(args, "game"));
             case "get_move_in_report":
             {
                 if (services.GetRequiredService<MoveInService>().Current is not { } report)
@@ -486,6 +489,9 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 var package = Str(args, "package");
                 return pending.Add(action, args, $"Try {NexusActions.Clean(package, 60)} without installing it", Perform("app.try", ("package", package)));
             }
+            case "restart_into_windows":
+                return pending.Add(action, args, "Restart the computer into Windows (save your work first; it comes back to NexusOS the time after)",
+                    Perform("power.windows"));
             case "open_move_in":
                 return pending.Add(action, args, "Open Move in, to bring files over from an old drive", Perform("movein.open"));
             case "copy_old_files":

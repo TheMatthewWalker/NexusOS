@@ -37,6 +37,11 @@ let
     runtimeInputs = with pkgs; [ wf-recorder slurp jq libnotify xdg-user-dirs coreutils config.programs.hyprland.package ];
     text = builtins.readFile ../../scripts/desktop/nexus-record.sh;
   };
+  windows = pkgs.writeShellApplication {
+    name = "nexus-windows";
+    runtimeInputs = with pkgs; [ systemd gnugrep coreutils libnotify zenity ];
+    text = builtins.readFile ../../scripts/desktop/nexus-windows.sh;
+  };
   startup = pkgs.writeShellScriptBin "nexus-startup" ''
     exec ${pkgs.python3}/bin/python3 -I ${../../scripts/desktop/nexus_startup.py} "$@"
   '';
@@ -83,7 +88,20 @@ in
                                    pkgs.cliphist pkgs.wtype pkgs.wl-clipboard
                                    pkgs.networkmanagerapplet pkgs.zenity pkgs.wireguard-tools
                                    pkgs.p7zip pkgs.unar pkgs.adw-gtk3 pkgs.adwaita-qt pkgs.adwaita-qt6 pkgs.dconf
-                                   record startup permissions pkgs.libva-utils pkgs.git-credential-manager ];
+                                   record startup permissions windows pkgs.libva-utils pkgs.git-credential-manager ];
+
+    # The computer starts NexusOS straight away: no start-up menu (holding
+    # Space while it starts shows it, for an earlier NexusOS version). Windows,
+    # where it is installed beside NexusOS, is an app instead (nexus-windows),
+    # put in the apps at login only on computers that have it.
+    boot.loader.timeout = lib.mkDefault 0;
+    systemd.user.services.nexus-windows-app = {
+      description = "Show Windows in the apps where it is installed";
+      wantedBy = [ "nexus-session.target" ];
+      partOf = [ "nexus-session.target" ];
+      after = [ "nexus-session.target" ];
+      serviceConfig = { Type = "oneshot"; ExecStart = "${windows}/bin/nexus-windows entry"; };
+    };
 
     # Startup apps (Settings, Default apps): the person's own autostart
     # entries, which Steam, Discord and Flatpak apps write when told to start

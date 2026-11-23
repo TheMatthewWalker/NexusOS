@@ -1100,6 +1100,16 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("page.host.proposeSystem(P.chargeLimitPlan(", (self.out / "settings/PowerPage.qml").read_text())
         self.run_node_test("power.test.mjs")
 
+    def test_restart_into_windows_and_game_answers(self):
+        power = (self.out / "settings/PowerPage.qml").read_text()
+        self.assertIn('Quickshell.execDetached(["systemctl", "reboot", "--boot-loader-entry=" + page.windowsEntry])', power)
+        self.assertIn('case "power.windows": windowsBoot.running = true;', (self.out / "ActionCards.qml").read_text())
+        self.assertIn("win.game = data.game || null", (self.out / "WindowsProgram.qml").read_text())
+        everyday = (ROOT / "nix/modules/everyday.nix").read_text()
+        self.assertIn("boot.loader.timeout = lib.mkDefault 0;", everyday)       # no start-up menu: Windows is an app
+        self.assertIn('ExecStart = "${windows}/bin/nexus-windows entry";', everyday)
+        self.assertIn("import Quickshell.Io", (self.out / "ActionCards.qml").read_text())
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

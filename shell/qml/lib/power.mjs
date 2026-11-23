@@ -44,3 +44,10 @@ export function chargeLimit(text) {
   const n = parseInt(String(text || "").trim().split("\n")[0]);
   return isNaN(n) || n < 1 || n > 100 ? null : n;
 }
+
+// `systemctl reboot --boot-loader-entry=help`: the boot menu's entries. systemd-boot
+// finds Windows on the same EFI partition by itself ("auto-windows").
+export function windowsEntry(text) {
+  const entries = String(text || "").split("\n").map(l => l.trim()).filter(l => /^[A-Za-z0-9._@+-]+$/.test(l));
+  return entries.includes("auto-windows") ? "auto-windows" : (entries.find(e => /^windows/i.test(e)) || "");
+}

@@ -371,3 +371,24 @@ public sealed class NexusChatFollowUpTests : IDisposable
         Assert.Equal("Sorry, I could not do that.", Said(events));
     }
 }
+
+public class ActionSelectionTimeoutTests
+{
+    [Fact]
+    public void A_match_that_runs_out_of_time_offers_the_group_instead_of_failing()
+    {
+        // (a+)+$ on a long run of a's ending in b backtracks far past 1 ms.
+        var slow = new System.Text.RegularExpressions.Regex("(a+)+$", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromMilliseconds(1));
+        Assert.True(ActionSelection.Matches(slow, new string('a', 40) + "b"));
+        var quick = new System.Text.RegularExpressions.Regex("x", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromMilliseconds(50));
+        Assert.False(ActionSelection.Matches(quick, "abc"));
+    }
+
+    [Fact]
+    public void A_very_long_question_still_gets_actions()
+    {
+        var names = ActionSelection.NamesFor(string.Join(" ", Enumerable.Repeat("please turn on night light and find my files", 2000)));
+        Assert.Contains("change_setting", names);
+        Assert.Contains("get_system_state", names);
+    }
+}

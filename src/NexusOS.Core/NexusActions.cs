@@ -232,10 +232,16 @@ public static class NexusActions
         if (p.Choices is not null)
             return p.Choices.FirstOrDefault(c => string.Equals(c, text, StringComparison.OrdinalIgnoreCase))
                 ?? throw new ActionRejectedException($"'{p.Name}' must be one of: {string.Join(", ", p.Choices)}.");
-        if (p.Pattern is not null &&
-            !Regex.IsMatch(text, @"\A(?:" + p.Pattern + @")\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)))
+        if (p.Pattern is not null && !FitsPattern(text, p.Pattern))
             throw new ActionRejectedException($"'{p.Name}' is not in the expected form.");
         return text;
+    }
+
+    // A check that runs out of time refuses the value (never a server error).
+    private static bool FitsPattern(string text, string pattern)
+    {
+        try { return Regex.IsMatch(text, @"\A(?:" + pattern + @")\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)); }
+        catch (RegexMatchTimeoutException) { return false; }
     }
 
     private static int Integer(ActionParam p, JsonValue v)

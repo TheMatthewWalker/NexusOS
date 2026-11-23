@@ -94,19 +94,35 @@ public static class ActionSelection
     // Paths and app ids ("~/projects/app", "org.mozilla.firefox") are not words about what to do.
     private static readonly Regex Paths = new(@"(?:~|\.{0,2}/)\S*|\S+\.\S+\.\S+", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
 
-    private static string Words(string text) => Paths.Replace(text, " ");
+    private static string Words(string text)
+    {
+        try { return Paths.Replace(text, " "); }
+        catch (RegexMatchTimeoutException) { return text; }
+    }
+
+    // A match that runs out of time (a very long question, or a busy computer)
+    // counts as a match: offering a group too many is only a few more tokens,
+    // and every call is validated the same either way. It must never fail the question.
+    internal static bool Matches(Regex words, string text)
+    {
+        try { return words.IsMatch(text); }
+        catch (RegexMatchTimeoutException) { return true; }
+    }
 
     // The groups a piece of text is about.
     public static IReadOnlyList<string> GroupsFor(string text) =>
-        Groups.Where(g => g.Words.IsMatch(Words(text))).Select(g => g.Name).ToArray();
+        Groups.Where(g => Matches(g.Words, Words(text))).Select(g => g.Name).ToArray();
 
     // The action names to offer for this question (earlier: the person's previous question, if any).
     public static IReadOnlySet<string> NamesFor(string prompt, string? earlier = null)
     {
         var words = Words(prompt);
-        var groups = Groups.Where(g => g.Words.IsMatch(words)).ToList();
+        var groups = Groups.Where(g => Matches(g.Words, words)).ToList();
         if (earlier is { Length: > 0 } && IsFollowUp(prompt))
-            groups.AddRange(Groups.Where(g => g.Words.IsMatch(Words(earlier)) && !groups.Contains(g)));
+        {
+            var before = Words(earlier);
+            groups.AddRange(Groups.Where(g => Matches(g.Words, before) && !groups.Contains(g)));
+        }
         var names = new HashSet<string>(Always, StringComparer.Ordinal);
         foreach (var g in groups) names.UnionWith(g.Actions);
         foreach (var action in NexusActions.All) if (!Grouped.Contains(action.Name)) names.Add(action.Name);

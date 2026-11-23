@@ -1024,6 +1024,26 @@ class ShellBuild(unittest.TestCase):
         self.run_node_test("webapps.test.mjs")
         self.run_node_test("accounts.test.mjs")
 
+    def test_magnifier_and_colour_filters(self):
+        desk = (self.out / "DesktopSettings.qml").read_text()
+        self.assertIn('"keyword cursor:zoom_factor " + Math.min(4, Math.max(1, store.zoom))', desk)
+        self.assertIn('"keyword decoration:screen_shader " + Access.shader(store.colourFilter, Quickshell.shellDir)', desk)
+        shell = (self.out / "shell.qml").read_text()
+        for name in ("zoomin", "zoomout", "zoomoff"):
+            self.assertIn(f'name: "{name}"', shell)
+            self.assertIn(f"global, nexus:{name}", (ROOT / "nix/modules/desktop.nix").read_text())
+        filters = sorted(p.stem for p in (self.out / "filters").glob("*.frag"))
+        self.assertEqual(filters, ["deuteranopia", "greyscale", "invert", "protanopia", "tritanopia"])
+        tool = shutil.which("glslangValidator")
+        for name in filters:
+            frag = (self.out / "filters" / f"{name}.frag").read_text()
+            self.assertTrue(frag.startswith("#version 300 es\n"), name)
+            self.assertIn("uniform sampler2D tex;", frag)       # what Hyprland's screen shader is given
+            if tool:
+                run = subprocess.run([tool, str(self.out / "filters" / f"{name}.frag")], capture_output=True, text=True)
+                self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.run_node_test("access.test.mjs")
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

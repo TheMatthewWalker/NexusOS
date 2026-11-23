@@ -178,6 +178,14 @@ let
     # Super+Shift+V: clipboard history (Super+V is push-to-talk); Super+. emoji.
     bind = SUPER SHIFT, V, global, nexus:clipboard
     bind = SUPER, period, global, nexus:emoji
+    # The magnifier, as on Windows: Super+Plus zooms in around the pointer,
+    # Super+Minus out, Super+Esc stops (DesktopSettings.qml, cursor:zoom_factor).
+    binde = SUPER, equal, global, nexus:zoomin
+    binde = SUPER, plus, global, nexus:zoomin
+    binde = SUPER, KP_Add, global, nexus:zoomin
+    binde = SUPER, minus, global, nexus:zoomout
+    binde = SUPER, KP_Subtract, global, nexus:zoomout
+    bind = SUPER, Escape, global, nexus:zoomoff
     bind = SUPER, left, exec, /run/current-system/sw/bin/nexus-snap left
     bind = SUPER, right, exec, /run/current-system/sw/bin/nexus-snap right
     bind = SUPER, up, exec, /run/current-system/sw/bin/nexus-snap up

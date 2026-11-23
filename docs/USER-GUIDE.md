@@ -45,6 +45,7 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 | Super+F / Super+M | Full screen / maximise |
 | Alt+Shift | Next keyboard layout (when you have more than one) |
 | Super+Alt+S | Screen reader on or off |
+| Super+Plus / Super+Minus | Magnifier: zoom in / out around the pointer (Super+Esc stops) |
 
 The top bar shows when an app is using your microphone or camera, or sharing your screen, with its name; what is playing, with play, pause and skip; and the icons apps such as Steam or Discord keep there (right-click one for its menu).
 
@@ -93,6 +94,10 @@ Turn Bluetooth on and pair devices in Settings, Bluetooth. Passwords you save in
 Settings, Display has brightness, night light and the scale (bigger text and windows). With **more than one screen**, each one can go left, right, above or below the main one, show the same picture, or be off, with its own resolution and scale. A change goes back by itself after 15 seconds unless you press Keep, so a screen that shows nothing never leaves you stuck. [Open Display](settings:display/screens)
 
 Settings, Power sets when the screen turns off, when the computer sleeps (on battery and plugged in), and what closing the lid does. The screen locks when the computer sleeps. [Open Power](settings:power/sleep)
+
+## Seeing, hearing and using it more easily
+
+Settings, Accessibility has bigger text, high contrast, a bigger pointer, less motion, the **screen reader** (Super+Alt+S), and Describe this, which tells you what is on the screen. The **magnifier** enlarges the screen around the pointer: Super+Plus and Super+Minus, as on Windows. A **colour filter** shows the screen in grey or inverted, or makes colours easier to tell apart if you are colour blind. You can also ask Nexus: "zoom in", "turn on the colour blind filter". [Open Accessibility](settings:accessibility/magnifier)
 
 ## Notifications
 

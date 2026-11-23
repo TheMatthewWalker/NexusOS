@@ -213,9 +213,9 @@ the owner agrees it is ready.**
 |---|---|---|---|
 | Screen reader | P1 | ✅ | Orca, Super+Alt+S |
 | Text size, high contrast, larger pointer | P1 | ✅ | |
-| Magnifier (zoom) | P1 | ⬜ | Hyprland cursor zoom |
-| Sticky keys, slow keys, bounce keys | P2 | ⬜ | |
-| Colour filters for colour blindness | P3 | ⬜ | Screen shader |
+| Magnifier (zoom) | P1 | ✅ | Super+Plus/Minus as on Windows, Settings, or ask Nexus (0.4) |
+| Sticky keys, slow keys, bounce keys | P2 | ⬜ | Hyprland has no AccessX; needs a compositor feature or an input filter |
+| Colour filters for colour blindness | P3 | ✅ | Greyscale, inverted, protanopia, deuteranopia, tritanopia (0.4) |
 | Live captions for any audio (local speech recognition) | P2 | ⬜ | Whisper on device |
 | Voice control | P2 | ✅ | |
 
@@ -264,6 +264,6 @@ new features, patch for fixes only).
 | 4 | Developer basics: project toolchains, rootless containers, SSH keys, serial boards, VMs (nix-ld came in 0.2) | 0.3.0 |
 | 5 | Windows software: .exe handling with Bottles, program equivalents; controllers, GameMode (Windows VM set-up moved later) | 0.4.0 |
 | 6 | Email/calendar (Thunderbird); cloud drives (OneDrive, Google Drive, Dropbox, Nextcloud); web apps; PDF tools; spell checking | 0.4.0 |
-| 7 | Accessibility: magnifier, keyboard aids, colour filters, live captions | |
+| 7 | Accessibility: magnifier and colour filters (keyboard aids and live captions later) | 0.4.0 |
 | 8 | Parental controls, TPM unlock, app permissions, remote help, reset | |
 | … | The rest of the list, by priority | |

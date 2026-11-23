@@ -66,7 +66,7 @@ public static class NexusActions
         ["network", "bluetooth", "printers", "sound", "display", "power", "mouse", "desktop", "language", "defaults", "privacy", "search", "timeline", "automations",
          "accessibility", "accounts", "health", "backups", "updates", "developer", "storage", "feedback", "help", "about"];
     public static readonly string[] PersonalSettings =
-        ["volume", "night_light", "scale", "windows", "blur", "animations", "high_contrast", "do_not_disturb"];
+        ["volume", "night_light", "scale", "windows", "blur", "animations", "high_contrast", "do_not_disturb", "magnifier", "colour_filter"];
     public static readonly string[] Roles = ["files", "browser", "terminal", "settings", "studio"];
 
     // Descriptions are kept short: they go to the model with every question
@@ -108,8 +108,8 @@ public static class NexusActions
              new("item", "string", "Item to highlight, e.g. wifi, volume, nightlight.",
                  Required: false, MaxLength: 20, Pattern: "[a-z]{1,20}")]),
         new("change_setting", ActionSafety.Personal,
-            "Change a personal setting. volume 0-100; night_light, blur, animations, high_contrast, do_not_disturb on/off; " +
-            "scale 1, 1.25, 1.5, 1.75 or 2; windows floating/tiled.",
+            "volume 0-100; others on/off, but scale 1-2 by 0.25, windows floating/tiled, magnifier off/1.5-4, " +
+            "colour_filter e.g. greyscale, protanopia.",
             [new("setting", "string", "", Choices: PersonalSettings),
              new("value", "value", "", MaxLength: 16)]),
         new("install_app", ActionSafety.Personal, "Install a Flathub desktop app for this person (no password).",

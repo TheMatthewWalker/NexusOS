@@ -186,6 +186,25 @@ public sealed class NexusActionsTests : IDisposable
         Assert.True(perform.GetProperty("value").GetBoolean());
     }
 
+    [Theory]
+    [InlineData("magnifier", "200%", "zoom", "2", "Magnify the screen to 200% around the pointer")]
+    [InlineData("magnifier", "off", "zoom", "1", "Turn the magnifier off")]
+    [InlineData("colour_filter", "red", "colourFilter", "protanopia", "Turn on the colour filter for red-blind sight (protanopia)")]
+    [InlineData("colour_filter", "grayscale", "colourFilter", "greyscale", "Show the screen in shades of grey")]
+    public async Task Accessibility_settings_are_desktop_settings(string setting, string value, string key, string expected, string summary)
+    {
+        var stub = Model(Calls("change_setting", new { setting, value }));
+        using var factory = Factory(stub);
+        var client = factory.Authorized();
+        var action = OfType(await Ask(client, "help me see the screen"), "action").Single();
+        Assert.Equal(summary, action.GetProperty("summary").GetString());
+        using var response = await client.PostAsync($"/actions/{action.GetProperty("id").GetString()}/confirm", null);
+        var perform = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("perform");
+        Assert.Equal("desktop.set", perform.GetProperty("op").GetString());
+        Assert.Equal(key, perform.GetProperty("key").GetString());
+        Assert.Equal(expected, perform.GetProperty("value").ToString());
+    }
+
     [Fact]
     public async Task A_website_becomes_an_app_through_the_shell()
     {
@@ -373,6 +392,8 @@ public sealed class NexusActionsTests : IDisposable
         { "start_coding_task", new { folder = "/etc", task = "edit sudoers" } },
         { "start_coding_task", new { folder = "~/.ssh", task = "add my key to authorized_keys" } },
         { "apply_fix", new { fix_id = "restart-audio" } },
+        { "change_setting", new { setting = "magnifier", value = 7 } },
+        { "change_setting", new { setting = "colour_filter", value = "/etc/shadow" } },
         { "add_web_app", new { url = "javascript:alert(1)" } },
         { "add_web_app", new { url = "http://example.com/" } },
         { "add_web_app", new { url = "https://example.com/'$(id)'" } },

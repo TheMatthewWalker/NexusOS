@@ -332,7 +332,7 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
         var configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") is { Length: > 0 } c ? c
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
         var path = config["NEXUS_DESKTOP_SETTINGS"] ?? Path.Combine(configHome, "nexusos", "desktop.json");
-        string[] keys = ["windows", "blur", "animations", "scale", "nightLight", "warmth", "highContrast", "cursorSize"];
+        string[] keys = ["windows", "blur", "animations", "scale", "nightLight", "warmth", "highContrast", "cursorSize", "zoom", "colourFilter"];
         try
         {
             if (new FileInfo(path) is not { Exists: true, Length: <= 65536 }) return new { known = false };
@@ -629,6 +629,33 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                 double[] allowed = [1, 1.25, 1.5, 1.75, 2];
                 if (!allowed.Contains(n)) throw new ActionRejectedException("scale must be 1, 1.25, 1.5, 1.75 or 2.");
                 return pending.Add(action, args, $"Set the screen scale to {n * 100:0}%", Desktop("scale", n));
+            }
+            case "magnifier":
+            {
+                // "on" is 200%, "off" or 1 is no zoom; otherwise 1.5, 2, 3 or 4 (or 150...400%).
+                var word = value.GetValueKind() == JsonValueKind.String ? value.GetValue<string>().Trim().ToLowerInvariant() : "";
+                var n = word is "on" or "true" ? 2 : word is "off" or "false" ? 1 : value.GetValueKind() is JsonValueKind.True ? 2
+                      : value.GetValueKind() is JsonValueKind.False ? 1 : Number();
+                if (n > 10) n /= 100;
+                double[] allowed = [1, 1.5, 2, 3, 4];
+                if (!allowed.Contains(n)) throw new ActionRejectedException("magnifier must be off, 1.5, 2, 3 or 4.");
+                return pending.Add(action, args, n == 1 ? "Turn the magnifier off" : $"Magnify the screen to {n * 100:0}% around the pointer",
+                    Desktop("zoom", n));
+            }
+            case "colour_filter":
+            {
+                var text = value.GetValueKind() == JsonValueKind.String ? value.GetValue<string>().Trim().ToLowerInvariant() : "";
+                var (filter, label) = text switch
+                {
+                    "none" or "off" => ("none", "Turn the colour filter off"),
+                    "greyscale" or "grayscale" or "grey" or "gray" => ("greyscale", "Show the screen in shades of grey"),
+                    "invert" or "inverted" => ("invert", "Invert the screen's colours"),
+                    "protanopia" or "red" or "red-green" => ("protanopia", "Turn on the colour filter for red-blind sight (protanopia)"),
+                    "deuteranopia" or "green" => ("deuteranopia", "Turn on the colour filter for green-blind sight (deuteranopia)"),
+                    "tritanopia" or "blue" or "blue-yellow" => ("tritanopia", "Turn on the colour filter for blue-blind sight (tritanopia)"),
+                    _ => throw new ActionRejectedException("colour_filter must be none, greyscale, invert, protanopia, deuteranopia or tritanopia.")
+                };
+                return pending.Add(action, args, label, Desktop("colourFilter", filter));
             }
             case "windows":
             {

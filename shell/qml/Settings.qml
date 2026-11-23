@@ -168,6 +168,8 @@ NexusWindow {
         ["automations", "", "Automations", "automations rules when if then automatic schedule routine trigger"],
         ["accessibility", "textsize", "Bigger text", "accessibility bigger text larger font zoom vision"],
         ["accessibility", "contrast", "High contrast", "high contrast accessibility vision"],
+        ["accessibility", "magnifier", "Magnifier", "magnifier zoom magnify enlarge screen vision low vision"],
+        ["accessibility", "colourfilter", "Colour filters", "colour color blind filter greyscale grayscale invert protanopia deuteranopia tritanopia"],
         ["accessibility", "reader", "Screen reader", "screen reader orca blind accessibility read aloud"],
         ["accessibility", "pointer", "Pointer size", "pointer cursor mouse size bigger"],
         ["accessibility", "motion", "Less motion", "reduce motion animations dizzy accessibility"],

@@ -43,7 +43,7 @@ public static class ActionSelection
         G("settings", @"settings?|preferences?|volume|loud\w*|quiet\w*|mute\w*|sound|audio|speakers?|headphones?|night ?light|" +
                       @"scale|scaling|bigger|smaller|larger|zoom|text size|blur|animations?|motion|contrast|tile|tiled|tiling|" +
                       @"float\w*|windows|wi-?fi|network|internet|bluetooth|display|screen|monitor|brightness|power|battery|" +
-                      @"privacy|accessib\w*|dark|theme",
+                      @"privacy|accessib\w*|dark|theme|magnif\w*|zoom\w*|colou?r ?blind\w*|colou?r filters?|grey ?scale|gray ?scale|invert\w*",
             "get_settings", "open_settings", "change_setting"),
         G("fix", @"fix\w*|broken|break\w*|not working|doesn'?t work|isn'?t working|won'?t|can'?t|cannot|problems?|issues?|wrong|" +
                  @"errors?|crash\w*|freez\w*|frozen|no sound",

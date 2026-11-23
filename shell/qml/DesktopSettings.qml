@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Hyprland
 import "lib/region.mjs" as R
 import "lib/displays.mjs" as Mon
+import "lib/access.mjs" as Access
 
 // The person's desktop choices from Settings, kept in
 // ~/.config/nexusos/desktop.json and applied to Hyprland at run time with
@@ -13,6 +14,8 @@ import "lib/displays.mjs" as Mon
 //   blur, animations   Hyprland decoration and animations
 //   scale       the screen scale (1, 1.25, 1.5, 1.75 or 2)
 //   nightLight, warmth   hyprsunset's colour temperature, in kelvin
+//   zoom, colourFilter   the magnifier (cursor:zoom_factor) and a colour
+//               filter (decoration:screen_shader, filters/*.frag)
 // The NixOS options (services.nexus-desktop.*) give the starting values.
 Item {
     id: desktop
@@ -43,6 +46,10 @@ Item {
     property alias pointerAcceleration: store.pointerAcceleration
     property alias leftHanded: store.leftHanded
     property alias mouseNaturalScroll: store.mouseNaturalScroll
+    property alias zoom: store.zoom
+    property alias colourFilter: store.colourFilter
+    // Super+Plus / Super+Minus: the next magnifier level.
+    function zoomBy(direction) { set("zoom", Access.zoomStep(store.zoom, direction)) }
     property var monitors: []            // the screens connected now (hyprctl monitors all -j), for Settings, Display
     readonly property string baseLayout: Quickshell.env("NEXUS_KEYBOARD_LAYOUT") || "us"
     // False while game mode has blur and animations off, so applying settings does not undo it.
@@ -72,6 +79,8 @@ Item {
         case "scrollSpeed": return "Touchpad scrolling speed " + Math.round(value * 100) + "%";
         case "pointerSpeed": return "Pointer speed " + (value > 0 ? "+" : "") + Math.round(value * 100);
         case "pointerAcceleration": return "Pointer acceleration " + (value ? "on" : "off");
+        case "zoom": return value > 1 ? "Magnifier " + Math.round(value * 100) + "%" : "Magnifier off";
+        case "colourFilter": return "Colour filter: " + Access.filterLabel(value);
         case "leftHanded": return "Left-handed mouse " + (value ? "on" : "off");
         case "lidAction": return "Closing the lid: " + ({ sleep: "sleep", lock: "lock the screen", nothing: "do nothing" })[value];
         default: return key;
@@ -82,7 +91,7 @@ Item {
         if (store[key] === value) return;
         const wasTiling = store.windows === "tiling";
         const before = store[key];
-        if (bridge && bridge.online && !fromUndo && key !== "warmth")
+        if (bridge && bridge.online && !fromUndo && key !== "warmth" && key !== "zoom")
             bridge.api("POST", "/journal", { kind: "setting", summary: describe(key, value), before: { value: before },
                                              after: { value: value }, reversible: true, ref: "desktop:" + key });
         store[key] = value;
@@ -127,6 +136,8 @@ Item {
             property bool pointerAcceleration: true
             property bool leftHanded: false
             property bool mouseNaturalScroll: false
+            property real zoom: 1                  // the magnifier: 1 (off), 1.5, 2, 3 or 4
+            property string colourFilter: "none"   // lib/access.mjs filters
         }
     }
 
@@ -158,7 +169,9 @@ Item {
                "keyword input:sensitivity " + Math.min(1, Math.max(-1, store.pointerSpeed)),
                "keyword input:accel_profile " + (store.pointerAcceleration ? "adaptive" : "flat"),
                "keyword input:left_handed " + store.leftHanded,
-               "keyword input:natural_scroll " + store.mouseNaturalScroll);
+               "keyword input:natural_scroll " + store.mouseNaturalScroll,
+               "keyword cursor:zoom_factor " + Math.min(4, Math.max(1, store.zoom)),
+               "keyword decoration:screen_shader " + Access.shader(store.colourFilter, Quickshell.shellDir));
         const kb = R.keyboard(baseLayout, store.keyboardLayouts);
         if (kb) k.push("keyword input:kb_layout " + kb.layout, "keyword input:kb_options " + kb.options);
         return k;

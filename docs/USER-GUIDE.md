@@ -28,12 +28,13 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 | Keys | What they do |
 | --- | --- |
 | Super+Space | Nexus |
-| Alt+Tab | Next window (Alt+Shift+Tab: the one before) |
+| Alt+Tab | Switch windows: hold Alt and press Tab to choose, let go to switch (Alt+Shift+Tab goes back) |
 | Super+D | The desktop (an empty workspace) |
 | Super+Left / Right | Snap the window to that half of the screen |
 | Super+Up / Down | Maximise the window / put it back |
 | Super+Shift+S | Screenshot of an area (Print: the whole screen; Alt+Print: the window) |
-| Ctrl+Shift+Esc | Task manager: what is running, and End task for an app that has stopped responding |
+| Super+Alt+R | Record the screen, with its sound (Super+Shift+R: an area); press again to stop. Saved in Videos, Screen recordings |
+| Ctrl+Shift+Esc | Task manager: what is running, how busy the processor, memory, disk and graphics are, and End task for an app that has stopped responding |
 | Super+Shift+V | Clipboard history: paste something you copied earlier |
 | Super+. | Emoji |
 | Super+A | Apps |
@@ -45,18 +46,39 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 | Super+F / Super+M | Full screen / maximise |
 | Alt+Shift | Next keyboard layout (when you have more than one) |
 | Super+Alt+S | Screen reader on or off |
+| Super+Plus / Super+Minus | Magnifier: zoom in / out around the pointer (Super+Esc stops) |
 
 The top bar shows when an app is using your microphone or camera, or sharing your screen, with its name; what is playing, with play, pause and skip; and the icons apps such as Steam or Discord keep there (right-click one for its menu).
 
-Screenshots are copied, so you can paste them straight away, and saved in Pictures, Screenshots. The volume, brightness and media keys work as on Windows and show how much on the screen.
+Screenshots are copied, so you can paste them straight away, and saved in Pictures, Screenshots. The volume, brightness and media keys work as on Windows and show how much on the screen; so does Caps Lock. Zip, 7z and RAR archives open in Archive Manager.
+
+Apps are dark, like the desktop; Settings, Desktop switches them to light. [Open Desktop](settings:desktop/apptheme)
 
 Windows float like on Windows or macOS; you can switch to tiled windows in Settings, Desktop. [Open Desktop](settings:desktop/windows)
 
+**Web apps**: Apps, Web apps turns a website into an app with its own window, in All apps and Alt+Tab: Outlook, Teams, Microsoft 365, Google Docs, WhatsApp and others are suggested, or type any address. You stay signed in, as in Chromium. You can also ask Nexus: "make Outlook an app".
+
 **Default apps** decide which app opens web links, email, folders, music, videos, pictures, text files and PDFs. [Open Default apps](settings:defaults/defaults)
+
+**Startup apps**, on the same page, are the apps that open when you log in: apps such as Steam and Discord add themselves when you ask them to start with the computer, and you can turn each off or add your own. [Open Startup apps](settings:defaults/startup)
+
+## Windows programs and games
+
+NexusOS does not run Windows programs by itself, but most have a version or an equivalent here. Open a `.exe` or `.msi` you downloaded and NexusOS says what it is and offers the app to use instead (Spotify's installer offers Spotify; Photoshop offers GIMP). For anything else, Bottles runs many Windows programs with Wine.
+
+For games, get Steam (most Windows games work through its Proton), and Heroic for Epic and GOG games, from Apps or Welcome. Xbox, PlayStation and Switch controllers work by cable and Bluetooth.
 
 ## Files from your old computer
 
 **Move in** copies documents, photos, music and videos from a Windows or Mac drive (or a backup folder) into your home folder. The old drive is only read, never changed. [Open Move in](settings:about/movein)
+
+## Email, cloud drives and documents
+
+**Thunderbird** is the email, calendar and contacts app; it signs in to Microsoft 365, Outlook.com, Gmail and others by itself. Links to email addresses open it.
+
+**Cloud drives**: Settings, Accounts adds OneDrive, Google Drive, Dropbox or Nextcloud. Sign in in the browser window that opens (Nextcloud asks for an app password instead), and the drive is a folder in your home folder and in Files, as on Windows. Files open from a copy on this computer and your changes upload by themselves. Removing a drive there only removes it from this computer. [Open Cloud drives](settings:accounts/clouddrives)
+
+**PDF**: Papers opens PDFs and fills in forms; PDF Arranger joins, splits, reorders and rotates pages; Xournal++ writes and signs on them. Spelling is checked in LibreOffice and Firefox in your language.
 
 ## Wi-Fi, Bluetooth and printers
 
@@ -66,7 +88,7 @@ Printers and scanners on your network, or plugged in with USB, **appear by thems
 
 ## Mouse and touchpad
 
-Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed buttons and scrolling direction, and for touchpads tap to click and natural scrolling. Swipe three fingers sideways to move between workspaces. [Open Mouse and touchpad](settings:mouse/taptoclick)
+Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed buttons and scrolling direction, and for touchpads tap to click and natural scrolling. Swipe three fingers sideways to move between workspaces, or up to see all windows. [Open Mouse and touchpad](settings:mouse/taptoclick)
 
 ## Bluetooth and passwords
 
@@ -77,6 +99,10 @@ Turn Bluetooth on and pair devices in Settings, Bluetooth. Passwords you save in
 Settings, Display has brightness, night light and the scale (bigger text and windows). With **more than one screen**, each one can go left, right, above or below the main one, show the same picture, or be off, with its own resolution and scale. A change goes back by itself after 15 seconds unless you press Keep, so a screen that shows nothing never leaves you stuck. [Open Display](settings:display/screens)
 
 Settings, Power sets when the screen turns off, when the computer sleeps (on battery and plugged in), and what closing the lid does. The screen locks when the computer sleeps. [Open Power](settings:power/sleep)
+
+## Seeing, hearing and using it more easily
+
+Settings, Accessibility has bigger text, high contrast, a bigger pointer, less motion, the **screen reader** (Super+Alt+S), and Describe this, which tells you what is on the screen. The **magnifier** enlarges the screen around the pointer: Super+Plus and Super+Minus, as on Windows. A **colour filter** shows the screen in grey or inverted, or makes colours easier to tell apart if you are colour blind. You can also ask Nexus: "zoom in", "turn on the colour blind filter". [Open Accessibility](settings:accessibility/magnifier)
 
 ## Notifications
 
@@ -116,9 +142,11 @@ Secure Boot makes the computer start only software signed with trusted keys. Nex
 
 ## For developers
 
-Settings, Developer has your SSH keys (create one and copy it for GitHub, GitLab or a server; the keyring keeps it unlocked while you are logged in). In a project folder, `nexus-dev init python` (or node, rust, go, java, dotnet, c) sets the project up: its tools are there whenever you are in the folder. `docker` and `docker compose` work, on Podman, without anything running as root. Arduino, ESP32 and other boards can be programmed straight away, and virtual machines can be turned on there too. [Open Developer](settings:developer/ssh)
+Settings, Developer has your SSH keys (create one and copy it for GitHub, GitLab or a server; the keyring keeps it unlocked while you are logged in). In a project folder, `nexus-dev init python` (or node, rust, go, java, dotnet, c) sets the project up: its tools are there whenever you are in the folder. `docker` and `docker compose` work, on Podman, without anything running as root. `pip install --user`, `pipx install` and `npm install -g` install into your home folder, as on other systems. `git` over HTTPS signs in to GitHub, GitLab or Azure DevOps in the browser once, as on Windows, and keeps the sign-in in your keyring. Security keys (YubiKey and other FIDO2 keys) work in browsers. Arduino, ESP32 and other boards can be programmed straight away, and virtual machines can be turned on there too. [Open Developer](settings:developer/ssh)
 
 ## Privacy
+
+**App permissions**, in Settings, Privacy and AI, show what each app from Flathub may reach (the internet, your files, the camera and devices, running in the background) and let you turn each off, for you only. [Open App permissions](settings:privacy/permissions)
 
 Everything Nexus does stays on this computer unless you choose otherwise. Settings, Privacy and AI shows what Nexus remembers, how long, and which model answers; a cloud model is used only if you add one. The **Timeline** lists every change Nexus or you made, and most can be undone from there. [Open Privacy and AI](settings:privacy/notes)
 

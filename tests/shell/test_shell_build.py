@@ -826,7 +826,7 @@ class ShellBuild(unittest.TestCase):
         for line in page.splitlines():
             if "command = " in line or "command: [" in line:
                 self.assertNotIn("password", line.replace("nexus-account-password", "").replace("nexus-keyring-password", ""))
-        self.assertEqual(page.count("password: true"), 7)
+        self.assertEqual(page.count("password: true"), 8)      # 7 account fields and the Nextcloud app password
         settings = (self.out / "Settings.qml").read_text()
         self.assertIn('accounts: "AccountsPage"', settings)
         policy = (ROOT / "nix/modules/accounts.nix").read_text()
@@ -945,7 +945,7 @@ class ShellBuild(unittest.TestCase):
         for name in ("volup", "voldown", "mute", "micmute", "brightup", "brightdown"):
             self.assertIn('name: "%s"' % name, osd)
         desktop = (ROOT / "nix/modules/desktop.nix").read_text()
-        for line in ("bindel = , XF86AudioRaiseVolume, global, nexus:volup", "bind = ALT, Tab, cyclenext",
+        for line in ("bindel = , XF86AudioRaiseVolume, global, nexus:volup", "bind = ALT, Tab, global, nexus:switchnext", "bindrn = ALT, Alt_L, global, nexus:switchdone",
                      "bind = SUPER SHIFT, S, exec, /run/current-system/sw/bin/nexus-screenshot area",
                      "bind = SUPER, left, exec, /run/current-system/sw/bin/nexus-snap left", "gesture = 3, horizontal, workspace"):
             self.assertIn(line, desktop)
@@ -995,6 +995,93 @@ class ShellBuild(unittest.TestCase):
         import json as _j
         self.assertIn("nexusos.developer.virtualMachines.enable", _j.loads((ROOT / "schema/guardian-options.json").read_text())["options"])
         self.run_node_test("developer.test.mjs")
+
+    def test_windows_programs_get_an_answer_and_controllers_work(self):
+        win = (self.out / "WindowsProgram.qml").read_text()
+        self.assertIn('bridge.api("POST", "/windows-program", { fileName: fileName })', win)
+        self.assertIn('IpcHandler { target: "windows"', win)
+        self.assertIn('copier.command = ["wl-copy", "--", win.path]', win)
+        mod = (ROOT / "nix/modules/gaming-windows.nix").read_text()
+        for line in ('"application/x-ms-dos-executable"', "xdg.mime.defaultApplications", "hardware.steam-hardware.enable",
+                     "hardware.xpadneo.enable", "programs.gamemode.enable"):
+            self.assertIn(line, mod)
+        self.assertIn("../modules/gaming-windows.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+
+    def test_web_apps_cloud_drives_mail_pdf_and_spelling(self):
+        apps = (self.out / "Apps.qml").read_text()
+        self.assertIn('webQueue = webQueue.concat([{ summary: "Added the web app " + n, command: [webappCmd, "add", n, url] }]);', apps)
+        self.assertIn('case "webapp.add":', apps)
+        self.assertIn('case "webapp.add": {', (self.out / "ActionCards.qml").read_text())
+        page = (self.out / "settings/AccountsPage.qml").read_text()
+        self.assertIn('cloudRunner.command = [cloudCmd, "add-nextcloud", name, url, user];', page)
+        self.assertIn('cloudRunner.input = appPassword;', page)        # the app password goes on stdin
+        self.assertEqual(page.count("Component.onCompleted"), 1)
+        mod = (ROOT / "nix/modules/online.nix").read_text()
+        for line in ("pkgs.thunderbird", "pkgs.pdfarranger", "pkgs.xournalpp", 'systemd.user.services."nexus-cloud@"',
+                     "environment.sessionVariables.DICPATH", '"spellchecker.dictionary_path"'):
+            self.assertIn(line, mod)
+        self.assertIn("../modules/online.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.run_node_test("webapps.test.mjs")
+        self.run_node_test("accounts.test.mjs")
+
+    def test_magnifier_and_colour_filters(self):
+        desk = (self.out / "DesktopSettings.qml").read_text()
+        self.assertIn('"keyword cursor:zoom_factor " + Math.min(4, Math.max(1, store.zoom))', desk)
+        self.assertIn('"keyword decoration:screen_shader " + Access.shader(store.colourFilter, Quickshell.shellDir)', desk)
+        shell = (self.out / "shell.qml").read_text()
+        for name in ("zoomin", "zoomout", "zoomoff"):
+            self.assertIn(f'name: "{name}"', shell)
+            self.assertIn(f"global, nexus:{name}", (ROOT / "nix/modules/desktop.nix").read_text())
+        filters = sorted(p.stem for p in (self.out / "filters").glob("*.frag"))
+        self.assertEqual(filters, ["deuteranopia", "greyscale", "invert", "protanopia", "tritanopia"])
+        tool = shutil.which("glslangValidator")
+        for name in filters:
+            frag = (self.out / "filters" / f"{name}.frag").read_text()
+            self.assertTrue(frag.startswith("#version 300 es\n"), name)
+            self.assertIn("uniform sampler2D tex;", frag)       # what Hyprland's screen shader is given
+            if tool:
+                run = subprocess.run([tool, str(self.out / "filters" / f"{name}.frag")], capture_output=True, text=True)
+                self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.run_node_test("access.test.mjs")
+
+    def test_alt_tab_caps_lock_theme_archives_and_developer_tools(self):
+        sw = (self.out / "Switcher.qml").read_text()
+        for name in ("switchnext", "switchprev", "switchdone"):
+            self.assertIn(f'name: "{name}"', sw)
+        self.assertIn("WlrLayershell.keyboardFocus: WlrKeyboardFocus.None", sw)      # never takes the keyboard
+        self.assertIn("Switcher { theme: root.dark; apps: apps }", (self.out / "shell.qml").read_text())
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertNotIn("cyclenext", desktop)
+        self.assertIn("bindrn = , Caps_Lock, global, nexus:capslock", desktop)
+        self.assertIn('name: "capslock"', (self.out / "OnScreen.qml").read_text())
+        everyday = (ROOT / "nix/modules/everyday.nix").read_text()
+        for line in ("pkgs.p7zip pkgs.unar", 'color-scheme = "prefer-dark";', 'platformTheme = lib.mkDefault "gnome"'):
+            self.assertIn(line, everyday)
+        self.assertIn('"dconf write /org/gnome/desktop/interface/color-scheme', (self.out / "DesktopSettings.qml").read_text())
+        dev = (ROOT / "nix/modules/developer.nix").read_text()
+        self.assertIn("environment.localBinInPath = lib.mkDefault true;", dev)
+        self.assertIn('NPM_CONFIG_PREFIX = lib.mkDefault "$HOME/.local";', dev)
+        self.assertIn("cat /proc/diskstats", (self.out / "Tasks.qml").read_text())
+        self.run_node_test("switcher.test.mjs")
+        self.run_node_test("tasks.test.mjs")
+        self.run_node_test("onscreen.test.mjs")
+
+    def test_startup_apps_permissions_recording_and_devices(self):
+        defaults = (self.out / "settings/DefaultAppsPage.qml").read_text()
+        self.assertIn('startupSetter.command = ["nexus-startup"].concat(args);', defaults)
+        self.assertEqual(defaults.count("Component.onCompleted"), 1)
+        privacy = (self.out / "settings/PrivacyPage.qml").read_text()
+        self.assertIn('permSet.command = ["nexus-permissions"].concat(args);', privacy)
+        self.assertEqual(privacy.count("Component.onCompleted"), 1)
+        everyday = (ROOT / "nix/modules/everyday.nix").read_text()
+        for line in ("dex --autostart --search-paths %h/.config/autostart", "services.hardware.bolt.enable",
+                     "pkgs.intel-media-driver", "services.udev.packages = [ pkgs.libfido2 ];",
+                     'credential = { helper = "manager"; credentialStore = "secretservice"; };'):
+            self.assertIn(line, everyday)
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        for line in ("bind = SUPER ALT, R, exec, /run/current-system/sw/bin/nexus-record screen",
+                     "gesture = 3, up, dispatcher, global, nexus:overview"):
+            self.assertIn(line, desktop)
 
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()

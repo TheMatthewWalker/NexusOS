@@ -3,7 +3,8 @@
 //
 // One snapshot is the output of:
 //   cat /proc/[0-9]*/stat; echo ===; stat -c '%u %n' /proc/[0-9]*; echo ===;
-//   head -1 /proc/stat; echo ===; cat /proc/meminfo; echo ===; getconf PAGESIZE; getconf CLK_TCK; nproc
+//   head -1 /proc/stat; echo ===; cat /proc/meminfo; echo ===; getconf PAGESIZE; getconf CLK_TCK; nproc;
+//   echo ===; cat /proc/diskstats; echo ===; (graphics busy %: amdgpu/i915 sysfs, or nvidia-smi)
 
 export const SEP = "===";
 
@@ -33,8 +34,23 @@ export function parseSnapshot(text) {
   const mem = {};
   for (const line of (parts[3] || "").split("\n")) { const m = /^(\w+):\s+(\d+)/.exec(line); if (m) mem[m[1]] = parseInt(m[2]) * 1024 }
   const conf = (parts[4] || "").trim().split(/\s+/);
+  const gpus = (parts[6] || "").split("\n").map(x => parseFloat(x)).filter(x => !isNaN(x) && x >= 0 && x <= 100);
   return { procs, cpuTotal: cpu.reduce((a, b) => a + (b || 0), 0), cpuIdle: (cpu[3] || 0) + (cpu[4] || 0), mem,
-           pageSize: parseInt(conf[0]) || 4096, ticksPerSecond: parseInt(conf[1]) || 100, cores: parseInt(conf[2]) || 1 };
+           pageSize: parseInt(conf[0]) || 4096, ticksPerSecond: parseInt(conf[1]) || 100, cores: parseInt(conf[2]) || 1,
+           disk: diskBytes(parts[5] || ""), gpu: gpus.length ? Math.max(...gpus) : null };
+}
+
+// /proc/diskstats: bytes read and written by whole disks so far (not their
+// partitions, loop devices or compressed memory), in 512-byte sectors.
+const WHOLE_DISK = /^(sd[a-z]+|vd[a-z]+|xvd[a-z]+|hd[a-z]+|nvme\d+n\d+|mmcblk\d+)$/;
+export function diskBytes(text) {
+  let read = 0, written = 0;
+  for (const line of String(text).split("\n")) {
+    const f = line.trim().split(/\s+/);
+    if (f.length < 10 || !WHOLE_DISK.test(f[2])) continue;
+    read += (parseInt(f[5]) || 0) * 512; written += (parseInt(f[9]) || 0) * 512;
+  }
+  return { read, written };
 }
 
 // Usage between two snapshots: each process's share of one core (100% = one core
@@ -48,7 +64,11 @@ export function usage(prev, cur, seconds) {
   }
   const total = prev ? cur.cpuTotal - prev.cpuTotal : 0, idle = prev ? cur.cpuIdle - prev.cpuIdle : 0;
   const m = cur.mem;
-  return { procs: out,
+  const dt = Math.max(0.1, seconds);
+  const disk = prev && prev.disk && cur.disk
+    ? { read: Math.max(0, (cur.disk.read - prev.disk.read) / dt), written: Math.max(0, (cur.disk.written - prev.disk.written) / dt) }
+    : { read: 0, written: 0 };
+  return { procs: out, disk, gpu: cur.gpu,
            cpu: total > 0 ? Math.max(0, Math.min(100, (1 - idle / total) * 100)) : 0,
            memoryUsed: (m.MemTotal || 0) - (m.MemAvailable || 0), memoryTotal: m.MemTotal || 0,
            swapUsed: (m.SwapTotal || 0) - (m.SwapFree || 0), swapTotal: m.SwapTotal || 0 };
@@ -103,6 +123,7 @@ export function bytes(b) {
   if (n >= 1e6) return Math.round(n / 1e6) + " MB";
   return Math.round(n / 1e3) + " KB";
 }
+export function rate(b) { return bytes(b) + "/s" }
 export function percent(v) { return (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10) + "%" }
 
 // Only processes of this person are ended from here (pids checked as numbers).

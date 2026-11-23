@@ -37,7 +37,14 @@ in
   config = lib.mkIf cfg.enable (lib.mkMerge [
     {
       programs.direnv = { enable = lib.mkDefault true; nix-direnv.enable = lib.mkDefault true; };
-      environment.systemPackages = [ dev pkgs.android-tools pkgs.openssh ];
+      environment.systemPackages = [ dev pkgs.android-tools pkgs.openssh pkgs.nodejs pkgs.pipx
+                                     (pkgs.python3.withPackages (ps: [ ps.pip ps.virtualenv ])) ];
+
+      # `pip install --user`, `pipx install` and `npm install -g` work as
+      # elsewhere: into ~/.local, whose bin folder is on PATH (NixOS's own
+      # folders are read-only, so npm's default prefix would fail).
+      environment.localBinInPath = lib.mkDefault true;
+      environment.sessionVariables.NPM_CONFIG_PREFIX = lib.mkDefault "$HOME/.local";
 
       # Podman's socket for each person, and Docker clients pointed at it.
       systemd.user.sockets.podman.wantedBy = [ "sockets.target" ];

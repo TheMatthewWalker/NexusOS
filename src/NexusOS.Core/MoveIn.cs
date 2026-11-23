@@ -11,6 +11,7 @@ public sealed record MoveInBookmarksRequest(string? User);
 public sealed record MoveInFolder(string User, string Folder, long Bytes, bool On);
 public sealed record MoveInBookmarkSource(string User, string Browser, int Count);
 // AppId is a Flathub id to offer, or null when NexusOS already has the app (Already names it).
+public sealed record WindowsProgramRequest(string? FileName);
 public sealed record MoveInApp(string Was, string? AppId, string Name, bool Same, string? Already = null);
 public sealed record MoveInReport(string Root, string Os, IReadOnlyList<string> Users, IReadOnlyList<MoveInFolder> Folders,
     IReadOnlyList<MoveInBookmarkSource> Bookmarks, IReadOnlyList<string> OldApps, IReadOnlyList<MoveInApp> Apps,
@@ -480,7 +481,7 @@ public sealed partial class MoveInService(IConfiguration config, ActivityJournal
 // What a program on the old computer becomes here: the same app from Flathub,
 // one that does the same job, or one NexusOS already has. Ids come only from
 // this list, never from the drive.
-public static class MoveInApps
+public static partial class MoveInApps
 {
     private sealed record Entry(Regex Pattern, string? AppId, string Name, bool Same, string? Already = null);
 
@@ -497,7 +498,7 @@ public static class MoveInApps
         Same("steam", "com.valvesoftware.Steam", "Steam"),
         Same("zoom|zoom\\.us", "us.zoom.Zoom", "Zoom"),
         Same("slack", "com.slack.Slack", "Slack"),
-        Same("google chrome", "com.google.Chrome", "Google Chrome"),
+        Same("google chrome|chrome", "com.google.Chrome", "Google Chrome"),
         Same("microsoft edge", "com.microsoft.Edge", "Microsoft Edge"),
         Same("brave|brave browser", "com.brave.Browser", "Brave"),
         Same("opera|opera gx", "com.opera.Opera", "Opera"),
@@ -550,8 +551,28 @@ public static class MoveInApps
         Here("vlc|vlc media player|windows media player|quicktime player", "VLC"),
         Here("mozilla firefox|firefox", "Firefox"),
         Here("adobe acrobat[a-z0-9 ]*|acrobat reader|adobe reader|foxit reader|foxit pdf reader", "Papers"),
-        Here("7-zip|winrar|winzip|the unarchiver", "Archive Manager"),
+        Here("7-zip|7z|winrar|winzip|the unarchiver", "Archive Manager"),
+        Here("notepad\\+\\+", "Text Editor"),
     ];
+
+    // A Windows installer's file name as the program it installs:
+    // "SpotifySetup-1.2.3.x64.exe" -> "Spotify", "npp.8.6.Installer.x64.exe" -> "npp".
+    public static string ProgramFromFileName(string fileName)
+    {
+        var name = Path.GetFileName(fileName ?? "");
+        name = InstallerExtension().Replace(name, "");
+        name = CamelCase().Replace(name, "$1 $2");
+        var words = name.Split([' ', '_', '-', '.', '(', ')', '[', ']'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => !InstallerWord().IsMatch(w)).ToArray();
+        return string.Join(' ', words).Trim();
+    }
+
+    [GeneratedRegex(@"\.(exe|msi|msix|msixbundle|appx|appxbundle)$", RegexOptions.IgnoreCase)]
+    private static partial Regex InstallerExtension();
+    [GeneratedRegex(@"([a-z])([A-Z])")]
+    private static partial Regex CamelCase();
+    [GeneratedRegex(@"^(setup|installer|install|x64|x86|win64|win32|windows|win|web|full|offline|online|amd64|arm64|stub|latest|release|portable|bit|64|32|v?\d[\d]*)$", RegexOptions.IgnoreCase)]
+    private static partial Regex InstallerWord();
 
     public static IReadOnlyList<string> Ids => Catalogue.Where(e => e.AppId is not null).Select(e => e.AppId!).Distinct().ToArray();
 
@@ -594,6 +615,14 @@ public static class MoveInEndpoints
         {
             try { return Results.Ok(View(movein.Look(request))); }
             catch (MoveInException ex) { return Results.BadRequest(new { error = ex.Message }); }
+        });
+        // A Windows program someone opened (a .exe or .msi): what it is, and the app here instead.
+        app.MapPost("/windows-program", (WindowsProgramRequest request) =>
+        {
+            var program = MoveInApps.ProgramFromFileName(request.FileName ?? "");
+            if (program.Length is 0 or > 120) return Results.Ok(new { program = "", match = (MoveInApp?)null });
+            var match = MoveInApps.Match([program]).FirstOrDefault();
+            return Results.Ok(new { program, match });
         });
         app.MapDelete("/movein", (MoveInService movein) => { movein.Forget(); return Results.Ok(new { opened = false }); });
         app.MapPost("/movein/bookmarks", async (MoveInBookmarksRequest request, MoveInService movein, CancellationToken ct) =>

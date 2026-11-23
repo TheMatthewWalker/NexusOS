@@ -50,3 +50,12 @@ export function working(operation) {
   return ({ password: "Changing your password…", disk: "Changing the disk's password…",
             add: "Adding the account…", remove: "Removing the account…" })[operation] || "Working…";
 }
+
+// Cloud drives (nexus-cloud): the folder's name, as the script checks it.
+export function driveNameOk(name) { return /^[A-Za-z][A-Za-z0-9_-]{0,29}$/.test(String(name || "")) }
+// "OneDrive", or "OneDrive2" when there is one already.
+export function freeDriveName(base, drives) {
+  const taken = new Set((drives || []).map(d => d.name));
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n++) if (!taken.has(base + n)) return base + n;
+}

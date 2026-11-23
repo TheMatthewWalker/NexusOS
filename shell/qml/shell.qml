@@ -183,11 +183,18 @@ ShellRoot {
     Translations { id: translations }
     CrashWatcher { desktop: desktop }
     OnScreen { theme: root.dark }
+    Switcher { theme: root.dark; apps: apps }   // Alt+Tab
     Tasks { id: tasksWin; theme: root.dark }
+    WindowsProgram { id: windowsWin; theme: root.dark; bridge: bridge; onGetApps: list => appsWin.suggest(list)
+                     onAskNexus: text => { root.open(); input.text = text; root.ask(text) } }
     Clipboard { id: clipboardWin; theme: root.dark }
     GlobalShortcut { appid: "nexus"; name: "clipboard"; onPressed: clipboardWin.visible ? clipboardWin.visible = false : clipboardWin.open() }
     Emoji { id: emojiWin; theme: root.dark }
     GlobalShortcut { appid: "nexus"; name: "emoji"; onPressed: emojiWin.visible ? emojiWin.visible = false : emojiWin.open() }
+    // The magnifier, with Windows' keys: Super+Plus, Super+Minus, Super+Esc.
+    GlobalShortcut { appid: "nexus"; name: "zoomin"; onPressed: desktop.zoomBy(1) }
+    GlobalShortcut { appid: "nexus"; name: "zoomout"; onPressed: desktop.zoomBy(-1) }
+    GlobalShortcut { appid: "nexus"; name: "zoomoff"; onPressed: desktop.set("zoom", 1) }
     GlobalShortcut { appid: "nexus"; name: "tasks"; onPressed: tasksWin.visible ? tasksWin.visible = false : tasksWin.open() }
     DesktopSettings { id: desktop; gameMode: root.gameMode; bridge: bridge }
     RuleRunner { bridge: bridge; desktop: desktop; wallpaper: wallpaper; apps: apps; wifi: settings.wifi }

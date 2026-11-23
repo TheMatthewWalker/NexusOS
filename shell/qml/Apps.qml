@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import "settings"
+import "lib/webapps.mjs" as Web
 
 // Apps: every installed app (and a search box, so it doubles as the app
 // launcher), getting new ones from Flathub, system apps from nixpkgs to try
@@ -32,10 +33,11 @@ NexusWindow {
     minimumSize: Qt.size(760, 560)
     color: "#05071A"
 
-    property string tab: "all"          // all | get | try | apt
+    property string tab: "all"          // all | get | try | apt | web
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
     function open(t) {
-        if (["all", "get", "try", "apt"].includes(t)) tab = t;
+        if (["all", "get", "try", "apt", "web"].includes(t)) tab = t;
+        if (tab === "web") listWebApps();
         if (visible) Quickshell.execDetached([hyprctl, "dispatch", "focuswindow", "title:^(Apps)$"]);
         visible = true;
         query.forceActiveFocus();
@@ -55,6 +57,50 @@ NexusWindow {
         function tryApp(attr: string): bool { win.open("try"); return win.tryApp(attr) }
         function keepApp(attr: string): bool { return win.keepApp(attr) }
         function stopTrial(): void { win.stopTrial() }
+        // Websites as apps (nexus-webapp).
+        function addWebApp(name: string, url: string): bool { win.open("web"); return win.addWebApp(name, url) }
+        function webApps(): string { return JSON.stringify({ apps: win.webApps, note: win.webNote }) }
+    }
+
+    // ---- web apps: a website in its own window, in the launcher (nexus-webapp) ----
+    readonly property string webappCmd: Quickshell.env("NEXUS_WEBAPP") || "nexus-webapp"
+    property var webApps: []
+    property string webNote: ""
+    property var webQueue: []
+    function listWebApps() { if (!webLister.running) webLister.running = true }
+    Process { id: webLister; command: [win.webappCmd, "list"]
+              stdout: StdioCollector { onStreamFinished: { try { win.webApps = JSON.parse(text) } catch (e) { win.webApps = [] } } } }
+    Process {
+        id: webRunner
+        property string summary: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let r = {};
+                try { r = JSON.parse(text) } catch (e) { r = { error: "nexus-webapp did not answer." } }
+                win.webNote = r.error || r.message || "";
+                if (!r.error && win.bridge && win.bridge.online)
+                    win.bridge.api("POST", "/journal", { kind: "app", summary: webRunner.summary, reversible: false, ref: "apps:web" });
+                win.listWebApps();
+                win.nextWeb();
+            }
+        }
+    }
+    function nextWeb() {
+        if (webRunner.running || webQueue.length === 0) return;
+        const job = webQueue[0]; webQueue = webQueue.slice(1);
+        webRunner.summary = job.summary; webRunner.command = job.command; webRunner.running = true;
+    }
+    function addWebApp(name, address) {
+        const url = Web.normalise(address);
+        if (!url) { webNote = "That is not a web address (for example outlook.office.com)."; return false }
+        const n = String(name || "").trim() || Web.nameFor(url);
+        webQueue = webQueue.concat([{ summary: "Added the web app " + n, command: [webappCmd, "add", n, url] }]);
+        webNote = "Adding " + n + "…"; nextWeb();
+        return true;
+    }
+    function removeWebApp(app) {
+        webQueue = webQueue.concat([{ summary: "Removed the web app " + app.name, command: [webappCmd, "remove", app.id] }]);
+        nextWeb();
     }
 
     // ---- installed apps (desktop entries) ----
@@ -294,6 +340,8 @@ NexusWindow {
         case "apt.install": case "apt.remove":
             return aptRun(p.op.slice(4), p.package, p.version, p.isolated === true, p.undoes)
                 ? { ok: true, message: "Running apt in a terminal." } : { ok: false, message: "That is not an apt package name." };
+        case "webapp.add":
+            return addWebApp(p.name, p.url) ? { ok: true, message: "Adding it to your apps…" } : { ok: false, message: webNote };
         default: return { ok: false, message: "Apps cannot do that." };
         }
     }
@@ -384,12 +432,12 @@ NexusWindow {
             Choice {
                 theme: win.theme; name: "Show"; current: win.tab; anchors.verticalCenter: parent.verticalCenter
                 options: [{ value: "all", label: "All apps" }, { value: "get", label: "Get apps" }, { value: "try", label: "System apps" },
-                          { value: "apt", label: "Ubuntu (apt)" }]
-                onChose: v => { win.tab = v; if (v === "get") win.searchFlathub() }
+                          { value: "web", label: "Web apps" }, { value: "apt", label: "Ubuntu (apt)" }]
+                onChose: v => { win.tab = v; if (v === "get") win.searchFlathub(); if (v === "web") win.listWebApps() }
             }
         }
         Rectangle {
-            visible: win.tab !== "apt"
+            visible: win.tab !== "apt" && win.tab !== "web"
             width: parent.width; height: 46; radius: 14
             color: win.theme.glass; border.color: query.activeFocus ? win.theme.focus : win.theme.glassBorder
             Image { x: 14; anchors.verticalCenter: parent.verticalCenter; width: 18; height: 18; sourceSize: Qt.size(36, 36); source: "icons/search.svg" }
@@ -605,6 +653,79 @@ NexusWindow {
             }
         }
     }
+
+    // Web apps: websites in their own window, without tabs or an address bar.
+    Flickable {
+        visible: win.tab === "web"
+        x: 32; y: 90; width: parent.width - 64; height: parent.height - 110
+        clip: true; contentHeight: webCol.implicitHeight
+        Column {
+            id: webCol
+            width: parent.width; spacing: 10
+            Text { width: parent.width; wrapMode: Text.Wrap; color: win.theme.inkSecondary; font.pixelSize: 13
+                   text: "A website as an app: it opens in its own window and is in All apps, Alt+Tab and the task manager. " +
+                         "It uses Chromium, so you stay signed in. Nothing is installed." }
+            Text { visible: win.webNote !== ""; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+                   text: win.webNote; color: win.theme.ink; font.pixelSize: 13 }
+            SettingRow {
+                theme: win.theme; label: "Add a website"
+                detail: "Its address, and a name if you like."
+                Row {
+                    spacing: 8
+                    Repeater {
+                        model: [{ id: "webName", hint: "Name", w: 140 }, { id: "webUrl", hint: "outlook.office.com", w: 220 }]
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: modelData.w; height: 34; radius: 10; color: win.theme.glass
+                            border.color: field.activeFocus ? win.theme.focus : win.theme.glassBorder
+                            TextInput {
+                                id: field
+                                objectName: modelData.id
+                                x: 10; width: parent.width - 20; anchors.verticalCenter: parent.verticalCenter
+                                color: win.theme.ink; font.pixelSize: 13; clip: true; maximumLength: modelData.id === "webName" ? 40 : 500
+                                onTextChanged: if (modelData.id === "webName") win.webNameText = text; else win.webUrlText = text
+                                onAccepted: win.addWebApp(win.webNameText, win.webUrlText)
+                                Text { visible: !field.text; text: modelData.hint; color: win.theme.inkSecondary; font.pixelSize: 13 }
+                                Accessible.role: Accessible.EditableText
+                                Accessible.name: modelData.id === "webName" ? "Web app name" : "Web address"
+                            }
+                        }
+                    }
+                    Button { theme: win.theme; primary: true; label: "Add"; enabled: Web.normalise(win.webUrlText) !== ""
+                             onClicked: win.addWebApp(win.webNameText, win.webUrlText) }
+                }
+            }
+            Text { visible: win.webApps.length > 0; text: "Your web apps"; color: win.theme.ink; font.pixelSize: 15; font.weight: 600; topPadding: 6 }
+            Repeater {
+                model: win.webApps
+                delegate: SettingRow {
+                    required property var modelData
+                    width: webCol.width
+                    theme: win.theme; label: modelData.name; detail: modelData.url
+                    Row {
+                        spacing: 8
+                        Button { theme: win.theme; label: "Open"; onClicked: { Quickshell.execDetached(["chromium", "--app=" + modelData.url]); win.visible = false } }
+                        Button { theme: win.theme; label: "Remove"; onClicked: win.removeWebApp(modelData) }
+                    }
+                }
+            }
+            Text { text: "Suggestions"; color: win.theme.ink; font.pixelSize: 15; font.weight: 600; topPadding: 6 }
+            Repeater {
+                model: Web.presets
+                delegate: SettingRow {
+                    required property var modelData
+                    width: webCol.width
+                    theme: win.theme; label: modelData.name; detail: modelData.summary
+                    Button { theme: win.theme; primary: !Web.added(win.webApps, modelData.url)
+                             label: Web.added(win.webApps, modelData.url) ? "Added" : "Add"
+                             enabled: !Web.added(win.webApps, modelData.url)
+                             onClicked: win.addWebApp(modelData.name, modelData.url) }
+                }
+            }
+        }
+    }
+    property string webNameText: ""
+    property string webUrlText: ""
 
     // Ubuntu (apt). Said plainly: the Ubuntu container is not a sandbox.
     Column {

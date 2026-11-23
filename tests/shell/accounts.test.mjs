@@ -26,3 +26,10 @@ test("you are named, never removable, and pkexec refusals are said plainly", () 
   assert.deepEqual(A.parse('noise\n{"message":"ok"}'), { message: "ok" });
   assert.deepEqual(A.parse("not json"), {});
 });
+
+test("cloud drive folder names", () => {
+  assert.ok(A.driveNameOk("OneDrive"));
+  for (const bad of ["", "1x", "a b", "../x", "x".repeat(31)]) assert.ok(!A.driveNameOk(bad), bad);
+  assert.equal(A.freeDriveName("OneDrive", []), "OneDrive");
+  assert.equal(A.freeDriveName("OneDrive", [{ name: "OneDrive" }, { name: "OneDrive2" }]), "OneDrive3");
+});

@@ -126,6 +126,8 @@ let
     }
     # Three fingers sideways: the next or previous workspace.
     gesture = 3, horizontal, workspace
+    # Three fingers up: all windows (the overview, as Super+Tab).
+    gesture = 3, up, dispatcher, global, nexus:overview
     general {
       gaps_in = 6
       gaps_out = 14
@@ -168,16 +170,27 @@ let
     # workspace), Super+arrows snap a window to half the screen or maximise it,
     # and screenshots with Super+Shift+S (an area), Print (the screen) and
     # Alt+Print (the window), saved in Pictures, Screenshots, and copied.
-    bind = ALT, Tab, cyclenext
-    bind = ALT, Tab, bringactivetotop
-    bind = ALT SHIFT, Tab, cyclenext, prev
-    bind = ALT SHIFT, Tab, bringactivetotop
+    # Alt+Tab shows the windows while Alt is held (Switcher.qml); letting go
+    # of Alt switches. The release binds do not take Alt from apps.
+    bind = ALT, Tab, global, nexus:switchnext
+    bind = ALT SHIFT, Tab, global, nexus:switchprev
+    bindrn = ALT, Alt_L, global, nexus:switchdone
+    bindrn = ALT, Alt_R, global, nexus:switchdone
+    bindrn = ALT SHIFT, Alt_L, global, nexus:switchdone
     bind = SUPER, D, workspace, empty
     # Ctrl+Shift+Esc: the task manager (Tasks.qml).
     bind = CTRL SHIFT, Escape, global, nexus:tasks
     # Super+Shift+V: clipboard history (Super+V is push-to-talk); Super+. emoji.
     bind = SUPER SHIFT, V, global, nexus:clipboard
     bind = SUPER, period, global, nexus:emoji
+    # The magnifier, as on Windows: Super+Plus zooms in around the pointer,
+    # Super+Minus out, Super+Esc stops (DesktopSettings.qml, cursor:zoom_factor).
+    binde = SUPER, equal, global, nexus:zoomin
+    binde = SUPER, plus, global, nexus:zoomin
+    binde = SUPER, KP_Add, global, nexus:zoomin
+    binde = SUPER, minus, global, nexus:zoomout
+    binde = SUPER, KP_Subtract, global, nexus:zoomout
+    bind = SUPER, Escape, global, nexus:zoomoff
     bind = SUPER, left, exec, /run/current-system/sw/bin/nexus-snap left
     bind = SUPER, right, exec, /run/current-system/sw/bin/nexus-snap right
     bind = SUPER, up, exec, /run/current-system/sw/bin/nexus-snap up
@@ -185,6 +198,10 @@ let
     bind = SUPER SHIFT, S, exec, /run/current-system/sw/bin/nexus-screenshot area
     bind = , Print, exec, /run/current-system/sw/bin/nexus-screenshot screen
     bind = ALT, Print, exec, /run/current-system/sw/bin/nexus-screenshot window
+    # Screen recording, as Windows' Win+Alt+R: the screen (Super+Shift+R an
+    # area), with what is playing; the same keys stop it.
+    bind = SUPER ALT, R, exec, /run/current-system/sw/bin/nexus-record screen
+    bind = SUPER SHIFT, R, exec, /run/current-system/sw/bin/nexus-record area
     # Volume, microphone and brightness keys: the shell changes them and shows
     # how much (OnScreen.qml); they repeat while held and work on the lock screen.
     bindel = , XF86AudioRaiseVolume, global, nexus:volup
@@ -193,6 +210,8 @@ let
     bindl = , XF86AudioMicMute, global, nexus:micmute
     bindel = , XF86MonBrightnessUp, global, nexus:brightup
     bindel = , XF86MonBrightnessDown, global, nexus:brightdown
+    # Caps Lock on or off is shown too: on release, without taking the key.
+    bindrn = , Caps_Lock, global, nexus:capslock
     # Media keys play, pause and skip in whichever app is playing.
     bindl = , XF86AudioPlay, exec, /run/current-system/sw/bin/playerctl play-pause
     bindl = , XF86AudioPause, exec, /run/current-system/sw/bin/playerctl play-pause

@@ -7,7 +7,9 @@
 { pkgs, nexusSource, nixpkgsSource, referenceSystem, nexusInstall, referenceInitrdInputs ? [ ], nexusRelease ? null }:
 let
   common = {
-    virtualisation.diskSize = 16 * 1024;
+    # The smallest partition the installer accepts is 32 GB (docs/INSTALL.md);
+    # NexusOS with its everyday apps no longer fits in 16. The image is sparse.
+    virtualisation.diskSize = 32 * 1024;
     virtualisation.diskImage = "./target.qcow2";
     virtualisation.memorySize = 4096;
     virtualisation.cores = 4;

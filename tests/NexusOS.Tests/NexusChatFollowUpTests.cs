@@ -130,7 +130,7 @@ public sealed class NexusChatFollowUpTests : IDisposable
     {
         // A question touching every group is offered every action: none is unreachable.
         var everything = ActionSelection.NamesFor(
-            "install an app, remove, try, health, settings, fix it, find files, every day, today, updates, a picture, describe the screen, code, workspace, move in, system, large model")
+            "install an app, a web app, remove, try, health, settings, fix it, find files, every day, today, updates, a picture, describe the screen, code, workspace, move in, system, large model")
             .Concat(ActionSelection.FollowOn.Values.SelectMany(x => x)).Distinct();   // apply_fix comes after diagnose_problem
         Assert.Equal(NexusActions.All.Select(a => a.Name).Order(), everything.Order());
         // A plain question gets only "this computer": every action has keywords.
@@ -369,5 +369,26 @@ public sealed class NexusChatFollowUpTests : IDisposable
         Assert.NotEmpty(ToolNames(stub, 1));        // told once, may try again
         Assert.Empty(ToolNames(stub, 2));           // then it has to answer
         Assert.Equal("Sorry, I could not do that.", Said(events));
+    }
+}
+
+public class ActionSelectionTimeoutTests
+{
+    [Fact]
+    public void A_match_that_runs_out_of_time_offers_the_group_instead_of_failing()
+    {
+        // (a+)+$ on a long run of a's ending in b backtracks far past 1 ms.
+        var slow = new System.Text.RegularExpressions.Regex("(a+)+$", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromMilliseconds(1));
+        Assert.True(ActionSelection.Matches(slow, new string('a', 40) + "b"));
+        var quick = new System.Text.RegularExpressions.Regex("x", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromMilliseconds(50));
+        Assert.False(ActionSelection.Matches(quick, "abc"));
+    }
+
+    [Fact]
+    public void A_very_long_question_still_gets_actions()
+    {
+        var names = ActionSelection.NamesFor(string.Join(" ", Enumerable.Repeat("please turn on night light and find my files", 2000)));
+        Assert.Contains("change_setting", names);
+        Assert.Contains("get_system_state", names);
     }
 }

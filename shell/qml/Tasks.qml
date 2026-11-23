@@ -40,7 +40,9 @@ NexusWindow {
     Process {
         id: reader
         command: ["sh", "-c", "cat /proc/[0-9]*/stat 2>/dev/null; echo ===; stat -c '%u %n' /proc/[0-9]* 2>/dev/null; echo ===; " +
-                              "head -1 /proc/stat; echo ===; cat /proc/meminfo; echo ===; getconf PAGESIZE; getconf CLK_TCK; nproc"]
+                              "head -1 /proc/stat; echo ===; cat /proc/meminfo; echo ===; getconf PAGESIZE; getconf CLK_TCK; nproc; " +
+                              "echo ===; cat /proc/diskstats; echo ===; cat /sys/class/drm/card*/device/gpu_busy_percent 2>/dev/null; " +
+                              "command -v nvidia-smi >/dev/null && nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits 2>/dev/null; true"]
         stdout: StdioCollector {
             onStreamFinished: {
                 const now = Date.now(), s = T.parseSnapshot(text);
@@ -72,25 +74,30 @@ NexusWindow {
 
         Text { text: "Task manager"; color: win.theme.ink; font.pixelSize: 22; font.weight: 600 }
         Row {
-            spacing: 24
+            id: meters
+            width: parent.width; spacing: 18
+            // Graphics only where the driver says how busy it is (AMD, Intel, NVIDIA with nvidia-smi).
+            readonly property var items: win.use ? [
+                { label: "Processor", value: win.use.cpu / 100, text: T.percent(win.use.cpu) + " of " + (win.snap ? win.snap.cores : 1) + " cores" },
+                { label: "Memory", value: win.use.memoryTotal ? win.use.memoryUsed / win.use.memoryTotal : 0,
+                  text: T.bytes(win.use.memoryUsed) + " of " + T.bytes(win.use.memoryTotal) },
+                { label: "Disk", value: Math.min(1, (win.use.disk.read + win.use.disk.written) / 200e6),
+                  text: T.rate(win.use.disk.read) + " read, " + T.rate(win.use.disk.written) + " written" }
+            ].concat(win.use.gpu === null || win.use.gpu === undefined ? [] : [
+                { label: "Graphics", value: win.use.gpu / 100, text: T.percent(win.use.gpu) + " busy" }
+            ]) : []
             Repeater {
-                model: win.use ? [
-                    { label: "Processor", value: win.use.cpu / 100, text: T.percent(win.use.cpu) + " of " + (win.snap ? win.snap.cores : 1) + " cores" },
-                    { label: "Memory", value: win.use.memoryTotal ? win.use.memoryUsed / win.use.memoryTotal : 0,
-                      text: T.bytes(win.use.memoryUsed) + " of " + T.bytes(win.use.memoryTotal) },
-                    { label: "Swap", value: win.use.swapTotal ? win.use.swapUsed / win.use.swapTotal : 0,
-                      text: T.bytes(win.use.swapUsed) + " of " + T.bytes(win.use.swapTotal) }
-                ] : []
+                model: meters.items
                 delegate: Column {
                     required property var modelData
-                    width: 210; spacing: 4
+                    width: (meters.width - meters.spacing * (meters.items.length - 1)) / Math.max(1, meters.items.length); spacing: 4
                     Text { text: modelData.label; color: win.theme.inkSecondary; font.pixelSize: 12 }
                     Rectangle {
                         width: parent.width; height: 8; radius: 4; color: win.theme.chip
                         Rectangle { width: parent.width * Math.min(1, modelData.value); height: 8; radius: 4
                                     color: modelData.value > 0.9 ? "#FF8FA3" : win.theme.primary }
                     }
-                    Text { text: modelData.text; color: win.theme.ink; font.pixelSize: 12 }
+                    Text { width: parent.width; elide: Text.ElideRight; text: modelData.text; color: win.theme.ink; font.pixelSize: 12 }
                 }
             }
         }

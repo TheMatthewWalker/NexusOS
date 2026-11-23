@@ -36,12 +36,14 @@ public static class ActionSelection
         G("install", @"install\w*|software|packages?|flathub|flatpak|apt|download|get me|tools?|spotify|discord|steam|gimp|obs|vlc|" +
                      @"libreoffice|office|games?",
             "install_app", "apt_install", "install_system_software", "get_app_details"),
+        G("web", @"web ?apps?|websites?|sites?|pwas?|outlook|teams|gmail|whatsapp|microsoft 365|office 365|google docs|web page",
+            "add_web_app"),
         G("remove", @"uninstall\w*|remove|delete|get rid of|undo|put back|reinstall", "remove_app", "list_installed_apps", "undo_app_change", "get_today_summary"),
         G("try", @"try|trial|without installing|sandbox\w*", "try_app"),
         G("settings", @"settings?|preferences?|volume|loud\w*|quiet\w*|mute\w*|sound|audio|speakers?|headphones?|night ?light|" +
                       @"scale|scaling|bigger|smaller|larger|zoom|text size|blur|animations?|motion|contrast|tile|tiled|tiling|" +
                       @"float\w*|windows|wi-?fi|network|internet|bluetooth|display|screen|monitor|brightness|power|battery|" +
-                      @"privacy|accessib\w*|dark|theme",
+                      @"privacy|accessib\w*|dark|theme|magnif\w*|zoom\w*|colou?r ?blind\w*|colou?r filters?|grey ?scale|gray ?scale|invert\w*",
             "get_settings", "open_settings", "change_setting"),
         G("fix", @"fix\w*|broken|break\w*|not working|doesn'?t work|isn'?t working|won'?t|can'?t|cannot|problems?|issues?|wrong|" +
                  @"errors?|crash\w*|freez\w*|frozen|no sound",
@@ -92,19 +94,35 @@ public static class ActionSelection
     // Paths and app ids ("~/projects/app", "org.mozilla.firefox") are not words about what to do.
     private static readonly Regex Paths = new(@"(?:~|\.{0,2}/)\S*|\S+\.\S+\.\S+", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
 
-    private static string Words(string text) => Paths.Replace(text, " ");
+    private static string Words(string text)
+    {
+        try { return Paths.Replace(text, " "); }
+        catch (RegexMatchTimeoutException) { return text; }
+    }
+
+    // A match that runs out of time (a very long question, or a busy computer)
+    // counts as a match: offering a group too many is only a few more tokens,
+    // and every call is validated the same either way. It must never fail the question.
+    internal static bool Matches(Regex words, string text)
+    {
+        try { return words.IsMatch(text); }
+        catch (RegexMatchTimeoutException) { return true; }
+    }
 
     // The groups a piece of text is about.
     public static IReadOnlyList<string> GroupsFor(string text) =>
-        Groups.Where(g => g.Words.IsMatch(Words(text))).Select(g => g.Name).ToArray();
+        Groups.Where(g => Matches(g.Words, Words(text))).Select(g => g.Name).ToArray();
 
     // The action names to offer for this question (earlier: the person's previous question, if any).
     public static IReadOnlySet<string> NamesFor(string prompt, string? earlier = null)
     {
         var words = Words(prompt);
-        var groups = Groups.Where(g => g.Words.IsMatch(words)).ToList();
+        var groups = Groups.Where(g => Matches(g.Words, words)).ToList();
         if (earlier is { Length: > 0 } && IsFollowUp(prompt))
-            groups.AddRange(Groups.Where(g => g.Words.IsMatch(Words(earlier)) && !groups.Contains(g)));
+        {
+            var before = Words(earlier);
+            groups.AddRange(Groups.Where(g => Matches(g.Words, before) && !groups.Contains(g)));
+        }
         var names = new HashSet<string>(Always, StringComparer.Ordinal);
         foreach (var g in groups) names.UnionWith(g.Actions);
         foreach (var action in NexusActions.All) if (!Grouped.Contains(action.Name)) names.Add(action.Name);

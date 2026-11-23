@@ -151,7 +151,7 @@ Column {
             return { ok: true, message: "Done. Undo it in Settings, Timeline." };
         }
         // Installs, removals and their Undo run in Apps, which journals them (Apps.perform); apt in a terminal.
-        case "flathub.install": case "flathub.remove": case "apt.install": case "apt.remove": {
+        case "flathub.install": case "flathub.remove": case "apt.install": case "apt.remove": case "webapp.add": {
             const said = appsWin.perform(p);
             if (said.ok) cards.opened();
             return said;

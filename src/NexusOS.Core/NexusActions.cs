@@ -66,7 +66,7 @@ public static class NexusActions
         ["network", "bluetooth", "printers", "sound", "display", "power", "mouse", "desktop", "language", "defaults", "privacy", "search", "timeline", "automations",
          "accessibility", "accounts", "health", "backups", "updates", "developer", "storage", "feedback", "help", "about"];
     public static readonly string[] PersonalSettings =
-        ["volume", "night_light", "scale", "windows", "blur", "animations", "high_contrast", "do_not_disturb"];
+        ["volume", "night_light", "scale", "windows", "blur", "animations", "high_contrast", "do_not_disturb", "magnifier", "colour_filter"];
     public static readonly string[] Roles = ["files", "browser", "terminal", "settings", "studio"];
 
     // Descriptions are kept short: they go to the model with every question
@@ -108,8 +108,8 @@ public static class NexusActions
              new("item", "string", "Item to highlight, e.g. wifi, volume, nightlight.",
                  Required: false, MaxLength: 20, Pattern: "[a-z]{1,20}")]),
         new("change_setting", ActionSafety.Personal,
-            "Change a personal setting. volume 0-100; night_light, blur, animations, high_contrast, do_not_disturb on/off; " +
-            "scale 1, 1.25, 1.5, 1.75 or 2; windows floating/tiled.",
+            "volume 0-100; others on/off, but scale 1-2 by 0.25, windows floating/tiled, magnifier off/1.5-4, " +
+            "colour_filter e.g. greyscale, protanopia.",
             [new("setting", "string", "", Choices: PersonalSettings),
              new("value", "value", "", MaxLength: 16)]),
         new("install_app", ActionSafety.Personal, "Install a Flathub desktop app for this person (no password).",
@@ -119,6 +119,9 @@ public static class NexusActions
         new("apt_install", ActionSafety.Personal, "Install an Ubuntu apt package in a visible terminal. Not a sandbox: runs as them, reads their home.",
             [new("package", "string", "apt package, e.g. htop.", MaxLength: 100, Pattern: @"[a-z0-9][a-z0-9+.-]{0,99}"),
              new("isolated", "boolean", "true for untrusted software: separate container, own home, command-line only.", Required: false)]),
+        new("add_web_app", ActionSafety.Personal, "Add a website as an app in its own window (Outlook, Teams, Google Docs).",
+            [new("url", "string", "https address.", MaxLength: 300, Pattern: WebAddress),
+             new("name", "string", "", Required: false, MaxLength: 40, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._+&-]{0,39}")]),
         new("undo_app_change", ActionSafety.Personal, "Undo an app install or removal (entry id from get_today_summary).",
             [new("entry", "integer", "", Min: 1, Max: int.MaxValue)]),
         new("create_automation", ActionSafety.Personal, "Create an automation from one sentence.",
@@ -170,6 +173,8 @@ public static class NexusActions
              new("enabled", "boolean", "")]),
     ];
 
+    // As nexus-webapp checks: https only, no characters a desktop file's Exec line would need quoted.
+    private const string WebAddress = @"https://[A-Za-z0-9.-]+(:\d{1,5})?(/[A-Za-z0-9._~:/?#@!&()*+,;=%-]*)?";
     private const string FlathubId = @"[A-Za-z][A-Za-z0-9_-]{0,63}(\.[A-Za-z0-9_-]{1,64}){2,6}";
 
     public static readonly IReadOnlyDictionary<string, NexusAction> ByName = All.ToDictionary(x => x.Name, StringComparer.Ordinal);
@@ -227,10 +232,16 @@ public static class NexusActions
         if (p.Choices is not null)
             return p.Choices.FirstOrDefault(c => string.Equals(c, text, StringComparison.OrdinalIgnoreCase))
                 ?? throw new ActionRejectedException($"'{p.Name}' must be one of: {string.Join(", ", p.Choices)}.");
-        if (p.Pattern is not null &&
-            !Regex.IsMatch(text, @"\A(?:" + p.Pattern + @")\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)))
+        if (p.Pattern is not null && !FitsPattern(text, p.Pattern))
             throw new ActionRejectedException($"'{p.Name}' is not in the expected form.");
         return text;
+    }
+
+    // A check that runs out of time refuses the value (never a server error).
+    private static bool FitsPattern(string text, string pattern)
+    {
+        try { return Regex.IsMatch(text, @"\A(?:" + pattern + @")\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)); }
+        catch (RegexMatchTimeoutException) { return false; }
     }
 
     private static int Integer(ActionParam p, JsonValue v)

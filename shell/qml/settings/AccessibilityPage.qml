@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../lib/access.mjs" as Access
 
 // Settings, Accessibility (feature 6): bigger text and pointer, high
 // contrast, less motion, the Orca screen reader, Describe this (the local
@@ -48,6 +49,21 @@ Column {
         detail: "Solid, darker panels and brighter text and borders in the desktop."
         Switch { theme: page.theme; name: "High contrast"; checked: page.desktop.highContrast
                  onToggled: page.desktop.set("highContrast", !page.desktop.highContrast) }
+    }
+    SettingRow {
+        theme: page.theme; label: "Magnifier"; highlighted: page.host.highlight === "magnifier"
+        detail: "Enlarges the screen around the pointer. Super+Plus zooms in, Super+Minus out, Super+Esc stops."
+        Choice { theme: page.theme; name: "Magnifier"; current: page.desktop.zoom
+                 options: Access.zoomLevels.map(v => ({ value: v, label: v === 1 ? "Off" : Math.round(v * 100) + "%" }))
+                 onChose: v => page.desktop.set("zoom", v) }
+    }
+    SettingRow {
+        theme: page.theme; label: "Colour filter"; highlighted: page.host.highlight === "colourfilter"
+        detail: "Changes the colours of the whole screen: shades of grey, inverted, or easier to tell apart with colour blindness " +
+                "(Red: red-blind, protanopia; Green: green-blind, deuteranopia, the most common; Blue: blue-blind, tritanopia)."
+        Choice { theme: page.theme; name: "Colour filter"; current: page.desktop.colourFilter
+                 options: Access.filters.map(f => ({ value: f.value, label: f.short }))
+                 onChose: v => page.desktop.set("colourFilter", v) }
     }
     SettingRow {
         theme: page.theme; label: "Less motion"; highlighted: page.host.highlight === "motion"

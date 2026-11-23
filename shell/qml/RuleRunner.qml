@@ -73,6 +73,7 @@ Item {
         const sink = Pipewire.defaultAudioSink;
         if (key === "volume" && sink && sink.audio) sink.audio.volume = Math.max(0, Math.min(1, Number(value) / 100));
         else if (key === "night-light") desktop.set("nightLight", value === true || value === "on");
+        else if (key === "do-not-disturb") desktop.set("doNotDisturb", value === true || value === "on");
         else if (key === "wallpaper" && typeof value === "string") wallpaper.set(value);
         else notify(ruleName + ": the " + key + " setting is not available yet");
     }

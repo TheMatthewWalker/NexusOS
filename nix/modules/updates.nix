@@ -21,6 +21,38 @@ let
   # The builder writes this file when the person asks Nexus to check now
   # (local_builder.py check-updates); the path unit below starts the check.
   request = "/var/lib/nexus-guardian-builder/work/update-requested";
+  # Settings, Updates: which NexusOS channel to follow. Root, through pkexec
+  # (an administrator's password); it only records the choice and asks for a
+  # check. Moving to the other branch is then an update like any other
+  # (system_update.py, CHANNELS): forward only, built, tested and approved.
+  channel = pkgs.writeShellScriptBin "nexus-update-channel" ''
+    case "''${1:-}" in
+      stable|testing) ;;
+      *) echo '{"error": "Choose stable or testing"}'; exit 2 ;;
+    esac
+    umask 022
+    printf '%s\n' "$1" > /etc/nixos/nexusos-channel.tmp && ${pkgs.coreutils}/bin/mv /etc/nixos/nexusos-channel.tmp /etc/nixos/nexusos-channel
+    ${pkgs.systemd}/bin/systemctl start --no-block nexus-update-check.service || true
+    echo '{"message": "Following the '"$1"' channel. Guardian looks for its newest version now."}'
+  '';
+  channelPolicy = pkgs.writeTextDir "share/polkit-1/actions/org.nexusos.updates.policy" ''
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+     "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+    <policyconfig>
+      <vendor>NexusOS</vendor>
+      <action id="org.nexusos.updates.channel">
+        <description>Choose the NexusOS update channel</description>
+        <message>An administrator's password is needed to choose which NexusOS versions this computer gets.</message>
+        <defaults>
+          <allow_any>no</allow_any>
+          <allow_inactive>no</allow_inactive>
+          <allow_active>auth_admin</allow_active>
+        </defaults>
+        <annotate key="org.freedesktop.policykit.exec.path">/run/current-system/sw/bin/nexus-update-channel</annotate>
+      </action>
+    </policyconfig>
+  '';
   waitOnline = lib.optionalString config.networking.networkmanager.enable
     " --wait-online ${pkgs.networkmanager}/bin/nm-online";
 in
@@ -39,6 +71,8 @@ in
   };
 
   config = lib.mkIf (cfg.enable && guardian.enable && guardian.localBuilder.enable) {
+    security.polkit.enable = true;
+    environment.systemPackages = [ channel channelPolicy ];
     systemd.services.nexus-update-check = {
       description = "NexusOS: look for security updates and hand them to Guardian";
       after = [ "network-online.target" "nix-daemon.socket" ];

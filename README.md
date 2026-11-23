@@ -147,6 +147,7 @@ nix flake check                                          # packages + NixOS VM t
 - [Roadmap](docs/ROADMAP.md) and [evidence](docs/evidence/)
 - [Architecture](docs/ARCHITECTURE.md), [ADR-002: Guardian](docs/adr/002-guardian-candidate-model.md) and [ADR-003: desktop shell](docs/adr/003-desktop-shell.md)
 - [Nexus shell](shell/README.md) and the [SpaceUI design pack](docs/design/spaceui/README.md)
+- [User guide](docs/USER-GUIDE.md) (also in NexusOS: Settings, Help)
 - [Installing NexusOS](docs/INSTALL.md) and [Guardian deployment](docs/GUARDIAN-DEPLOYMENT.md)
 
 Licensed under MIT. Third-party software NexusOS builds or bundles: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

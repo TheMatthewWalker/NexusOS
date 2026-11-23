@@ -14,6 +14,7 @@ PanelWindow {
     property var theme
     property var settings
     property var guardian: null      // Guardian.qml: a system change waiting, under way, or needing a restart
+    property var notifications: null // Notifications.qml: the bell opens the centre
     property bool live: false        // the installer's live session (live.qml): no Nexus, no apps
     signal openNexus()
     signal openApps()
@@ -159,6 +160,20 @@ PanelWindow {
                 TapHandler { onTapped: bar.guardian.open() }
                 Accessible.role: Accessible.Button
                 Accessible.name: "System change: " + label
+            }
+            // Notifications: the bell, with how many are waiting; it opens the centre.
+            Row {
+                readonly property var n: bar.notifications
+                visible: !!n
+                spacing: 6
+                Image { width: 16; height: 16; sourceSize: Qt.size(32, 32); source: "icons/bell.svg"; anchors.verticalCenter: parent.verticalCenter
+                        opacity: parent.n && (parent.n.count > 0 || parent.n.centreOpen) ? 1 : 0.5 }
+                Text { visible: !!parent.n && parent.n.count > 0; text: parent.n ? String(parent.n.count) : ""
+                       color: bar.theme.ink; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: bar.notifications.centreOpen = !bar.notifications.centreOpen }
+                Accessible.role: Accessible.Button
+                Accessible.name: !parent.n ? "" : parent.n.count === 0 ? "Notifications: none" : "Notifications: " + parent.n.count
             }
             Status { icon: "settings"; page: ""; name: "Settings" }
         }

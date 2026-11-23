@@ -28,7 +28,8 @@ Rectangle {
     // Where a Nexus action points in Settings: [page, highlight].
     readonly property var settingPlaces: ({ volume: ["sound", "volume"], night_light: ["display", "nightlight"],
         scale: ["display", "scale"], windows: ["desktop", "windows"], blur: ["desktop", "blur"],
-        animations: ["desktop", "animations"], high_contrast: ["accessibility", "contrast"] })
+        animations: ["desktop", "animations"], high_contrast: ["accessibility", "contrast"],
+        do_not_disturb: ["desktop", "donotdisturb"] })
 
     function show(text) {
         if (!bridge) return;    // the live installer's Settings has no Nexus

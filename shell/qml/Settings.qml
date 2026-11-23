@@ -28,6 +28,7 @@ NexusWindow {
     signal fixIt(string problem)
     signal openWelcome()
     signal moveIn()
+    signal proposeSystem(var plan)       // a system change for Guardian to check and the person to approve
 
     title: "Settings"
     visible: false
@@ -45,20 +46,33 @@ NexusWindow {
 
     // The live installer shows only some pages (live.qml: Network); empty means all.
     property var only: []
-    readonly property var pages: only.length ? allPages.filter(p => only.includes(p.id)) : allPages
+    // Labels in the person's language (Translations.qml); ids stay English.
+    property var translations: null
+    function tr(text, args) { return translations ? translations.t(text, args) : text }
+    readonly property var pages: (only.length ? allPages.filter(p => only.includes(p.id)) : allPages)
+        .map(p => Object.assign({}, p, { label: tr(p.label) }))
     readonly property var allPages: [
         { id: "network", label: "Network", colour: "#86A8FF", icon: "network" },
         { id: "bluetooth", label: "Bluetooth", colour: "#86A8FF", icon: "bluetooth" },
+        { id: "printers", label: "Printers", colour: "#86A8FF", icon: "printer" },
         { id: "sound", label: "Sound", colour: "#9C8FFF", icon: "sound" },
         { id: "display", label: "Display", colour: "#FFA65C", icon: "display" },
         { id: "power", label: "Power", colour: "#7FE0B0", icon: "power" },
         { id: "desktop", label: "Desktop", colour: "#9C8FFF", icon: "desktop" },
+        { id: "language", label: "Language and region", colour: "#9C8FFF", icon: "language" },
+        { id: "defaults", label: "Default apps", colour: "#9C8FFF", icon: "defaults" },
         { id: "privacy", label: "Privacy and AI", colour: "#9C8FFF", icon: "privacy" },
         { id: "search", label: "Search", colour: "#86A8FF", icon: "search" },
         { id: "timeline", label: "Timeline", colour: "#FFA65C", icon: "time" },
         { id: "automations", label: "Automations", colour: "#7FE0B0", icon: "spark" },
         { id: "accessibility", label: "Accessibility", colour: "#86A8FF", icon: "accessibility" },
+        { id: "accounts", label: "Accounts", colour: "#9C8FFF", icon: "accounts" },
         { id: "health", label: "Health", colour: "#7FE0B0", icon: "health" },
+        { id: "backups", label: "Backups", colour: "#7FE0B0", icon: "backup" },
+        { id: "updates", label: "Updates", colour: "#7FE0B0", icon: "update" },
+        { id: "storage", label: "Storage", colour: "#7FE0B0", icon: "storage" },
+        { id: "feedback", label: "Feedback", colour: "#9AA9C9", icon: "feedback" },
+        { id: "help", label: "Help", colour: "#9AA9C9", icon: "help" },
         { id: "about", label: "About", colour: "#9AA9C9", icon: "about" }
     ]
     // The pages in four groups, so the orbit stays readable on a small
@@ -66,13 +80,13 @@ NexusWindow {
     // planet each that opens the page last used in it. Deep links still name
     // a page (open("health", "")): its group opens with it.
     readonly property var allGroups: [
-        { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth"] },
+        { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth", "printers"] },
         { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power"] },
-        { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "accessibility", "privacy"] },
-        { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "timeline", "automations", "search", "about"] }
+        { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "language", "defaults", "accounts", "accessibility", "privacy"] },
+        { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "storage", "backups", "updates", "timeline", "automations", "search", "feedback", "help", "about"] }
     ]
     // Only the pages this Settings shows (`only`); a group left empty is not shown.
-    readonly property var groups: allGroups.map(g => Object.assign({}, g, { members: g.members.filter(m => pages.some(p => p.id === m)) }))
+    readonly property var groups: allGroups.map(g => Object.assign({}, g, { label: tr(g.label), members: g.members.filter(m => pages.some(p => p.id === m)) }))
                                            .filter(g => g.members.length > 0)
     function groupOf(pageId) { return groups.find(g => g.members.includes(pageId)) || groups[0] }
     readonly property string expandedGroup: groupOf(page).key
@@ -107,16 +121,25 @@ NexusWindow {
         ["sound", "volume", "Volume", "volume sound audio speaker loud quiet mute"],
         ["sound", "output", "Output device", "headphones speakers output hdmi device"],
         ["sound", "microphone", "Microphone", "microphone mic input record"],
+        ["display", "screens", "Screens", "screens monitors multiple second external monitor arrange position extend mirror duplicate projector resolution refresh rate"],
         ["display", "brightness", "Brightness", "brightness dim bright screen backlight"],
         ["display", "nightlight", "Night light", "night light warm blue light evening eyes colour temperature"],
         ["display", "scale", "Scale", "scale zoom size bigger text resolution dpi"],
         ["power", "battery", "Battery", "battery charge charging time left"],
         ["power", "powermode", "Power mode", "power mode performance saver balanced fan"],
+        ["power", "screenoff", "Screen off", "screen off blank display timeout idle"],
+        ["power", "sleep", "Sleep", "sleep suspend idle standby battery plugged timeout"],
+        ["power", "lid", "Closing the lid", "lid close laptop sleep lock docked external monitor"],
         ["power", "session", "Lock, log out, restart, shut down", "lock log out logout restart reboot shut down shutdown power off sleep"],
         ["desktop", "windows", "Floating or tiled windows", "windows floating tiling tiled tile layout"],
         ["desktop", "blur", "Blur", "blur glass transparency effects"],
         ["desktop", "animations", "Animations", "animations motion effects reduce"],
         ["desktop", "shortcuts", "Keyboard shortcuts", "keyboard shortcuts keys hotkeys super"],
+        ["printers", "printers", "Printers", "printer printing print default test page cups network usb"],
+        ["printers", "scanning", "Scanning", "scan scanner scanning document all-in-one"],
+        ["accounts", "password", "Change your password", "password change passphrase login disk unlock encryption"],
+        ["accounts", "accounts", "Accounts for other people", "accounts users people family add remove administrator user"],
+        ["desktop", "donotdisturb", "Do not disturb", "notifications notify do not disturb quiet bell alerts popups"],
         ["privacy", "model", "AI model", "model ai ollama qwen llm assistant nexus"],
         ["privacy", "largemodel", "Large model", "large model bigger smarter mixture of experts moe gpt-oss llama memory"],
         ["privacy", "verylargemodel", "Very large model", "very large huge model colibri disk experts deepseek qwen glm download"],
@@ -137,6 +160,25 @@ NexusWindow {
         ["accessibility", "voice", "Voice control", "voice speech talk microphone dictate push to talk"],
         ["accessibility", "spoken", "Spoken replies", "read aloud speak text to speech voice replies"],
         ["health", "", "Health", "health report problems disk smart updates check status"],
+        ["backups", "backups", "Backups", "backup back up copy files drive usb external disk restic time machine schedule daily"],
+        ["backups", "backupdrive", "Backup drive", "backup drive usb external disk change another drive password"],
+        ["backups", "restore", "Restore files", "restore recover deleted lost file get back earlier version backup"],
+        ["language", "language", "Language", "language translate english french german spanish locale"],
+        ["language", "formats", "Formats", "formats date time number currency money paper size a4 letter units region locale"],
+        ["language", "timezone", "Time zone", "time zone timezone clock travel hour wrong time"],
+        ["language", "keyboards", "Keyboard layouts", "keyboard layout input language switch alt shift qwerty azerty qwertz dvorak"],
+        ["defaults", "defaults", "Default apps", "default apps browser email mail open with pdf music video photos pictures text editor file manager"],
+        ["storage", "storage", "Storage", "storage disk space full free clean up delete large files"],
+        ["storage", "trash", "Empty the trash", "trash bin recycle empty deleted files"],
+        ["storage", "caches", "Clear caches", "cache caches clear temporary files"],
+        ["storage", "systemversions", "Earlier system versions", "old versions generations garbage collect clean nix store free space"],
+        ["help", "", "Help", "help guide how do i manual instructions user guide learn tutorial"],
+        ["feedback", "report", "Report a problem or an idea", "feedback report bug problem idea suggestion issue github send tell developers"],
+        ["feedback", "crashnotices", "Crash notices", "crash crashed stopped unexpectedly crash report notify coredump"],
+        ["updates", "system", "NexusOS updates", "update updates upgrade security patches new version check for updates nexusos"],
+        ["updates", "channel", "Update channel", "channel stable testing beta preview pre-release early updates"],
+        ["updates", "firmware", "Firmware", "firmware bios uefi update fwupd thunderbolt dock ssd lvfs"],
+        ["about", "secureboot", "Secure Boot", "secure boot uefi signed keys tamper firmware bios security anti cheat"],
         ["about", "name", "Computer name", "about computer name hostname version"],
         ["about", "storage", "Storage", "storage disk space full free files"],
         ["about", "welcome", "Welcome setup", "welcome first run setup bundles start again apps for studying gaming office coding"],
@@ -406,7 +448,7 @@ NexusWindow {
                     Text {
                         y: planet.size / 2 + (planet.isGroup ? 10 : 6); x: -width / 2
                         horizontalAlignment: Text.AlignHCenter
-                        text: planet.item.label + (planet.isGroup ? "\n" + planet.modelData.group.members.length + " pages" : "")
+                        text: planet.item.label + (planet.isGroup ? "\n" + win.tr("{0} pages", [planet.modelData.group.members.length]) : "")
                         color: planet.current ? win.theme.ink : win.theme.inkSecondary
                         font.pixelSize: 12; lineHeight: 1.1
                     }
@@ -448,7 +490,7 @@ NexusWindow {
                 id: pageLoader
                 width: scroller.width
                 readonly property string file: "settings/" + ({ network: "NetworkPage", bluetooth: "BluetoothPage", sound: "SoundPage",
-                    display: "DisplayPage", power: "PowerPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
+                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", backups: "BackupsPage", language: "RegionPage", defaults: "DefaultAppsPage", storage: "StoragePage", feedback: "FeedbackPage", help: "HelpPage", updates: "UpdatesPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
                     timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage",
                     search: "SearchPage" })[win.page] + ".qml"
                 function reload() {

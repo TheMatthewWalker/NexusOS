@@ -1,7 +1,8 @@
 # Get NexusOS (Windows): downloads the newest NexusOS release's installer
 # image, checks it and puts it together, ready to write to a USB stick.
 #
-#   Double-click Get-NexusOS.cmd, or in PowerShell:
+#   Double-click Get-NexusOS.cmd (Get-NexusOS-Slim.cmd for the smaller image
+#   without the local AI model, which downloads once NexusOS is online), or in PowerShell:
 #   irm https://raw.githubusercontent.com/TheMatthewWalker/NexusOS/main/scripts/release/get-nexusos.ps1 | iex
 #
 # GitHub limits each release file to 2 GB, so the image is published in
@@ -15,6 +16,7 @@ $ProgressPreference = 'SilentlyContinue'
 $Repo = if ($env:NEXUSOS_REPO) { $env:NEXUSOS_REPO } else { 'TheMatthewWalker/NexusOS' }
 $Api = if ($env:NEXUSOS_API) { $env:NEXUSOS_API } else { "https://api.github.com/repos/$Repo/releases" }
 $Tag = if ($env:NEXUSOS_TAG) { $env:NEXUSOS_TAG } else { 'latest' }
+$Slim = $env:NEXUSOS_EDITION -eq 'slim'
 $Dir = if ($env:NEXUSOS_DIR) { $env:NEXUSOS_DIR } else { Join-Path $env:USERPROFILE 'Downloads' }
 
 function Fail($message) { Write-Host "get-nexusos: $message" -ForegroundColor Red; exit 1 }
@@ -38,8 +40,12 @@ if (-not $sumsUrl) { Fail "release $($release.tag_name) has no SHA256SUMS" }
 Invoke-WebRequest -UseBasicParsing -Uri $sumsUrl -OutFile 'SHA256SUMS'
 $sums = @{}
 foreach ($line in Get-Content 'SHA256SUMS') { $f = $line -split '\s+', 2; if ($f.Count -eq 2) { $sums[$f[1].TrimStart('*')] = $f[0] } }
-$iso = $sums.Keys | Where-Object { $_ -notlike '*.part-*' } | Select-Object -First 1
-$parts = @($sums.Keys | Where-Object { $_ -like '*.part-*' } | Sort-Object)
+# The images (names without .part-): the full one, and from 0.2 a -slim one.
+$images = @($sums.Keys | Where-Object { $_ -notlike '*.part-*' } | Sort-Object)
+$iso = if ($Slim) { $images | Where-Object { $_ -like '*-slim-*' } | Select-Object -First 1 }
+       else { $images | Where-Object { $_ -notlike '*-slim-*' } | Select-Object -First 1 }
+if ($Slim -and -not $iso) { Fail "release $($release.tag_name) has no slim image; use Get-NexusOS.cmd" }
+$parts = @($sums.Keys | Where-Object { $_.StartsWith("$iso.part-") } | Sort-Object)
 if (-not $iso -or $parts.Count -eq 0) { Fail 'SHA256SUMS does not list the image and its parts' }
 
 if ((Test-Path -LiteralPath $iso) -and (Hash $iso) -eq $sums[$iso]) {

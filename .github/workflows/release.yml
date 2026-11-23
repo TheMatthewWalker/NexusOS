@@ -56,42 +56,63 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/installer
           python3 -m unittest discover -s tests/guardian
-      - name: Build the installer image
-        run: nix build .#iso --no-update-lock-file --print-build-logs
+      - name: Build the installer images
+        run: |
+          nix build .#iso --no-update-lock-file --print-build-logs --out-link result
+          nix build .#iso-slim --no-update-lock-file --print-build-logs --out-link result-slim
       - name: The image says which release it is
         run: |
           rev="$(nix eval --raw --no-update-lock-file '.#nixosConfigurations.installer.config.environment.etc."nexusos-release.json".text' | jq -r .rev)"
           [ "$rev" = "$(git rev-parse HEAD)" ] || { echo "the image does not record this commit ($rev)" >&2; exit 1; }
-      - name: Split it into parts GitHub accepts, with checksums
+      - name: Split them into parts GitHub accepts, with checksums
         run: |
           mkdir dist
-          iso="$(find -L result/iso -name '*.iso' | head -n1)"
-          name="nexusos-${TAG#v}-x86_64.iso"
-          cp "$iso" "dist/$name"
           cd dist
-          sha256sum "$name" > SHA256SUMS
-          split -b 1900M -d -a 2 "$name" "$name.part-"
-          rm "$name"
-          sha256sum "$name".part-* >> SHA256SUMS
-          cp ../scripts/release/get-nexusos.sh ../scripts/release/get-nexusos.ps1 ../scripts/release/Get-NexusOS.cmd .
+          : > SHA256SUMS
+          # Split straight from the build, so no extra copy of each image is needed on the runner.
+          publish() {
+            iso="$(find -L "../$1/iso" -name '*.iso' | head -n1)"
+            (cd "$(dirname "$iso")" && sha256sum "$(basename "$iso")") | sed "s|  .*|  $2|" >> SHA256SUMS
+            split -b 1900M -d -a 2 "$iso" "$2.part-"
+            sha256sum "$2".part-* >> SHA256SUMS
+          }
+          name="nexusos-${TAG#v}-x86_64.iso"
+          slim="nexusos-${TAG#v}-slim-x86_64.iso"
+          publish result "$name"
+          publish result-slim "$slim"
+          cp ../scripts/release/get-nexusos.sh ../scripts/release/get-nexusos.ps1 ../scripts/release/Get-NexusOS.cmd ../scripts/release/Get-NexusOS-Slim.cmd .
           cat > README.txt <<EOF
           NexusOS ${TAG}: the installer image, in parts (GitHub limits each file to 2 GB).
+          Two images: $name carries the local AI model, so Nexus works straight away even
+          offline; $slim is smaller and downloads the model once the computer is online.
 
           The easy way: Get NexusOS downloads the parts, checks them and joins them for you.
-            Windows:        download Get-NexusOS.cmd and double-click it (the image goes to Downloads)
+            Windows:        download Get-NexusOS.cmd (or Get-NexusOS-Slim.cmd) and double-click it (the image goes to Downloads)
             Linux or Mac:   curl -fsSL https://raw.githubusercontent.com/TheMatthewWalker/NexusOS/main/scripts/release/get-nexusos.sh | sh
+                            (add  -s -- --slim  after sh for the slim image)
 
           By hand: download every part and SHA256SUMS into one folder, then join them:
             Linux or Mac:   cat $name.part-* > $name
             Windows:        copy /b $name.part-00 + $name.part-01 + ... $name
           Check it:         sha256sum -c SHA256SUMS --ignore-missing
-          Then write $name to a USB stick (docs/INSTALL.md).
+          The slim image's parts are $slim.part-*, joined the same way.
+          Then write the .iso to a USB stick (docs/INSTALL.md).
           EOF
           sed -i 's/^          //' README.txt
           ls -la
       - name: Publish the release
         run: |
-          gh release create "$TAG" dist/* --title "NexusOS ${TAG#v}" --target "$(git rev-parse HEAD)" \
+          # A tag with a suffix (v0.3.0-rc.1) is a pre-release: the testing channel only.
+          pre=""; case "$TAG" in *-*) pre="--prerelease" ;; esac
+          gh release create "$TAG" dist/* --title "NexusOS ${TAG#v}" --target "$(git rev-parse HEAD)" $pre \
             --notes-file scripts/release/notes.md
-      - name: Move the release branch to this commit (forward only)
-        run: git push origin "HEAD:refs/heads/release"
+      - name: Move the channel branches to this commit (forward only)
+        run: |
+          # Computers follow release (stable) or testing (Settings, Updates, Channel).
+          # A release goes to both; a pre-release to testing only. testing is left
+          # alone when it is already ahead with a newer pre-release.
+          case "$TAG" in
+            *-*) git push origin "HEAD:refs/heads/testing" ;;
+            *)   git push origin "HEAD:refs/heads/release"
+                 git push origin "HEAD:refs/heads/testing" || echo "testing is ahead of $TAG; left as it is" ;;
+          esac

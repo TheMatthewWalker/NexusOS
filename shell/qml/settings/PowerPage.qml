@@ -2,9 +2,12 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.UPower
 import "../lib/describe.mjs" as D
+import "../lib/power.mjs" as P
 
-// Settings, Power: the battery, the power mode (power-profiles-daemon) and
-// lock, log out, restart and shut down. Restart and shut down ask once more.
+// Settings, Power: the battery, the power mode (power-profiles-daemon), when
+// the screen turns off and the computer sleeps, what closing the lid does
+// (Idle.qml carries these out), and lock, log out, restart and shut down.
+// Restart and shut down ask once more.
 Column {
     id: page
     property var theme
@@ -20,8 +23,9 @@ Column {
         [UPowerDeviceState.PendingCharge]: "pending-charge", [UPowerDeviceState.PendingDischarge]: "pending-discharge"
     })[battery.state] || "unknown"
     property string confirm: ""        // "reboot" or "poweroff" while asking
+    readonly property var desktop: host.desktop
 
-    PageHeader { theme: page.theme; title: "Power"; summary: "Battery, power mode, and turning the computer off." }
+    PageHeader { theme: page.theme; title: "Power"; summary: "Battery, power mode, sleep and the lid, and turning the computer off." }
 
     SettingRow {
         theme: page.theme; label: "Battery"; highlighted: page.host.highlight === "battery"
@@ -43,6 +47,42 @@ Column {
         }
     }
     SettingRow {
+        theme: page.theme; label: "Screen off"; highlighted: page.host.highlight === "screenoff"
+        detail: "Turns the screen off when nothing has been touched for a while. Videos and calls keep it on."
+        Choice { theme: page.theme; name: "Screen off after"; current: page.desktop.screenOffMinutes
+                 options: P.options(P.SCREEN_OFF); onChose: v => page.desktop.set("screenOffMinutes", v) }
+    }
+    SettingRow {
+        theme: page.theme; label: "Sleep"; highlighted: page.host.highlight === "sleep"
+        detail: P.sleepDetail(page.desktop.sleepBatteryMinutes, page.desktop.sleepPluggedMinutes, UPower.onBattery, page.hasBattery)
+        Column {
+            spacing: 6
+            Row {
+                visible: page.hasBattery; spacing: 8
+                Text { width: 90; anchors.verticalCenter: parent.verticalCenter; text: "On battery"; color: page.theme.inkSecondary; font.pixelSize: 12 }
+                Choice { theme: page.theme; name: "Sleep on battery after"; current: page.desktop.sleepBatteryMinutes
+                         options: P.options(P.SLEEP); onChose: v => page.desktop.set("sleepBatteryMinutes", v) }
+            }
+            Row {
+                spacing: 8
+                Text { width: 90; anchors.verticalCenter: parent.verticalCenter; text: page.hasBattery ? "Plugged in" : "After"
+                       color: page.theme.inkSecondary; font.pixelSize: 12 }
+                Choice { theme: page.theme; name: "Sleep plugged in after"; current: page.desktop.sleepPluggedMinutes
+                         options: P.options(P.SLEEP); onChose: v => page.desktop.set("sleepPluggedMinutes", v) }
+            }
+        }
+    }
+    SettingRow {
+        visible: page.hasBattery
+        theme: page.theme; label: "Closing the lid"; highlighted: page.host.highlight === "lid"
+        detail: page.desktop.lidAction === "nothing"
+            ? "Nothing happens: useful with a screen, keyboard and mouse plugged in. It keeps running in a bag too, so take care."
+            : page.desktop.lidAction === "lock" ? "The screen locks and the computer keeps running."
+            : "The computer sleeps, and the screen is locked when you open it."
+        Choice { theme: page.theme; name: "When the lid closes"; current: page.desktop.lidAction
+                 options: P.LID.map(a => ({ value: a, label: P.lidLabel(a) })); onChose: v => page.desktop.set("lidAction", v) }
+    }
+    SettingRow {
         theme: page.theme; label: "Session"; highlighted: page.host.highlight === "session"
         detail: page.confirm === "reboot" ? "Restart now? Unsaved work in open apps is lost."
               : page.confirm === "poweroff" ? "Shut down now? Unsaved work in open apps is lost."
@@ -51,6 +91,7 @@ Column {
             spacing: 8
             Button { theme: page.theme; visible: page.confirm === ""; label: "Lock"; onClicked: page.host.lock() }
             Button { theme: page.theme; visible: page.confirm === ""; label: "Log out"; onClicked: page.host.hypr(["dispatch", "exit"]) }
+            Button { theme: page.theme; visible: page.confirm === ""; label: "Sleep"; onClicked: Quickshell.execDetached(["systemctl", "suspend"]) }
             Button { theme: page.theme; visible: page.confirm === ""; label: "Restart"; onClicked: page.confirm = "reboot" }
             Button { theme: page.theme; visible: page.confirm === ""; danger: true; label: "Shut down"; onClicked: page.confirm = "poweroff" }
             Button { theme: page.theme; visible: page.confirm !== ""; label: "Cancel"; onClicked: page.confirm = "" }

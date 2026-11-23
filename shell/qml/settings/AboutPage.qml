@@ -2,8 +2,12 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../lib/describe.mjs" as D
+import "../lib/secureboot.mjs" as SB
 
-// Settings, About: this computer and its storage. Read-only.
+// Settings, About: this computer and its storage. Secure Boot is turned on
+// here in steps (scripts/boot/nexus_secure_boot.py): a Guardian change, the
+// firmware's Setup Mode, putting the keys in (root, through pkexec), and
+// switching it on in the firmware.
 Column {
     id: page
     property var theme
@@ -50,7 +54,7 @@ Column {
     SettingRow {
         theme: page.theme; label: "Storage"; highlighted: page.host.highlight === "storage"
         detail: D.disk(page.volumes)
-        Button { theme: page.theme; visible: D.diskLow(page.volumes); label: "Show biggest files"; onClicked: page.host.openFolder(Quickshell.env("HOME")) }
+        Button { theme: page.theme; label: "Manage storage"; onClicked: page.host.open("storage", "") }
     }
     SettingRow { theme: page.theme; label: "Kernel"; detail: page.info.kernel || "…" }
     SettingRow {
@@ -66,5 +70,26 @@ Column {
     SettingRow {
         theme: page.theme; label: "Earlier versions"; highlighted: page.host.highlight === "generations"
         detail: "Every system change makes a new version. If an update breaks something, restart and choose an earlier one in the boot menu."
+    }
+
+    property var secureBoot: null
+    property string secureBootMessage: ""
+    Process { id: sbStatus; running: true; command: ["nexus-secure-boot"]
+              stdout: StdioCollector { onStreamFinished: page.secureBoot = SB.parse(text) } }
+    Process {
+        id: sbEnroll
+        command: [Quickshell.env("NEXUS_PKEXEC") || "/run/wrappers/bin/pkexec", "/run/current-system/sw/bin/nexus-secure-boot-enroll"]
+        stdout: StdioCollector { id: sbOut }
+        onExited: code => { let r = {}; try { r = JSON.parse(sbOut.text || "{}") } catch (e) {} page.secureBootMessage = r.error || r.message || (code ? "Not done." : ""); sbStatus.running = true }
+    }
+    SettingRow {
+        theme: page.theme; label: "Secure Boot"; highlighted: page.host.highlight === "secureboot"
+        detail: SB.step(page.secureBoot).detail + (page.secureBootMessage ? "\n" + page.secureBootMessage : "")
+        Button { visible: SB.step(page.secureBoot).action === "propose"; theme: page.theme; label: "Turn on…"
+                 onClicked: page.host.proposeSystem(SB.PLAN) }
+        Button { visible: SB.step(page.secureBoot).action === "firmware"; theme: page.theme; label: "Restart into firmware settings"
+                 onClicked: Quickshell.execDetached(["systemctl", "reboot", "--firmware-setup"]) }
+        Button { visible: SB.step(page.secureBoot).action === "enroll"; theme: page.theme; label: sbEnroll.running ? "Working…" : "Put the keys in"
+                 onClicked: if (!sbEnroll.running) sbEnroll.running = true }
     }
 }

@@ -41,6 +41,14 @@ HASH = re.compile(r"[0-9a-f]{64}\Z")
 REV = re.compile(r"[0-9a-f]{40}\Z")
 OWNER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}\Z")
 BRANCH = re.compile(r"nixos-[0-9]{2}\.[0-9]{2}\Z")
+# NexusOS's update channels: the branches of its repository an installed
+# computer may follow (Settings, Updates). Moving between them is a NexusOS
+# update like any other: forward only, built, tested and approved.
+CHANNELS = {"stable": "release", "testing": "testing"}
+CHANNEL_FILE = "nexusos-channel"          # in /etc/nixos: "stable" or "testing", written by nexus-update-channel
+# The line nexus-install writes in /etc/nixos/flake.nix for a computer that follows a release.
+FLAKE_URL = re.compile(r'^([ \t]*inputs\.nexusos\.url = ")github:([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)(";[ \t]*)$',
+                       re.MULTILINE)
 PACKAGE = re.compile(r"[A-Za-z0-9+._-]{1,100}\Z")
 VERSION = re.compile(r"[A-Za-z0-9+._~, -]{0,100}\Z")
 MAX_LISTED = 16
@@ -185,7 +193,11 @@ def _nexus_moved(old, new, nexus):
     if before is None or after is None:
         raise UpdateError("NexusOS changed, but this computer does not follow a NexusOS release")
     if before[0] != after[0] or before_node.get("original") != after_node.get("original"):
-        raise UpdateError("The update changes where NexusOS comes from")
+        # Only a move between NexusOS's own channels, in the same repository.
+        was, now = before_node["original"], after_node["original"]
+        if (was["owner"], was["repo"]) != (now["owner"], now["repo"]) \
+                or was["ref"] not in CHANNELS.values() or now["ref"] not in CHANNELS.values():
+            raise UpdateError("The update changes where NexusOS comes from")
     if after[1]["lastModified"] <= before[1]["lastModified"]:
         raise UpdateError("The update would go back to an older NexusOS")
     old_name, new_name = _nixpkgs_name(old), _nixpkgs_name(new)
@@ -194,7 +206,41 @@ def _nexus_moved(old, new, nexus):
     if not isinstance(branch, str) or BRANCH.fullmatch(branch) is None:
         raise UpdateError("NexusOS's nixpkgs is not on a NixOS release branch")
     return {"nixpkgs": {"branch": branch, "before": was, "after": now},
-            "nexusos": {"source": before[0], "before": before[1], "after": after[1]}}
+            "nexusos": {"source": after[0], "before": before[1], "after": after[1]}}
+
+
+# --- channels ---------------------------------------------------------------
+def wanted_channel(host_dir=HOST_FLAKE_DIR):
+    """The branch the person chose to follow (Settings, Updates): CHANNELS' value; stable unless they chose testing."""
+    try:
+        name = (Path(host_dir) / CHANNEL_FILE).read_text().strip()
+    except OSError:
+        name = "stable"
+    return CHANNELS.get(name, CHANNELS["stable"])
+
+
+def set_flake_branch(text, ref):
+    """/etc/nixos/flake.nix with NexusOS's input on branch ref, or UpdateError. Text without the line is left as it is."""
+    if ref not in CHANNELS.values():
+        raise UpdateError("Not a NexusOS channel")
+    found = FLAKE_URL.findall(text)
+    if not found:
+        return text
+    if len(found) != 1 or found[0][3] not in CHANNELS.values():
+        raise UpdateError("This computer's flake.nix does not have the NexusOS input in the expected form")
+    return FLAKE_URL.sub(lambda m: f"{m.group(1)}github:{m.group(2)}/{m.group(3)}/{ref}{m.group(5)}", text)
+
+
+def sync_flake(text, lock_bytes):
+    """flake.nix following the branch the lock's NexusOS comes from (a no-op unless a channel moved)."""
+    try:
+        lock = json.loads(lock_bytes)
+        found = release(lock["nodes"][_nexus_name(lock)])
+    except (ValueError, KeyError, TypeError):
+        raise UpdateError("A lock file is not valid JSON") from None
+    if found is None:
+        return text
+    return set_flake_branch(text, found[0].rsplit("/", 1)[1])
 
 
 # --- the update waiting -----------------------------------------------------
@@ -319,6 +365,13 @@ def install_lock(staged, lock_hash, previous_hash, host_dir=HOST_FLAKE_DIR):
     target = Path(host_dir) / "flake.lock"
     if sha256(target.read_bytes()) != previous_hash:
         return "skipped"
+    # A move to another channel: flake.nix names the branch the lock now follows.
+    flake = Path(host_dir) / "flake.nix"
+    if flake.exists():
+        text = flake.read_text()
+        synced = sync_flake(text, data)
+        if synced != text:
+            write_file(flake, synced.encode(), 0o644)
     write_file(target, data, 0o644)
     return "installed"
 

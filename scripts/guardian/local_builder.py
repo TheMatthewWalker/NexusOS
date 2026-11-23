@@ -406,6 +406,12 @@ class LocalBuilder:
         shutil.rmtree(copy, ignore_errors=True)
         shutil.copytree(self.host_flake_dir, copy, symlinks=True)
         system_update.write_file(copy / "flake.lock", lock)
+        # A move to another channel: flake.nix follows the lock's branch, as it will once installed.
+        if (copy / "flake.nix").exists():
+            text = (copy / "flake.nix").read_text()
+            synced = system_update.sync_flake(text, lock)
+            if synced != text:
+                system_update.write_file(copy / "flake.nix", synced.encode(), 0o644)
 
     def _update_summary(self, update, baseline, toplevel):
         """The signed update record: the lock, the nixpkgs revisions and the package versions that change."""

@@ -1,10 +1,14 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../lib/displays.mjs" as D
 
 // Settings, Display: brightness (brightnessctl, for built-in screens), night
 // light (hyprsunset) and the screen scale. Scale and night light are kept in
 // desktop.json (DesktopSettings.qml) and come back at every login.
+// Screens: with more than one, where each goes (lib/displays.mjs), its
+// resolution and scale. A change is undone after 15 seconds unless it is
+// kept, so a screen that shows nothing never leaves you stuck.
 Column {
     id: page
     property var theme
@@ -35,6 +39,24 @@ Column {
         setBrightness.running = true;
     }
 
+    // The arrangement being tried, and the one to go back to.
+    readonly property var layout: { try { return JSON.parse(desktop.monitorLayout || "{}") } catch (e) { return {} } }
+    property string previous: ""
+    property int countdown: 0
+    function changeScreen(m, field, value) {
+        const next = JSON.stringify(D.change(layout, desktop.monitors, m, field, value));
+        if (next === desktop.monitorLayout) return;
+        if (countdown === 0) previous = desktop.monitorLayout;
+        countdown = 15;
+        desktop.set("monitorLayout", next);
+    }
+    function keep() { countdown = 0; previous = "" }
+    function revert() { countdown = 0; if (previous !== "") desktop.set("monitorLayout", previous); previous = "" }
+    Timer { interval: 1000; repeat: true; running: page.countdown > 0
+            onTriggered: { page.countdown -= 1; if (page.countdown === 0) page.revert() } }
+    Component.onCompleted: desktop.readMonitors()
+    Component.onDestruction: if (countdown > 0) revert()
+
     PageHeader { theme: page.theme; title: "Display"; summary: Quickshell.screens.map(s => s.name + " · " + s.width + " × " + s.height).join(", ") }
 
     SettingRow {
@@ -63,5 +85,56 @@ Column {
         Choice { theme: page.theme; name: "Scale"; current: page.desktop.scale
                  options: [1, 1.25, 1.5, 1.75, 2].map(v => ({ value: v, label: Math.round(v * 100) + "%" }))
                  onChose: v => page.desktop.set("scale", v) }
+    }
+
+    SettingRow {
+        visible: page.countdown > 0
+        theme: page.theme; label: "Keep this arrangement?"
+        detail: "Going back to the one before in " + page.countdown + " seconds."
+        Button { theme: page.theme; label: "Keep"; onClicked: page.keep() }
+        Button { theme: page.theme; label: "Go back"; onClicked: page.revert() }
+    }
+    SettingRow {
+        visible: page.desktop.monitors.length > 1
+        theme: page.theme; label: "Screens"; highlighted: page.host.highlight === "screens"
+        detail: "Where each screen is, around the main one. Remembered for each screen, so it comes back when you plug it in again."
+    }
+    Repeater {
+        model: page.desktop.monitors.length > 1 ? page.desktop.monitors : []
+        delegate: Rectangle {
+            id: screenCard
+            required property var modelData
+            readonly property bool isMain: D.main(page.desktop.monitors, page.layout).key === modelData.key
+            readonly property string place: isMain ? "main" : (D.current(page.layout, modelData, "place") || "right")
+            width: page.width; radius: 12
+            height: screenColumn.height + 24
+            color: page.theme.chip
+            border.color: isMain ? page.theme.focus : "transparent"
+            Column {
+                id: screenColumn
+                x: 16; y: 12; width: parent.width - 32; spacing: 8
+                Text { text: modelData.label + (modelData.builtIn ? " (built in)" : "") + (isMain ? " · main" : "")
+                       color: page.theme.ink; font.pixelSize: 14; textFormat: Text.PlainText }
+                Choice {
+                    theme: page.theme; name: modelData.label + " position"; current: screenCard.place
+                    options: D.PLACES.map(p => ({ value: p, label: D.placeLabel(p) }))
+                    onChose: v => page.changeScreen(modelData, "place", v)
+                }
+                Choice {
+                    visible: screenCard.place !== "off" && modelData.modes.length > 1
+                    theme: page.theme; name: modelData.label + " resolution"
+                    current: D.current(page.layout, modelData, "mode") || (modelData.modes[0] || {}).value
+                    options: modelData.modes
+                    onChose: v => page.changeScreen(modelData, "mode", v)
+                }
+                Choice {
+                    visible: screenCard.place !== "off"
+                    theme: page.theme; name: modelData.label + " scale"
+                    current: D.current(page.layout, modelData, "scale") || page.desktop.scale
+                    options: D.SCALES.map(v => ({ value: v, label: Math.round(v * 100) + "%" }))
+                    onChose: v => page.changeScreen(modelData, "scale", v)
+                }
+            }
+        }
     }
 }

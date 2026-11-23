@@ -1,0 +1,112 @@
+# NexusOS user guide
+
+This guide is also in NexusOS itself: **Settings, Help** (or ask Nexus). Each part says where to find things and what to press. Links that start with *Open* go straight to the right page in Settings when you read this on the computer.
+
+## Getting started
+
+NexusOS starts with the **login screen**: choose your name and type your password. If the disk is encrypted (the installer does that unless you said not to), your password is asked once more before that, to unlock the disk.
+
+The first time you log in, **Welcome** asks what you use the computer for (studying, office work, gaming, coding…) and suggests apps and settings to go with it. You can run it again later. [Open Welcome setup](settings:about/welcome)
+
+The **top bar** shows the time, the network, sound, battery and a bell for notifications. The glowing core in the middle of the screen is **Nexus**, the assistant: click it, or press **Super+Space** (Super is the Windows key).
+
+## Asking Nexus
+
+Press **Super+Space** and type what you want, in your own words: "make the text bigger", "open my budget spreadsheet", "why is there no sound?". Hold **Super+V** and speak instead, if you set up voice.
+
+Nexus runs on this computer: what you ask stays here unless you choose a cloud model in Settings, Privacy and AI. It can answer questions, find your files, open apps and change settings. When it wants to change something, it shows a card first and nothing happens until you press **Do it**. Anything that changes the system itself goes through **Guardian** (below) and needs your password.
+
+- **Super+Shift+/** explains what is on the screen.
+- **Super+S** searches your files by words or by meaning. [Open Search settings](settings:search/)
+- **Super+G** makes and edits pictures (Image Studio), on this computer.
+- **Super+C** opens Code, for programming projects.
+
+## Apps and windows
+
+Press **Super+A** for Apps: what is installed, and thousands more from Flathub, installed for you with one click and no password. Open windows orbit a small launcher; **Super+Tab** shows them all at once.
+
+| Keys | What they do |
+| --- | --- |
+| Super+Space | Nexus |
+| Super+A | Apps |
+| Super+E | Files |
+| Super+Return or Ctrl+Alt+T | Terminal |
+| Super+I | Settings |
+| Super+L | Lock the screen |
+| Super+Q | Close the window |
+| Super+F / Super+M | Full screen / maximise |
+| Alt+Shift | Next keyboard layout (when you have more than one) |
+| Super+Alt+S | Screen reader on or off |
+
+Windows float like on Windows or macOS; you can switch to tiled windows in Settings, Desktop. [Open Desktop](settings:desktop/windows)
+
+**Default apps** decide which app opens web links, email, folders, music, videos, pictures, text files and PDFs. [Open Default apps](settings:defaults/defaults)
+
+## Files from your old computer
+
+**Move in** copies documents, photos, music and videos from a Windows or Mac drive (or a backup folder) into your home folder. The old drive is only read, never changed. [Open Move in](settings:about/movein)
+
+## Wi-Fi, Bluetooth and printers
+
+Choose a Wi-Fi network from the top bar or Settings, Network. Bluetooth devices pair in Settings, Bluetooth.
+
+Printers and scanners on your network, or plugged in with USB, **appear by themselves** within a minute of switching them on. Settings, Printers shows them, sets the default and prints a test page; **Scan a document** opens the scanner app. [Open Printers](settings:printers/printers)
+
+## Screens, sound and power
+
+Settings, Display has brightness, night light and the scale (bigger text and windows). With **more than one screen**, each one can go left, right, above or below the main one, show the same picture, or be off, with its own resolution and scale. A change goes back by itself after 15 seconds unless you press Keep, so a screen that shows nothing never leaves you stuck. [Open Display](settings:display/screens)
+
+Settings, Power sets when the screen turns off, when the computer sleeps (on battery and plugged in), and what closing the lid does. The screen locks when the computer sleeps. [Open Power](settings:power/sleep)
+
+## Notifications
+
+App notifications appear at the top right and stay in the **notification centre** (the bell in the top bar) until you clear them. **Do not disturb** keeps them quiet: urgent ones still show. You can also ask Nexus to turn it on, or make an automation do it (for example, while a presentation is open). [Open Desktop](settings:desktop/donotdisturb)
+
+## Your account and other people
+
+Settings, Accounts changes your password. If the disk is encrypted, the disk's password changes with it, so you only ever have one. You can add accounts for other people (an administrator's password is asked) and remove them, keeping or removing their files. [Open Accounts](settings:accounts/password)
+
+## Language, formats and time zone
+
+Settings, Language and region sets your language, how dates, numbers and money are written, and your time zone; they take effect when you log in again. **Keyboard layouts** can be added there to type in more than one language: Alt+Shift switches between them. [Open Language and region](settings:language/language)
+
+## Backups
+
+Plug in a USB drive or an external disk, open Settings, Backups and choose **Set up backups**. NexusOS then backs up your home folder **once a day by itself** whenever the drive is plugged in, keeping each day for a week, each week for a month and each month for a year. Each backup only adds what changed.
+
+The backup is **encrypted** with a backup password, so the drive is safe to lose. Write the password down somewhere other than this computer: without it, the backup cannot be opened if the computer is lost.
+
+To get files back, choose a backup and what to bring back (Documents, Pictures… or everything). They are put in **Restored files** in your home folder; nothing you have now is changed. [Open Backups](settings:backups/backups)
+
+## Updates
+
+NexusOS updates itself safely. Guardian looks for updates every week; each one is **built and tested first**, then offered for you to approve with your password. It is used from the next restart. If that start goes wrong, the computer goes back to the version before by itself; you can also choose an earlier version in the start-up menu.
+
+Settings, Updates shows NexusOS's updates and lets you check now. The **channel** is Stable (tested releases) or Testing (new versions first, to help find problems). [Open Updates](settings:updates/system)
+
+**Firmware** (the computer's own BIOS/UEFI, docks, SSDs, some mice and keyboards) is updated from the makers through the Linux Vendor Firmware Service; a notice says when there is one, and Settings, Updates installs it. Keep the charger plugged in. [Open Firmware](settings:updates/firmware)
+
+## Storage
+
+Settings, Storage shows how full the disk is and what uses it. Emptying the trash, clearing apps' caches and removing system versions older than two weeks make room without touching your files. [Open Storage](settings:storage/storage)
+
+## Secure Boot
+
+Secure Boot makes the computer start only software signed with trusted keys. NexusOS uses keys made on your own computer. Turning it on takes a few steps, each explained in Settings, About: approve the change, clear the keys in the firmware settings (Setup Mode), put this computer's keys in, and switch Secure Boot on in the firmware. Microsoft's keys stay, so Windows still starts beside NexusOS. [Open Secure Boot](settings:about/secureboot)
+
+## Privacy
+
+Everything Nexus does stays on this computer unless you choose otherwise. Settings, Privacy and AI shows what Nexus remembers, how long, and which model answers; a cloud model is used only if you add one. The **Timeline** lists every change Nexus or you made, and most can be undone from there. [Open Privacy and AI](settings:privacy/notes)
+
+## When something goes wrong
+
+- **Fix it**: Settings, Health checks the computer (disk, updates, network, sound, battery) and each problem has a Fix it button. You can also tell Nexus what is wrong. [Open Health](settings:health/)
+- **An app stopped**: turn on **Crash notices** in Settings, Feedback to be told when an app crashes.
+- **Tell the NexusOS project**: Settings, Feedback writes a report of the problem or idea. You see all of it first; sending opens it on GitHub, where you can still change it. Nothing is sent by itself. [Open Feedback](settings:feedback/report)
+- **The computer does not start properly after an update**: restart and choose an earlier version in the start-up menu.
+
+## Where to learn more
+
+- Installing: [INSTALL.md](https://github.com/TheMatthewWalker/NexusOS/blob/main/docs/INSTALL.md)
+- How NexusOS works: [ARCHITECTURE.md](https://github.com/TheMatthewWalker/NexusOS/blob/main/docs/ARCHITECTURE.md)
+- Everything is open source: [github.com/TheMatthewWalker/NexusOS](https://github.com/TheMatthewWalker/NexusOS)

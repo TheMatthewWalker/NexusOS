@@ -2,6 +2,8 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import "lib/region.mjs" as R
+import "lib/displays.mjs" as Mon
 
 // The person's desktop choices from Settings, kept in
 // ~/.config/nexusos/desktop.json and applied to Hyprland at run time with
@@ -26,6 +28,16 @@ Item {
     property alias warmth: store.warmth
     property alias highContrast: store.highContrast
     property alias cursorSize: store.cursorSize
+    property alias doNotDisturb: store.doNotDisturb
+    property alias screenOffMinutes: store.screenOffMinutes
+    property alias sleepBatteryMinutes: store.sleepBatteryMinutes
+    property alias sleepPluggedMinutes: store.sleepPluggedMinutes
+    property alias lidAction: store.lidAction
+    property alias keyboardLayouts: store.keyboardLayouts
+    property alias monitorLayout: store.monitorLayout
+    property alias crashNotices: store.crashNotices
+    property var monitors: []            // the screens connected now (hyprctl monitors all -j), for Settings, Display
+    readonly property string baseLayout: Quickshell.env("NEXUS_KEYBOARD_LAYOUT") || "us"
     // False while game mode has blur and animations off, so applying settings does not undo it.
     property bool gameMode: false
     // Each change goes in the activity journal with its old value, so the Timeline can undo it.
@@ -40,6 +52,14 @@ Item {
         case "warmth": return "Night light warmth " + value + " K";
         case "highContrast": return "High contrast " + (value ? "on" : "off");
         case "cursorSize": return "Pointer size " + value;
+        case "doNotDisturb": return "Do not disturb " + (value ? "on" : "off");
+        case "screenOffMinutes": return "Screen off after " + (value ? value + " minutes" : "never");
+        case "sleepBatteryMinutes": return "Sleep on battery after " + (value ? value + " minutes" : "never");
+        case "sleepPluggedMinutes": return "Sleep plugged in after " + (value ? value + " minutes" : "never");
+        case "keyboardLayouts": return "Keyboard layouts: " + [baseLayout].concat(value ? value.split(",") : []).join(", ");
+        case "monitorLayout": return "Screen arrangement";
+        case "crashNotices": return "Crash notices " + (value ? "on" : "off");
+        case "lidAction": return "Closing the lid: " + ({ sleep: "sleep", lock: "lock the screen", nothing: "do nothing" })[value];
         default: return key;
         }
     }
@@ -54,7 +74,9 @@ Item {
         store[key] = value;
         file.writeAdapter();
         if (key === "windows") applyWindows(wasTiling);
-        else apply();
+        else if (key === "keyboardLayouts" && !value) run(["keyword", "input:kb_layout", baseLayout]);
+        else if (key === "monitorLayout") readMonitors();
+        else { apply(); if (key === "scale") readMonitors() }
     }
 
     FileView {
@@ -75,6 +97,14 @@ Item {
             property int warmth: 4500
             property bool highContrast: false
             property int cursorSize: 24
+            property bool doNotDisturb: false
+            property int screenOffMinutes: 5
+            property int sleepBatteryMinutes: 15
+            property int sleepPluggedMinutes: 30
+            property string lidAction: "sleep"
+            property string keyboardLayouts: ""    // extra XKB layouts, "fr,de"; Alt+Shift switches
+            property string monitorLayout: "{}"    // lib/displays.mjs: where each screen goes, its mode and scale
+            property bool crashNotices: false      // say when an app crashes (CrashWatcher.qml); off until chosen
         }
     }
 
@@ -100,6 +130,8 @@ Item {
             k.push("keyword animations:enabled " + store.animations);
         }
         if (store.scale !== 1) k.push("keyword monitor ,preferred,auto," + store.scale);
+        const kb = R.keyboard(baseLayout, store.keyboardLayouts);
+        if (kb) k.push("keyword input:kb_layout " + kb.layout, "keyword input:kb_options " + kb.options);
         return k;
     }
     function apply() { run(["--batch", keywords().join(" ; ")]) }
@@ -116,12 +148,33 @@ Item {
             run(["dispatch", (floating ? "setfloating" : "settiled") + " address:" + address]);
         }
     }
+    // Screens: read what is connected, then apply the arrangement. Again
+    // whenever a screen is plugged in or out.
+    Process {
+        id: monitorReader
+        command: [desktop.hyprctl, "monitors", "all", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                desktop.monitors = Mon.parse(text);
+                let layout = {};
+                try { layout = JSON.parse(store.monitorLayout || "{}") } catch (e) {}
+                if (desktop.monitors.length < 2 && Object.keys(layout).length === 0) return;
+                const r = Mon.rules(desktop.monitors, layout, store.scale);
+                if (r.length) desktop.run(["--batch", r.map(x => "keyword " + x).join(" ; ")]);
+            }
+        }
+    }
+    function readMonitors() { if (!monitorReader.running) monitorReader.running = true; else monitorAgain.restart() }
+    Timer { id: monitorAgain; interval: 600; onTriggered: desktop.readMonitors() }
+    Connections { target: Quickshell; function onScreensChanged() { monitorAgain.restart() } }
+
     property bool applied: false
     function applyAll() {
         if (applied) return;
         applied = true;
         run(["--batch", (store.windows === "floating" ? [floatRules] : []).concat(keywords()).join(" ; ")]);
         if (store.cursorSize !== 24) run(["setcursor", "Adwaita", String(store.cursorSize)]);
+        readMonitors();
     }
 
     // Night light: hyprsunset runs while it is on; changing the warmth restarts it.

@@ -117,6 +117,7 @@ NexusWindow {
     // What the search box finds: [page, highlight id, label, words people might type].
     readonly property var index: [
         ["network", "vpn", "VPN", "vpn openvpn wireguard tunnel privacy work remote"],
+        ["network", "hotspot", "Mobile hotspot", "hotspot tethering share internet wifi phone"],
         ["network", "advanced", "Work, school and company networks", "eduroam enterprise 802.1x certificate anyconnect cisco globalprotect fortinet company vpn"],
         ["network", "shares", "Shared folders", "share shared folder network drive nas smb samba windows server map drive"],
         ["network", "phone", "Your phone", "phone android iphone kde connect files texts sms notifications"],
@@ -125,6 +126,7 @@ NexusWindow {
         ["network", "advanced", "VPN and work networks", "vpn eduroam enterprise certificate nmtui proxy"],
         ["bluetooth", "bluetooth", "Bluetooth", "bluetooth headphones earbuds mouse keyboard pair speaker"],
         ["sound", "volume", "Volume", "volume sound audio speaker loud quiet mute"],
+        ["sound", "apps", "Each app's volume", "app volume mixer per app volume quieter louder music game browser"],
         ["sound", "output", "Output device", "headphones speakers output hdmi device"],
         ["sound", "microphone", "Microphone", "microphone mic input record"],
         ["display", "screens", "Screens", "screens monitors multiple second external monitor arrange position extend mirror duplicate projector resolution refresh rate"],

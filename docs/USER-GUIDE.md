@@ -33,6 +33,7 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 | Super+Left / Right | Snap the window to that half of the screen |
 | Super+Up / Down | Maximise the window / put it back |
 | Super+Shift+S | Screenshot of an area (Print: the whole screen; Alt+Print: the window) |
+| Super+Shift+T | Copy the text in an area of the screen (read on this computer) |
 | Super+Alt+R | Record the screen, with its sound (Super+Shift+R: an area); press again to stop. Saved in Videos, Screen recordings |
 | Ctrl+Shift+Esc | Task manager: what is running, how busy the processor, memory, disk and graphics are, and End task for an app that has stopped responding |
 | Super+Shift+V | Clipboard history: paste something you copied earlier |
@@ -57,6 +58,8 @@ Apps are dark, like the desktop; Settings, Desktop switches them to light. [Open
 Windows float like on Windows or macOS; you can switch to tiled windows in Settings, Desktop. [Open Desktop](settings:desktop/windows)
 
 **Web apps**: Apps, Web apps turns a website into an app with its own window, in All apps and Alt+Tab: Outlook, Teams, Microsoft 365, Google Docs, WhatsApp and others are suggested, or type any address. You stay signed in, as in Chromium. You can also ask Nexus: "make Outlook an app".
+
+**Netflix, Disney+ and Spotify** play in Firefox straight away. Netflix sends Linux computers at most 720p, whichever browser is used; that is Netflix's choice, not NexusOS's.
 
 **Default apps** decide which app opens web links, email, folders, music, videos, pictures, text files and PDFs. [Open Default apps](settings:defaults/defaults)
 
@@ -86,7 +89,7 @@ For games, get Steam (most Windows games work through its Proton), and Heroic fo
 
 ## Wi-Fi, Bluetooth and printers
 
-Choose a Wi-Fi network from the top bar or Settings, Network. Bluetooth devices pair in Settings, Bluetooth.
+Choose a Wi-Fi network from the top bar or Settings, Network. **Mobile hotspot** there shares this computer's internet with a phone or another computer over Wi-Fi, and shows the name and password to connect with. Bluetooth devices pair in Settings, Bluetooth.
 
 Printers and scanners on your network, or plugged in with USB, **appear by themselves** within a minute of switching them on. Settings, Printers shows them, sets the default and prints a test page; **Scan a document** opens the scanner app. [Open Printers](settings:printers/printers)
 
@@ -100,7 +103,7 @@ Turn Bluetooth on and pair devices in Settings, Bluetooth. Passwords you save in
 
 ## Screens, sound and power
 
-Settings, Display has brightness, night light and the scale (bigger text and windows). With **more than one screen**, each one can go left, right, above or below the main one, show the same picture, or be off, with its own resolution and scale. A change goes back by itself after 15 seconds unless you press Keep, so a screen that shows nothing never leaves you stuck. [Open Display](settings:display/screens)
+Settings, Sound has the volume, the output device and the microphone, and **each app's own volume** while it plays, as Windows' volume mixer. Settings, Display has brightness, night light and the scale (bigger text and windows). With **more than one screen**, each one can go left, right, above or below the main one, show the same picture, or be off, with its own resolution and scale. A change goes back by itself after 15 seconds unless you press Keep, so a screen that shows nothing never leaves you stuck. [Open Display](settings:display/screens)
 
 Settings, Power sets when the screen turns off, when the computer sleeps (on battery and plugged in), and what closing the lid does. The screen locks when the computer sleeps. On laptops whose firmware allows it, **Battery care** stops charging at 80%, which keeps the battery healthy for longer if it is mostly plugged in. [Open Power](settings:power/sleep)
 

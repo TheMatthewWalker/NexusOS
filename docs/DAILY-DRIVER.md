@@ -51,13 +51,13 @@ the owner agrees it is ready.**
 | Taskbar-like view of open apps; Alt+Tab | P1 | ✅ | Alt+Tab shows the windows while Alt is held (0.4); Super+Tab the overview |
 | System tray icons (Steam, Discord, Nextcloud, VPN apps) | P1 | ✅ | Top bar, with menus (0.3) |
 | Media controls (play/pause/next, now playing) from any app | P2 | ✅ | Media keys (0.2); now playing in the top bar (0.3) |
-| Per-app volume and output device | P2 | 🔍 | Settings, Sound |
+| Per-app volume and output device | P2 | 🟡 | Each app's volume in Settings, Sound (0.6); per-app output device to add |
 | Screenshots: whole screen, window, area; Super+Shift+S like Windows | P1 | ✅ | Super+Shift+S, Print, Alt+Print; copied and saved (0.2) |
 | Screen recording | P2 | ✅ | Super+Alt+R, with sound (0.4); OBS on Flathub |
 | Clipboard history (Super+V on Windows) | P2 | ✅ | Super+Shift+V (Super+V is push-to-talk) (0.3) |
 | Emoji and symbol picker (Super+. on Windows) | P2 | ✅ | Super+. (0.3) |
 | Windows-like shortcuts: Super+D show desktop, Super+E files, Ctrl+Shift+Esc task manager, Super+arrows snap | P1 | ✅ | (0.2, 0.3) |
-| Keyboard shortcuts page (see and change them) | P2 | ⬜ | |
+| Keyboard shortcuts page (see and change them) | P2 | 🟡 | All listed in Settings, Help; changing them to add |
 | Light and dark mode, followed by GTK, Qt and Flatpak apps | P1 | 🟡 | GTK 3/4, libadwaita and Qt dark by default, GTK light or dark in Settings (0.4); Qt stays dark; check Flatpak GTK 3 apps |
 | Fonts: good defaults, Microsoft-compatible metrics (Carlito, Caladea, Liberation), emoji, CJK | P1 | ✅ | (0.2) |
 | Icon theme, cursor theme, sound theme consistent | P2 | 🟡 | |
@@ -88,7 +88,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Browsers (Firefox, Chromium) | P1 | ✅ | |
-| DRM video (Netflix, Spotify web): Widevine | P1 | 🔍 | Firefox downloads it; Chromium needs it built in |
+| DRM video (Netflix, Spotify web): Widevine | P1 | 🟡 | Firefox allows it by policy, no prompt (0.5); Netflix itself limits Linux to 720p; Chromium has none |
 | Password keyring (Secret Service) for browsers and apps | P1 | ✅ | gnome-keyring unlocked at login, follows password changes, Seahorse (0.2) |
 | Email, calendar and contacts (Thunderbird), with Microsoft 365 and Google | P1 | ✅ | Thunderbird preinstalled, opens mail links; signs in itself (0.4) |
 | Online accounts (sign in to Google, Microsoft once for mail, calendar, files) | P2 | 🟡 | Mail and calendar sign in in Thunderbird, files in Cloud drives; one sign-in for both is later |
@@ -96,7 +96,7 @@ the owner agrees it is ready.**
 | Chat apps (WhatsApp, Discord, Slack, Signal, Telegram) | P2 | 🟡 | Flathub; offered in Welcome bundles |
 | VPN: WireGuard, OpenVPN, corporate (Cisco AnyConnect, GlobalProtect, Fortinet) | P1 | ✅ | Settings, Network: from a file, or the connection editor (0.3) |
 | Work and school Wi-Fi (802.1X, eduroam) in Settings | P1 | ✅ | The connection editor from Settings (0.3) |
-| Wi-Fi hotspot | P3 | ⬜ | |
+| Wi-Fi hotspot | P3 | ✅ | Settings, Network (0.6) |
 | Proxy settings | P3 | ⬜ | |
 | Install a website as an app (PWA) | P2 | ✅ | Apps, Web apps, or ask Nexus (0.4) |
 
@@ -109,7 +109,7 @@ the owner agrees it is ready.**
 | Microsoft 365 / Google Docs in the browser, as apps | P1 | ✅ | Suggested in Apps, Web apps (0.4) |
 | PDF: read, fill forms, sign, annotate, merge | P1 | ✅ | Papers reads and fills forms; PDF Arranger merges and splits; Xournal++ annotates and signs (0.4) |
 | Notes, to-do, calendar apps | P2 | 🟡 | Calendar and tasks in Thunderbird; notes apps on Flathub |
-| Text recognition (OCR) for scans and screenshots | P3 | ⬜ | Tesseract; local AI |
+| Text recognition (OCR) for scans and screenshots | P3 | ✅ | Super+Shift+T copies the text in an area, on this computer (0.6) |
 | Spell checking in many languages | P2 | ✅ | hunspell dictionaries for the installer's languages, in LibreOffice and Firefox (0.4) |
 
 ## 6. Media and creative

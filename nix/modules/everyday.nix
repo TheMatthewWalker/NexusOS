@@ -37,6 +37,14 @@ let
     runtimeInputs = with pkgs; [ wf-recorder slurp jq libnotify xdg-user-dirs coreutils config.programs.hyprland.package ];
     text = builtins.readFile ../../scripts/desktop/nexus-record.sh;
   };
+  # Tesseract for the installer's languages only (all of them would be ~700 MB).
+  tesseract = pkgs.tesseract.override { enableLanguages = [ "eng" "deu" "fra" "spa" "ita" "por" "nld" "dan" "swe" "nor" "fin" "pol"
+    "ces" "slk" "hun" "ron" "hrv" "ell" "rus" "ukr" "tur" "heb" "ara" "hin" "jpn" "kor" "chi_sim" ]; };
+  ocr = pkgs.writeShellApplication {
+    name = "nexus-ocr";
+    runtimeInputs = with pkgs; [ grim slurp wl-clipboard libnotify coreutils gnused ] ++ [ tesseract ];
+    text = builtins.readFile ../../scripts/desktop/nexus-ocr.sh;
+  };
   windows = pkgs.writeShellApplication {
     name = "nexus-windows";
     runtimeInputs = with pkgs; [ systemd gnugrep coreutils libnotify zenity ];
@@ -88,7 +96,7 @@ in
                                    pkgs.cliphist pkgs.wtype pkgs.wl-clipboard
                                    pkgs.networkmanagerapplet pkgs.zenity pkgs.wireguard-tools
                                    pkgs.p7zip pkgs.unar pkgs.adw-gtk3 pkgs.adwaita-qt pkgs.adwaita-qt6 pkgs.dconf
-                                   record startup permissions windows pkgs.libva-utils pkgs.git-credential-manager ];
+                                   record startup permissions windows ocr pkgs.libva-utils pkgs.git-credential-manager ];
 
     # The computer starts NexusOS straight away: no start-up menu (holding
     # Space while it starts shows it, for an earlier NexusOS version). Windows,

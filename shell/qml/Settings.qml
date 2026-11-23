@@ -140,6 +140,7 @@ NexusWindow {
         ["mouse", "scrollspeed", "Scrolling speed", "touchpad scroll speed"],
         ["mouse", "gestures", "Gestures", "touchpad gestures swipe three fingers workspaces"],
         ["power", "battery", "Battery", "battery charge charging time left"],
+        ["power", "batterycare", "Battery care", "battery health care charge limit 80 percent charging threshold"],
         ["power", "powermode", "Power mode", "power mode performance saver balanced fan"],
         ["power", "screenoff", "Screen off", "screen off blank display timeout idle"],
         ["power", "sleep", "Sleep", "sleep suspend idle standby battery plugged timeout"],

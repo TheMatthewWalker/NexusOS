@@ -31,7 +31,7 @@ the owner agrees it is ready.**
 | Touchscreen, screen rotation on convertibles, on-screen keyboard | P3 | ⬜ | iio-sensor-proxy, squeekboard/wvkbd |
 | Graphics tablets and pens (Wacom) | P3 | ⬜ | libwacom, Settings |
 | Thunderbolt devices and docks authorised (bolt) | P2 | ✅ | bolt (0.4) |
-| Battery charge limit (80%) for laptop battery health | P2 | ⬜ | Where firmware supports it |
+| Battery charge limit (80%) for laptop battery health | P2 | ✅ | Settings, Power, through Guardian, where the firmware allows (0.5) |
 | Hibernate (suspend to disk) | P3 | ⬜ | Needs swap sized to RAM, resume from an encrypted disk |
 | Power profiles (performance / balanced / saver) | P1 | ✅ | Settings, Power |
 | Sleep, screen off, lid | P1 | ✅ | |

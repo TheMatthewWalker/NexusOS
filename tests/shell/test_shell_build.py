@@ -1091,6 +1091,15 @@ class ShellBuild(unittest.TestCase):
         page = (self.out / "settings/RegionPage.qml").read_text()
         self.assertIn('onChose: v => page.choose("input", v)', page)
 
+    def test_battery_care_is_a_guardian_change(self):
+        import json as _j
+        self.assertIn("nexusos.power.chargeLimit.enable", _j.loads((ROOT / "schema/guardian-options.json").read_text())["options"])
+        battery = (ROOT / "nix/modules/battery.nix").read_text()
+        self.assertIn('ATTR{charge_control_end_threshold}="80"', battery)
+        self.assertIn("../modules/battery.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.assertIn("page.host.proposeSystem(P.chargeLimitPlan(", (self.out / "settings/PowerPage.qml").read_text())
+        self.run_node_test("power.test.mjs")
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

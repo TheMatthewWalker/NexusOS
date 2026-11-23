@@ -33,3 +33,14 @@ export function sleepSignal(line) {
   const m = /org\.freedesktop\.login1\.Manager\.PrepareForSleep \((true|false),?\)/.exec(String(line || ""));
   return m ? m[1] === "true" : null;
 }
+
+// Battery care: a system change through Guardian (nix/modules/battery.nix).
+export function chargeLimitPlan(on) {
+  return { description: on ? "Stop charging the battery at 80% (battery care)" : "Charge the battery to 100% again",
+           changes: [{ option: "nexusos.power.chargeLimit.enable", enabled: !!on }] };
+}
+// `cat /sys/class/power_supply/BAT*/charge_control_end_threshold`: the limit now, or null where the firmware has none.
+export function chargeLimit(text) {
+  const n = parseInt(String(text || "").trim().split("\n")[0]);
+  return isNaN(n) || n < 1 || n > 100 ? null : n;
+}

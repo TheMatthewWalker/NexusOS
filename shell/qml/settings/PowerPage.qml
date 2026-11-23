@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Services.UPower
+import Quickshell.Io
 import "../lib/describe.mjs" as D
 import "../lib/power.mjs" as P
 
@@ -45,6 +46,18 @@ Column {
                 .concat(PowerProfiles.hasPerformanceProfile ? [{ value: PowerProfile.Performance, label: "Performance" }] : [])
             onChose: v => PowerProfiles.profile = v
         }
+    }
+    // Battery care: only where the firmware lets Linux stop charging early.
+    property var chargeLimit: null
+    Process { running: true; command: ["sh", "-c", "cat /sys/class/power_supply/BAT*/charge_control_end_threshold 2>/dev/null"]
+              stdout: StdioCollector { onStreamFinished: page.chargeLimit = P.chargeLimit(text) } }
+    SettingRow {
+        visible: page.chargeLimit !== null
+        theme: page.theme; label: "Battery care"; highlighted: page.host.highlight === "batterycare"
+        detail: (page.chargeLimit !== null && page.chargeLimit < 100 ? "On: charging stops at " + page.chargeLimit + "%. " : "Off: the battery charges to 100%. ") +
+                "Stopping at 80% keeps the battery healthy for longer when the laptop is plugged in most of the time. A system change: Guardian builds and checks it first."
+        Button { theme: page.theme; label: page.chargeLimit !== null && page.chargeLimit < 100 ? "Charge to 100%…" : "Stop at 80%…"
+                 onClicked: page.host.proposeSystem(P.chargeLimitPlan(!(page.chargeLimit !== null && page.chargeLimit < 100))) }
     }
     SettingRow {
         theme: page.theme; label: "Screen off"; highlighted: page.host.highlight === "screenoff"

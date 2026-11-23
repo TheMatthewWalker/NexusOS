@@ -98,7 +98,7 @@ Turn Bluetooth on and pair devices in Settings, Bluetooth. Passwords you save in
 
 Settings, Display has brightness, night light and the scale (bigger text and windows). With **more than one screen**, each one can go left, right, above or below the main one, show the same picture, or be off, with its own resolution and scale. A change goes back by itself after 15 seconds unless you press Keep, so a screen that shows nothing never leaves you stuck. [Open Display](settings:display/screens)
 
-Settings, Power sets when the screen turns off, when the computer sleeps (on battery and plugged in), and what closing the lid does. The screen locks when the computer sleeps. [Open Power](settings:power/sleep)
+Settings, Power sets when the screen turns off, when the computer sleeps (on battery and plugged in), and what closing the lid does. The screen locks when the computer sleeps. On laptops whose firmware allows it, **Battery care** stops charging at 80%, which keeps the battery healthy for longer if it is mostly plugged in. [Open Power](settings:power/sleep)
 
 ## Seeing, hearing and using it more easily
 

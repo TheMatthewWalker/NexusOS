@@ -44,6 +44,18 @@ class ShellBuild(unittest.TestCase):
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
 
+    def test_scripts_use_only_syntax_the_qml_engine_parses(self):
+        # Qt's JavaScript engine has no object spread ({ ...a }): Node runs the
+        # module tests happily, but the shell then fails to load at all.
+        spread = re.compile(r"\{\s*\.\.\.[\w(]")
+        for path in (SHELL / "qml").rglob("*"):
+            if path.suffix not in (".mjs", ".js", ".qml"):
+                continue
+            for n, line in enumerate(path.read_text().splitlines(), 1):
+                if line.lstrip().startswith("//"):
+                    continue
+                self.assertNotRegex(line, spread, f"{path.relative_to(SHELL)}:{n} uses object spread; use Object.assign")
+
     def test_every_referenced_icon_exists(self):
         icons = set()
         for qml in self.out.rglob("*.qml"):

@@ -115,6 +115,10 @@ NexusWindow {
     }
     // What the search box finds: [page, highlight id, label, words people might type].
     readonly property var index: [
+        ["network", "vpn", "VPN", "vpn openvpn wireguard tunnel privacy work remote"],
+        ["network", "advanced", "Work, school and company networks", "eduroam enterprise 802.1x certificate anyconnect cisco globalprotect fortinet company vpn"],
+        ["network", "shares", "Shared folders", "share shared folder network drive nas smb samba windows server map drive"],
+        ["network", "phone", "Your phone", "phone android iphone kde connect files texts sms notifications"],
         ["network", "wifi", "Wi-Fi", "wifi wireless internet network password connect hotspot"],
         ["network", "wired", "Wired connection", "ethernet cable lan wired"],
         ["network", "advanced", "VPN and work networks", "vpn eduroam enterprise certificate nmtui proxy"],

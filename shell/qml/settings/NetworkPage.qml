@@ -1,4 +1,6 @@
 import QtQuick
+import Quickshell.Io
+import "../lib/network.mjs" as Net
 import Quickshell
 import "../lib/wifi.mjs" as W
 
@@ -12,7 +14,7 @@ Column {
     readonly property var wifi: host.wifi
     width: parent ? parent.width : 600
     spacing: 10
-    Component.onCompleted: wifi.scanning = true
+    Component.onCompleted: { wifi.scanning = true; refreshVpns() }
     Component.onDestruction: wifi.scanning = false
 
     PageHeader { theme: page.theme; title: "Network"
@@ -145,10 +147,94 @@ Column {
         theme: page.theme; label: "Wired"; highlighted: page.host.highlight === "wired"
         detail: page.wifi.wired ? "Connected with a cable." : "No cable connected."
     }
+    // VPNs: NetworkManager's (nix/modules/everyday.nix adds OpenVPN, OpenConnect
+    // for Cisco AnyConnect, GlobalProtect and Fortinet, vpnc and L2TP). uuids and
+    // file types are checked before they reach nmcli.
+    property var vpnList: []
+    property string vpnMessage: ""
+    function refreshVpns() { if (!vpnLister.running) vpnLister.running = true }
+    Timer { interval: 5000; repeat: true; running: page.visible; onTriggered: page.refreshVpns() }
+    Process { id: vpnLister; command: ["nmcli", "-t", "-f", "NAME,UUID,TYPE,ACTIVE", "connection", "show"]
+              stdout: StdioCollector { onStreamFinished: page.vpnList = Net.vpns(text) } }
+    Process {
+        id: vpnSwitch
+        stderr: StdioCollector { id: vpnErr }
+        onExited: code => { page.vpnMessage = code === 0 ? "" : (vpnErr.text.trim().split("\n").pop() || "That did not work."); page.refreshVpns() }
+    }
+    function vpn(uuid, up) {
+        if (!Net.validUuid(uuid) || vpnSwitch.running) return;
+        vpnSwitch.command = ["nmcli", "connection", up ? "up" : "down", "uuid", uuid];
+        vpnSwitch.running = true;
+        vpnMessage = up ? "Connecting…" : "";
+    }
+    Process {
+        id: vpnPicker
+        command: ["zenity", "--file-selection", "--title=Choose a VPN file (.ovpn or WireGuard .conf)",
+                  "--file-filter=VPN files | *.ovpn *.conf"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const path = text.trim(), kind = Net.importType(path);
+                if (!path) return;
+                if (!kind) { page.vpnMessage = "That is not a VPN file NexusOS knows (.ovpn or WireGuard .conf)."; return }
+                vpnSwitch.command = ["nmcli", "connection", "import", "type", kind, "file", path];
+                vpnSwitch.running = true;
+                page.vpnMessage = "Adding the VPN…";
+            }
+        }
+    }
+
     SettingRow {
-        theme: page.theme; label: "Work, school and VPN connections"; highlighted: page.host.highlight === "advanced"
-        detail: "Networks that need a username or certificate, and VPNs, are set up in a terminal with nmtui."
-        Button { theme: page.theme; label: "Open nmtui"; onClicked: page.host.runInTerminal(["nmtui"]) }
+        theme: page.theme; label: "VPN"; highlighted: page.host.highlight === "vpn"
+        detail: page.vpnMessage || (page.vpnList.length === 0 ? "None set up. Add one from the file your work, school or VPN provider gave you."
+                                    : "Connect to reach a work or school network, or for privacy.")
+        Button { theme: page.theme; label: "Add from a file…"; onClicked: if (!vpnPicker.running) vpnPicker.running = true }
+    }
+    Repeater {
+        model: page.vpnList
+        delegate: Rectangle {
+            required property var modelData
+            width: page.width; height: 48; radius: 10
+            color: page.theme.chip
+            border.color: modelData.active ? page.theme.focus : "transparent"
+            Text { x: 16; anchors.verticalCenter: parent.verticalCenter; textFormat: Text.PlainText
+                   text: modelData.name + " · " + modelData.kind + (modelData.active ? " · connected" : ""); color: page.theme.ink; font.pixelSize: 14 }
+            Button { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                     theme: page.theme; label: modelData.active ? "Disconnect" : "Connect"
+                     onClicked: page.vpn(modelData.uuid, !modelData.active) }
+        }
+    }
+    SettingRow {
+        theme: page.theme; label: "Work, school and company VPN connections"; highlighted: page.host.highlight === "advanced"
+        detail: "Wi-Fi that needs a username or certificate (eduroam, company networks), and VPNs such as Cisco AnyConnect, GlobalProtect or Fortinet."
+        Button { theme: page.theme; label: "Set up…"; onClicked: Quickshell.execDetached(["nm-connection-editor"]) }
+    }
+
+    // Shared folders on another computer or a NAS (Windows' \\server\share).
+    SettingRow {
+        theme: page.theme; label: "Shared folders"; highlighted: page.host.highlight === "shares"
+        detail: "Type the address, as on Windows (\\\\server\\folder) or smb://server/folder. Files asks for the username and password if it needs them."
+    }
+    Row {
+        spacing: 8
+        TextField { id: shareAddress; theme: page.theme; label: "Address"; placeholder: "\\\\nas\\Photos"; width: 320
+                    onAccepted: openShare.clicked() }
+        Button {
+            id: openShare
+            anchors.bottom: parent.bottom
+            theme: page.theme; label: "Open"
+            onClicked: {
+                const url = Net.smbUrl(shareAddress.text);
+                if (!url) { page.vpnMessage = "That address does not look like a shared folder."; return }
+                Quickshell.execDetached(["gio", "open", url]);
+            }
+        }
+        Button { anchors.bottom: parent.bottom; theme: page.theme; label: "Browse the network"
+                 onClicked: Quickshell.execDetached(["gio", "open", "network:///"]) }
+    }
+    SettingRow {
+        theme: page.theme; label: "Your phone"; highlighted: page.host.highlight === "phone"
+        detail: "KDE Connect links an Android phone (or an iPhone, with fewer features) on the same Wi-Fi: files both ways, notifications, texts and the clipboard. Install KDE Connect on the phone, then pair here."
+        Button { theme: page.theme; label: "Open KDE Connect"; onClicked: Quickshell.execDetached(["kdeconnect-app"]) }
     }
 
     // For `nexus-shell-ipc call settings wifi`: each row's centre, in window coordinates.

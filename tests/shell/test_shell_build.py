@@ -964,7 +964,11 @@ class ShellBuild(unittest.TestCase):
                      "bind = SUPER, period, global, nexus:emoji"):
             self.assertIn(line, desktop)
         self.assertIn("systemd.user.services.nexus-clipboard", (ROOT / "nix/modules/everyday.nix").read_text())
-        for t in ("tasks.test.mjs", "privacy.test.mjs", "pickers.test.mjs"):
+        net = (self.out / "settings/NetworkPage.qml").read_text()
+        self.assertIn('vpnSwitch.command = ["nmcli", "connection", up ? "up" : "down", "uuid", uuid]', net)
+        self.assertIn('Quickshell.execDetached(["gio", "open", url])', net)
+        self.assertIn("networking.networkmanager.plugins", (ROOT / "nix/modules/everyday.nix").read_text())
+        for t in ("tasks.test.mjs", "privacy.test.mjs", "pickers.test.mjs", "network.test.mjs"):
             self.run_node_test(t)
 
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):

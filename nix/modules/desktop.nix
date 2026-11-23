@@ -6,9 +6,12 @@ let
   cfg = config.services.nexus-desktop;
   # Input methods for Chinese (Pinyin and more), Japanese (Mozc) and Korean
   # (Hangul), with GTK and Qt support; started only when needed (the session below).
-  inputMethod = pkgs.qt6Packages.fcitx5-with-addons.override {
+  # It is a symlinkJoin, which Nix normally rebuilds wherever it is needed
+  # instead of copying; the offline installer then lacks its build inputs
+  # (librsvg's dev output), so it is copied like any other package.
+  inputMethod = (pkgs.qt6Packages.fcitx5-with-addons.override {
     addons = with pkgs; [ fcitx5-mozc fcitx5-hangul qt6Packages.fcitx5-chinese-addons fcitx5-gtk ];
-  };
+  }).overrideAttrs { allowSubstitutes = true; preferLocalBuild = false; };
   # start-hyprland runs Hyprland under its watchdog, as Hyprland asks; started
   # directly, Hyprland shows a warning on every login.
   # The person's language, formats and time zone (Settings, Language and

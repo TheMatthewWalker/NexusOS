@@ -54,6 +54,12 @@ Windows float like on Windows or macOS; you can switch to tiled windows in Setti
 
 **Default apps** decide which app opens web links, email, folders, music, videos, pictures, text files and PDFs. [Open Default apps](settings:defaults/defaults)
 
+## Windows programs and games
+
+NexusOS does not run Windows programs by itself, but most have a version or an equivalent here. Open a `.exe` or `.msi` you downloaded and NexusOS says what it is and offers the app to use instead (Spotify's installer offers Spotify; Photoshop offers GIMP). For anything else, Bottles runs many Windows programs with Wine.
+
+For games, get Steam (most Windows games work through its Proton), and Heroic for Epic and GOG games, from Apps or Welcome. Xbox, PlayStation and Switch controllers work by cable and Bluetooth.
+
 ## Files from your old computer
 
 **Move in** copies documents, photos, music and videos from a Windows or Mac drive (or a backup folder) into your home folder. The old drive is only read, never changed. [Open Move in](settings:about/movein)

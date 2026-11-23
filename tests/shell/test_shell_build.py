@@ -984,6 +984,17 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("nexusos.developer.virtualMachines.enable", _j.loads((ROOT / "schema/guardian-options.json").read_text())["options"])
         self.run_node_test("developer.test.mjs")
 
+    def test_windows_programs_get_an_answer_and_controllers_work(self):
+        win = (self.out / "WindowsProgram.qml").read_text()
+        self.assertIn('bridge.api("POST", "/windows-program", { fileName: fileName })', win)
+        self.assertIn('IpcHandler { target: "windows"', win)
+        self.assertIn('copier.command = ["wl-copy", "--", win.path]', win)
+        mod = (ROOT / "nix/modules/gaming-windows.nix").read_text()
+        for line in ('"application/x-ms-dos-executable"', "xdg.mime.defaultApplications", "hardware.steam-hardware.enable",
+                     "hardware.xpadneo.enable", "programs.gamemode.enable"):
+            self.assertIn(line, mod)
+        self.assertIn("../modules/gaming-windows.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

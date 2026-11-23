@@ -6,7 +6,7 @@ let
   cfg = config.nexusos;
 in
 {
-  imports = [ ../modules/hardware.nix ../modules/accounts.nix ../modules/printing.nix ../modules/backups.nix ../modules/firmware.nix ../modules/storage.nix ../modules/secure-boot.nix ../modules/everyday.nix ../modules/developer.nix ../modules/keyboard.nix ../modules/language.nix ../modules/boot-splash.nix ../modules/desktop.nix ../modules/nvidia.nix ../modules/apps.nix ../modules/images.nix ../modules/large-model.nix ../modules/colibri.nix ../modules/vision-voice.nix ../modules/guardian.nix ../modules/updates.nix ];
+  imports = [ ../modules/hardware.nix ../modules/accounts.nix ../modules/printing.nix ../modules/backups.nix ../modules/firmware.nix ../modules/storage.nix ../modules/secure-boot.nix ../modules/everyday.nix ../modules/developer.nix ../modules/gaming-windows.nix ../modules/keyboard.nix ../modules/language.nix ../modules/boot-splash.nix ../modules/desktop.nix ../modules/nvidia.nix ../modules/apps.nix ../modules/images.nix ../modules/large-model.nix ../modules/colibri.nix ../modules/vision-voice.nix ../modules/guardian.nix ../modules/updates.nix ];
 
   options.nexusos = {
     user = lib.mkOption {

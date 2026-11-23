@@ -130,9 +130,9 @@ the owner agrees it is ready.**
 |---|---|---|---|
 | Steam with Proton (most Windows games) | P1 | 🟡 | Flathub Steam in the Gaming bundle; native `programs.steam` has 32-bit graphics and udev for controllers |
 | Epic, GOG (Heroic), other launchers (Lutris) | P2 | 🟡 | Flathub |
-| Game controllers (Xbox, PlayStation, Switch), wireless dongles | P1 | ⬜ | udev rules, xpadneo/xone |
+| Game controllers (Xbox, PlayStation, Switch), wireless dongles | P1 | 🟡 | Steam's controller rules and Xbox over Bluetooth (0.4); the Xbox wireless dongle (xone) needs unfree firmware |
 | Game mode (performance, notifications quiet) | P2 | ✅ | Shell game mode |
-| GameMode / gamescope / MangoHud | P3 | ⬜ | |
+| GameMode / gamescope / MangoHud | P3 | 🟡 | GameMode (0.4) |
 | VRR / FreeSync / G-Sync, HDR | P3 | ⬜ | Hyprland supports VRR; HDR is early |
 | Anti-cheat games (some never work: tell people which) | P2 | ⬜ | A clear page on what works (ProtonDB) |
 | Discord with screen sharing | P2 | 🟡 | Portal |
@@ -141,9 +141,9 @@ the owner agrees it is ready.**
 
 | Item | P | Status | Notes |
 |---|---|---|---|
-| Open a .exe or .msi: run it with Wine (Bottles), or explain the alternative | P1 | ⬜ | Double-click handler; Nexus suggests the Linux equivalent first |
+| Open a .exe or .msi: run it with Wine (Bottles), or explain the alternative | P1 | ✅ | Says what it is, offers the app here, Bottles for the rest (0.4) |
 | Windows in a virtual machine (for apps that need it) | P2 | 🟡 | Virtual machines can be turned on (0.3); a guided Windows set-up to add |
-| Program equivalents ("what do I use instead of X") | P1 | 🟡 | Move in matches old programs to apps; extend |
+| Program equivalents ("what do I use instead of X") | P1 | ✅ | Move in and Windows installers share one list (0.4) |
 | Dual boot with Windows, with the clocks agreeing | P1 | ✅ | |
 
 ## 9. System tools
@@ -262,7 +262,7 @@ new features, patch for fixes only).
 | 2 | Task manager; system tray; media controls; clipboard history and emoji picker; camera/mic indicators | 0.3.0 (with 3) |
 | 3 | Network shares, phone integration, VPN and work Wi-Fi in Settings (cloud drives moved to a later batch) | 0.3.0 |
 | 4 | Developer basics: project toolchains, rootless containers, SSH keys, serial boards, VMs (nix-ld came in 0.2) | 0.3.0 |
-| 5 | Windows software: .exe handling with Bottles, Windows VM, program equivalents; Steam native, controllers | |
+| 5 | Windows software: .exe handling with Bottles, program equivalents; controllers, GameMode (Windows VM set-up moved later) | 0.4.0 |
 | 6 | Email/calendar and online accounts; cloud drives (OneDrive, Google Drive, Nextcloud); PWAs; PDF forms; spell checking | |
 | 7 | Accessibility: magnifier, keyboard aids, colour filters, live captions | |
 | 8 | Parental controls, TPM unlock, app permissions, remote help, reset | |

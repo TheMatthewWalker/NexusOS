@@ -26,6 +26,13 @@
 #   movein.sh copy ROOT USER FOLDER PER_USER
 #     Copies <people>/USER/FOLDER (or ROOT/FOLDER when USER is empty) into
 #     $HOME/<destination>, plus /USER when PER_USER is 1.
+#   movein.sh unlock DEVICE   (the password or BitLocker recovery key on stdin)
+#     Unlocks an encrypted drive (BitLocker or LUKS) through udisks, which asks
+#     an administrator only for a drive inside the computer. The key goes
+#     through a private file in $XDG_RUNTIME_DIR, removed at once, never on a
+#     command line. Prints the unlocked device's path.
+#   movein.sh close INNER DEVICE
+#     Unmounts the unlocked INNER and locks the encrypted DEVICE again.
 set -u
 
 FOLDERS="Documents Desktop Downloads Pictures Music Videos Movies"
@@ -137,8 +144,39 @@ copy() {
         -- "$rs/" "$dest/"
 }
 
+unlock() {
+    dev=$1
+    case "$dev" in /dev/[a-z]*) ;; *) die "not a drive" ;; esac
+    case "$dev" in *[!A-Za-z0-9/_.-]*|*..*) die "not a drive" ;; esac
+    dir=${XDG_RUNTIME_DIR:-}
+    [ -n "$dir" ] && real_dir "$dir" || die "no private folder for the key"
+    umask 077
+    key=$(mktemp "$dir/nexus-unlock.XXXXXX") || die "no private folder for the key"
+    trap 'rm "$key" 2>/dev/null' EXIT
+    # One line, without its newline: that is what the person typed.
+    line=
+    IFS= read -r line || true
+    [ -n "$line" ] || die "no password given"
+    printf '%s' "$line" > "$key"
+    out=$(udisksctl unlock -b "$dev" --key-file "$key" 2>&1); status=$?
+    rm "$key"
+    [ "$status" -eq 0 ] || { printf '%s\n' "$out" | tail -n 1 >&2; exit 1; }
+    # "Unlocked /dev/sdb1 as /dev/dm-3."
+    printf '%s\n' "$out" | sed -n 's|^Unlocked .* as \(/dev/[A-Za-z0-9/_-]*\)\.\{0,1\}$|\1|p' | head -n 1
+}
+
+close() {
+    for dev in "$1" "$2"; do
+        case "$dev" in /dev/[a-z]*) ;; *) die "not a drive" ;; esac
+        case "$dev" in *[!A-Za-z0-9/_.-]*|*..*) die "not a drive" ;; esac
+    done
+    udisksctl unmount --no-user-interaction -b "$1" && udisksctl lock --no-user-interaction -b "$2"
+}
+
 case "${1:-}" in
+    close) [ $# -eq 3 ] || die "usage: movein.sh close INNER DEVICE"; close "$2" "$3" ;;
+    unlock) [ $# -eq 2 ] || die "usage: movein.sh unlock DEVICE"; unlock "$2" ;;
     scan) [ $# -eq 2 ] || die "usage: movein.sh scan ROOT"; scan "$2" ;;
     copy) [ $# -eq 5 ] || die "usage: movein.sh copy ROOT USER FOLDER PER_USER"; copy "$2" "$3" "$4" "$5" ;;
-    *) die "usage: movein.sh scan ROOT | copy ROOT USER FOLDER PER_USER" ;;
+    *) die "usage: movein.sh scan ROOT | copy ROOT USER FOLDER PER_USER | unlock DEVICE | close INNER DEVICE" ;;
 esac

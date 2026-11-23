@@ -321,5 +321,56 @@ class MoveInWindow(unittest.TestCase):
         self.assertNotIn("perUser()", qml)
 
 
+class Unlock(unittest.TestCase):
+    """BitLocker and LUKS drives: the key goes to udisks through a private file, never a command line."""
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="nexus-unlock-"))
+        (self.tmp / "bin").mkdir()
+        self.run_dir = self.tmp / "run"
+        self.run_dir.mkdir(mode=0o700)
+        self.log = self.tmp / "log"
+        fake = self.tmp / "bin/udisksctl"
+        fake.write_text(f"""#!/bin/sh
+echo "$*" >> {self.log}
+if [ "$1" = unlock ]; then
+  ls -l "$5" | cut -c1-10 >> {self.log}
+  [ "$(cat "$5")" = "111111-222222-333333" ] && echo "Unlocked $3 as /dev/dm-3." && exit 0
+  echo "Error unlocking $3: Failed to activate device: Operation not permitted"; exit 1
+fi
+exit 0
+""")
+        fake.chmod(0o755)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def helper(self, shell, key, *args):
+        env = dict(os.environ, PATH=f"{self.tmp / 'bin'}:{os.environ['PATH']}", XDG_RUNTIME_DIR=str(self.run_dir))
+        return subprocess.run([shell, str(SCRIPT), *args], input=key, capture_output=True, text=True, env=env)
+
+    def test_the_recovery_key_unlocks_and_is_not_kept(self):
+        for shell in SHELLS:
+            r = self.helper(shell, "111111-222222-333333\n", "unlock", "/dev/sdb1")
+            self.assertEqual((r.returncode, r.stdout.strip()), (0, "/dev/dm-3"), shell)
+            log = self.log.read_text()
+            self.assertNotIn("111111", log)
+            self.assertIn("-rw-------", log)
+            self.assertEqual(list(self.run_dir.iterdir()), [])
+            r = self.helper(shell, "wrong\n", "unlock", "/dev/sdb1")
+            self.assertEqual(r.returncode, 1)
+            self.assertEqual(list(self.run_dir.iterdir()), [])
+
+    def test_only_drives_and_a_key_are_accepted(self):
+        for bad in ["/etc/passwd", "/dev/../etc/x", "sdb1", "/dev/sdb1;reboot"]:
+            self.assertEqual(self.helper("sh", "k\n", "unlock", bad).returncode, 2, bad)
+            self.assertEqual(self.helper("sh", "", "close", bad, "/dev/sdb1").returncode, 2, bad)
+        self.assertEqual(self.helper("sh", "", "unlock", "/dev/sdb1").returncode, 2)
+
+    def test_closing_unmounts_then_locks(self):
+        self.assertEqual(self.helper("sh", "", "close", "/dev/dm-3", "/dev/sdb1").returncode, 0)
+        self.assertEqual(self.log.read_text().splitlines(),
+                         ["unmount --no-user-interaction -b /dev/dm-3", "lock --no-user-interaction -b /dev/sdb1"])
+
+
 if __name__ == "__main__":
     unittest.main()

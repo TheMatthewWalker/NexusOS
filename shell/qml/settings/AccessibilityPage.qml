@@ -116,4 +116,24 @@ Column {
         Switch { theme: page.theme; name: "Spoken replies"; checked: !!page.voice && page.voice.spokenReplies
                  onToggled: page.voice.setChoice("spokenReplies", !page.voice.spokenReplies) }
     }
+
+    // Live captions for any sound (a video, a call): Live Captions from Flathub,
+    // which turns speech into text on this computer (English).
+    readonly property string captionsApp: "net.sapples.LiveCaptions"
+    property bool captionsInstalled: false
+    property string captionsNote: ""
+    Process { id: captionsCheck; running: true; command: ["flatpak", "info", page.captionsApp]; onExited: (code) => page.captionsInstalled = code === 0 }
+    Process {
+        id: captionsInstall
+        command: ["flatpak", "install", "--user", "--noninteractive", "-y", "flathub", page.captionsApp]
+        onExited: (code) => { page.captionsNote = code === 0 ? "" : "Live Captions could not be installed: is this computer online?"; captionsCheck.running = true }
+    }
+    SettingRow {
+        theme: page.theme; label: "Live captions"; highlighted: page.host.highlight === "captions"
+        detail: page.captionsNote || (captionsInstall.running ? "Installing Live Captions…"
+              : "Captions for anything you hear, a video or a call, as Windows' Live captions. Speech is turned into text on this computer; English only.")
+        Button { theme: page.theme; primary: !page.captionsInstalled; enabled: !captionsInstall.running
+                 label: page.captionsInstalled ? "Open" : "Install"
+                 onClicked: page.captionsInstalled ? Quickshell.execDetached(["flatpak", "run", page.captionsApp]) : (captionsInstall.running = true) }
+    }
 }

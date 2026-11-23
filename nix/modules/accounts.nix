@@ -4,7 +4,8 @@
 # who may:
 #   nexus-account-password  your own password: asks for your current password
 #                           (the helper only ever changes the caller's)
-#   nexus-account-manage    add or remove an account: asks for an administrator's
+#   nexus-account-manage    add or remove an account, a child's screen time, the
+#                           TPM unlocking the disk: asks for an administrator's
 # Accounts are ordinary Linux accounts (users.mutableUsers, NixOS's default);
 # the first account, made by the installer, is declared in nexusos.nix and
 # cannot be removed here.
@@ -20,10 +21,24 @@ let
     esac
     export PATH=${tools}
     export NEXUS_FIRST_ACCOUNT=${lib.escapeShellArg firstAccount}
+    export NEXUS_SCREEN_TIME=${screenTime}/bin/nexus-screen-time
     exec ${pkgs.python3}/bin/python3 -I ${../../scripts/accounts/nexus_account.py} "$1"
   '';
   passwordHelper = helper "nexus-account-password" [ "password" "disk" ];
-  manageHelper = helper "nexus-account-manage" [ "add" "remove" ];
+  # The TPM unlocking the disk is for the whole computer, so an administrator approves it too.
+  manageHelper = helper "nexus-account-manage" [ "add" "remove" "limits" "tpm" ];
+  # Screen time for children's accounts (Settings, Accounts): checked at login
+  # (PAM), counted each minute, and the child signed out when it is over.
+  screenTime = pkgs.writeShellScriptBin "nexus-screen-time" ''
+    export PATH=${lib.makeBinPath [ pkgs.systemd pkgs.util-linux pkgs.libnotify pkgs.coreutils ]}
+    exec ${pkgs.python3}/bin/python3 -I ${../../scripts/accounts/nexus_screen_time.py} "$@"
+  '';
+  screenTimeRule = {
+    order = config.security.pam.services.login.rules.account.unix.order - 10;
+    control = "requisite";
+    modulePath = "${pkgs.linux-pam}/lib/security/pam_exec.so";
+    args = [ "quiet" "stdout" "${screenTime}/bin/nexus-screen-time" "check" ];
+  };
   commands = pkgs.runCommand "nexus-account" { } ''
     mkdir -p $out/bin
     ln -s ${passwordHelper} $out/bin/nexus-account-password
@@ -53,8 +68,8 @@ let
         <annotate key="org.freedesktop.policykit.exec.path">/run/current-system/sw/bin/nexus-account-password</annotate>
       </action>
       <action id="org.nexusos.accounts.manage">
-        <description>Add or remove an account</description>
-        <message>An administrator's password is needed to add or remove an account on this computer.</message>
+        <description>Change the accounts on this computer</description>
+        <message>An administrator's password is needed to add or remove an account, set screen time, or change how the disk unlocks.</message>
         <defaults>
           <allow_any>no</allow_any>
           <allow_inactive>no</allow_inactive>
@@ -74,6 +89,18 @@ in
 
   config = lib.mkIf config.nexusos.accounts.enable {
     security.polkit.enable = true;
-    environment.systemPackages = [ commands policy ];
+    environment.systemPackages = [ commands policy screenTime ];
+    security.pam.services.greetd.rules.account.nexus-screen-time = screenTimeRule;
+    security.pam.services.login.rules.account.nexus-screen-time = screenTimeRule;
+    systemd.tmpfiles.rules = [ "d /var/lib/nexus/screen-time 0755 root root -" ];
+    systemd.services.nexus-screen-time = {
+      description = "Screen time: count a minute for children signed in";
+      unitConfig.ConditionDirectoryNotEmpty = "/var/lib/nexus/screen-time/limits";
+      serviceConfig = { Type = "oneshot"; ExecStart = "${screenTime}/bin/nexus-screen-time tick"; };
+    };
+    systemd.timers.nexus-screen-time = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = { OnCalendar = "minutely"; AccuracySec = "5s"; };
+    };
   };
 }

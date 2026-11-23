@@ -474,7 +474,11 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('mountOptions = /^ext[234]$/.test(d.fstype) ? "ro,noload" : "ro";', mi)
         self.assertIn('const opts = mountOptions + (apfsVol >= 0 ? ",vol=" + apfsVol : "");', mi)
         self.assertIn('["udisksctl", "mount"].concat(withPassword ? [] : ["--no-user-interaction"]).concat(["-b", source, "-o", opts])', mi)
-        self.assertEqual(len(re.findall(r'mountOptions = ', mi)), 1)
+        self.assertEqual(len(re.findall(r'mountOptions = ', mi)), 2)
+        # Inside an unlocked BitLocker or LUKS drive: the same rule.
+        self.assertIn('win.mountOptions = /^ext[234]$/.test(fs) ? "ro,noload" : "ro";', mi)
+        self.assertIn('unlocker.command = ["sh", helper, "unlock", source];', mi)
+        self.assertIn('onStarted: { write(key + "\\n"); key = ""; stdinEnabled = false }', mi)
         self.assertNotIn('"rw', mi)
         self.assertIn("if (!d.removable) {", mi)
         self.assertIn('d.fstype === "bitlocker"', mi)
@@ -826,7 +830,7 @@ class ShellBuild(unittest.TestCase):
         for line in page.splitlines():
             if "command = " in line or "command: [" in line:
                 self.assertNotIn("password", line.replace("nexus-account-password", "").replace("nexus-keyring-password", ""))
-        self.assertEqual(page.count("password: true"), 8)      # 7 account fields and the Nextcloud app password
+        self.assertEqual(page.count("password: true"), 9)      # 7 account fields, the TPM disk password and the Nextcloud app password
         settings = (self.out / "Settings.qml").read_text()
         self.assertIn('accounts: "AccountsPage"', settings)
         policy = (ROOT / "nix/modules/accounts.nix").read_text()

@@ -79,6 +79,8 @@ For games, get Steam (most Windows games work through its Proton), and Heroic fo
 
 **Move in** copies documents, photos, music and videos from a Windows or Mac drive (or a backup folder) into your home folder. The old drive is only read, never changed. [Open Move in](settings:about/movein)
 
+If the old drive is encrypted with BitLocker, Bring my stuff over asks for its password or its 48-digit recovery key (Windows shows it in Manage BitLocker; for a Microsoft account it is at aka.ms/myrecoverykey). The drive is opened read-only and locked again when you close it.
+
 ## Email, cloud drives and documents
 
 **Thunderbird** is the email, calendar and contacts app; it signs in to Microsoft 365, Outlook.com, Gmail and others by itself. Links to email addresses open it.
@@ -101,6 +103,8 @@ Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed b
 
 Turn Bluetooth on and pair devices in Settings, Bluetooth. Passwords you save in browsers and apps are kept in your keyring, which opens when you log in; Passwords and Keys shows them. When you change your password in Settings, Accounts, the keyring's changes with it. On a computer with a fingerprint reader, **Fingerprint** in Settings, Accounts lets a finger unlock the lock screen and approve system changes, as Windows Hello does; logging in still asks for your password, because it also unlocks your keyring (and the disk). [Open Fingerprint](settings:accounts/fingerprint)
 
+If your disk is encrypted and Secure Boot is on, **Unlock the disk by itself** in Settings, Accounts lets the computer's TPM chip unlock the disk when NexusOS starts, as Windows' BitLocker does, so you type your password only once, to log in. Your password still unlocks the disk too, and is asked for at start-up if anything about the start-up changes (Secure Boot turned off, another system started, or a firmware update): that is the TPM keeping the disk shut to anything but NexusOS. Keep your password, then, and turn this off before handing the computer on. [Open Unlock the disk by itself](settings:accounts/tpm)
+
 ## Screens, sound and power
 
 Settings, Sound has the volume, the output device and the microphone, and **each app's own volume** while it plays, as Windows' volume mixer. Settings, Display has brightness, night light and the scale (bigger text and windows). With **more than one screen**, each one can go left, right, above or below the main one, show the same picture, or be off, with its own resolution and scale. A change goes back by itself after 15 seconds unless you press Keep, so a screen that shows nothing never leaves you stuck. [Open Display](settings:display/screens)
@@ -111,6 +115,8 @@ Settings, Power sets when the screen turns off, when the computer sleeps (on bat
 
 Settings, Accessibility has bigger text, high contrast, a bigger pointer, less motion, the **screen reader** (Super+Alt+S), and Describe this, which tells you what is on the screen. The **magnifier** enlarges the screen around the pointer: Super+Plus and Super+Minus, as on Windows. A **colour filter** shows the screen in grey or inverted, or makes colours easier to tell apart if you are colour blind. You can also ask Nexus: "zoom in", "turn on the colour blind filter". [Open Accessibility](settings:accessibility/magnifier)
 
+**Live captions** in Settings, Accessibility installs Live Captions, which shows captions for anything you hear (a video, a call) as Windows' Live captions does. The speech is turned into text on this computer; it understands English. [Open Live captions](settings:accessibility/captions)
+
 ## Notifications
 
 App notifications appear at the top right and stay in the **notification centre** (the bell in the top bar) until you clear them. **Do not disturb** keeps them quiet: urgent ones still show. You can also ask Nexus to turn it on, or make an automation do it (for example, while a presentation is open). [Open Desktop](settings:desktop/donotdisturb)
@@ -118,6 +124,8 @@ App notifications appear at the top right and stay in the **notification centre*
 ## Your account and other people
 
 Settings, Accounts changes your password. If the disk is encrypted, the disk's password changes with it, so you only ever have one. You can add accounts for other people (an administrator's password is asked) and remove them, keeping or removing their files. [Open Accounts](settings:accounts/password)
+
+For a child's account (a standard one, not an administrator), **Screen time…** beside it sets the hours it can be used, such as 07:00 to 20:00, and how many minutes a day, as Windows' Family Safety does. Outside those hours, or once the day's minutes are used, the child cannot log in; if they are already using the computer they get 5 minutes' warning and are then signed out, so they should save their work. Time counts while they are signed in, locked or not. Only an administrator can change it. [Open accounts for other people](settings:accounts/accounts)
 
 ## Language, formats and time zone
 

@@ -115,5 +115,63 @@ class Accounts(unittest.TestCase):
         self.assertEqual(1, A.main(["password"]))
 
 
+class TpmUnlock(unittest.TestCase):
+    """The disk unlocking itself with the TPM: only safe with Secure Boot, and only with the disk's password."""
+    def setUp(self):
+        import tempfile
+        self.dir = tempfile.mkdtemp()
+        self.marker = os.path.join(self.dir, "nexus", "tpm-unlock")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.dir)
+
+    def turn(self, m, on, password="old-password-1", secure=True, tpm=True):
+        return A.set_tpm_unlock(password, on, m.run, lambda: secure, lambda: tpm, self.marker)
+
+    def test_it_binds_to_secure_boot_and_records_it(self):
+        m = FakeMachine()
+        enrolled = []
+        def run(command, input_text=None):
+            if command[0] == "systemd-cryptenroll":
+                enrolled.append(command)
+                self.assertTrue(Path(command[1].split("=", 1)[1]).read_text() == "old-password-1")
+            return m.run(command, input_text)
+        result = A.set_tpm_unlock("old-password-1", True, run, lambda: True, lambda: True, self.marker)
+        self.assertTrue(result["tpm"])
+        self.assertIn("--tpm2-pcrs=7", enrolled[0])
+        self.assertIn("--wipe-slot=tpm2", enrolled[0])
+        self.assertEqual(enrolled[0][-1], "/dev/nvme0n1p2")
+        self.assertTrue(os.path.exists(self.marker))
+        self.assertFalse(self.turn(m, False)["tpm"])
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_it_is_refused_without_secure_boot_a_tpm_encryption_or_the_password(self):
+        with self.assertRaisesRegex(A.AccountError, "Secure Boot"):
+            self.turn(FakeMachine(), True, secure=False)
+        with self.assertRaisesRegex(A.AccountError, "TPM"):
+            self.turn(FakeMachine(), True, tpm=False)
+        with self.assertRaisesRegex(A.AccountError, "not encrypted"):
+            self.turn(FakeMachine(encrypted=False), True)
+        m = FakeMachine()
+        with self.assertRaisesRegex(A.AccountError, "not the disk's password"):
+            self.turn(m, True, password="wrong")
+        self.assertFalse(any(c.startswith("systemd-cryptenroll") for c in m.commands))
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_turning_it_off_needs_no_secure_boot(self):
+        self.assertFalse(self.turn(FakeMachine(), False, secure=False, tpm=False)["tpm"])
+
+    def test_secure_boot_is_read_from_the_efi_variable(self):
+        path = os.path.join(self.dir, "sb")
+        with open(path, "wb") as f:
+            f.write(bytes([6, 0, 0, 0, 1]))
+        self.assertTrue(A.secure_boot_on(path))
+        with open(path, "wb") as f:
+            f.write(bytes([6, 0, 0, 0, 0]))
+        self.assertFalse(A.secure_boot_on(path))
+        self.assertFalse(A.secure_boot_on(path + "-missing"))
+
+
 if __name__ == "__main__":
     unittest.main()

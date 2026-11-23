@@ -48,7 +48,8 @@ export function refusal(code) {
 
 export function working(operation) {
   return ({ password: "Changing your password…", disk: "Changing the disk's password…",
-            add: "Adding the account…", remove: "Removing the account…" })[operation] || "Working…";
+            add: "Adding the account…", remove: "Removing the account…",
+            tpm: "Setting up the TPM…", limits: "Setting screen time…" })[operation] || "Working…";
 }
 
 // Cloud drives (nexus-cloud): the folder's name, as the script checks it.
@@ -75,5 +76,24 @@ export function enrollLine(line) {
   if (/No devices available/i.test(l)) return "No fingerprint reader was found on this computer.";
   if (/enroll-failed|enroll-data-full|enroll-disconnected|enroll-unknown-error/.test(l)) return "That did not work. Try again.";
   if (/Enrolling/.test(l)) return "Touch the fingerprint reader with your finger, again each time it asks.";
+  return "";
+}
+
+// Screen time (nexus-screen-time): "07:00–20:00 · 2 h a day", or "" for none.
+export function limitsText(limits) {
+  if (!limits) return "";
+  const parts = [];
+  if (limits.from && limits.to) parts.push(limits.from + "–" + limits.to);
+  const m = Number(limits.minutes) || 0;
+  if (m > 0) parts.push((m % 60 === 0 ? (m / 60) + " h" : m >= 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min" : m + " min") + " a day");
+  return parts.join(" · ");
+}
+// What is wrong with a screen time form, or "".
+export function limitsProblem(from, to, minutes) {
+  const clock = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if ((from === "") !== (to === "")) return "Give both times, or neither.";
+  if (from !== "" && (!clock.test(from) || !clock.test(to))) return "Use times like 07:30.";
+  if (from !== "" && from >= to) return "The end time comes after the start time.";
+  if (!/^\d{0,4}$/.test(String(minutes)) || Number(minutes) > 1440) return "The daily limit is a number of minutes, up to 1440.";
   return "";
 }

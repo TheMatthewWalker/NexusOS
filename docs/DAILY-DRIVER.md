@@ -73,7 +73,7 @@ the owner agrees it is ready.**
 |---|---|---|---|
 | File manager with thumbnails, drives, trash | P1 | ✅ | Thunar |
 | USB drives open by themselves; NTFS and exFAT | P1 | ✅ | NTFS and exFAT support (0.2); check on hardware |
-| BitLocker drives (read Windows encrypted drives) | P2 | ⬜ | cryptsetup bitlk |
+| BitLocker drives (read Windows encrypted drives) | P2 | ✅ | Bring my stuff over unlocks BitLocker and LUKS drives with the password or recovery key, read-only (0.9) |
 | Network shares: Windows (SMB) and NAS; browse and connect | P1 | ✅ | Settings, Network: type \\\\server\\share or browse (0.3) |
 | Share a folder with other computers | P3 | ✅ | Settings, Network, read-only, Guardian turns it on (0.7); changing files later |
 | Cloud drives: OneDrive, Google Drive, Dropbox, Nextcloud | P1 | ✅ | Settings, Accounts: a folder in the home folder and Files, rclone with a local cache (0.4) |
@@ -117,7 +117,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Video and music players with codecs | P1 | ✅ | VLC |
-| Photo library (import from camera/phone, albums) | P2 | ⬜ | Shotwell / digiKam via Flathub |
+| Photo library (import from camera/phone, albums) | P2 | ✅ | Shotwell in the Creative bundle (0.9) |
 | Image editing (GIMP, Krita), vector (Inkscape) | P2 | 🟡 | Flathub; Creative bundle |
 | Video editing (Kdenlive, DaVinci Resolve) | P2 | 🟡 | Flathub |
 | Audio recording and editing; music production (low-latency audio) | P3 | ⬜ | PipeWire JACK, realtime |
@@ -160,7 +160,7 @@ the owner agrees it is ready.**
 | Storage cleanup | P1 | ✅ | Settings, Storage |
 | Date, time, time zone | P1 | ✅ | |
 | Users and passwords | P1 | ✅ | |
-| Parental controls, screen time, child accounts | P2 | ⬜ | malcontent; app limits |
+| Parental controls, screen time, child accounts | P2 | ✅ | Screen time (hours, minutes a day) at login and each minute; app and web limits still ⬜ (0.9) |
 | Guest session | P3 | ⬜ | |
 | Reset / reinstall without losing files | P2 | 🟡 | Start fresh resets settings, keeps files, can be undone (0.7); earlier versions for the system |
 | Remote help (let a friend see the screen and help) | P2 | 🟡 | RustDesk from Flathub, in the guide (0.7); remote control on Wayland is limited |
@@ -170,7 +170,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Disk encryption | P1 | ✅ | LUKS2 |
-| Unlock the disk with the TPM (no second password) | P2 | ⬜ | systemd-cryptenroll; keep the password as a fallback |
+| Unlock the disk with the TPM (no second password) | P2 | ✅ | Settings, Accounts: systemd-cryptenroll bound to Secure Boot (PCR 7), only with Secure Boot on; the password stays (0.9) |
 | Secure Boot | P2 | ✅ | Own keys, guided |
 | Automatic security updates | P1 | ✅ | Guardian |
 | Firewall, with a simple Settings page | P2 | ✅ | On; Settings, Network says in words what is let in (0.8) |
@@ -218,7 +218,7 @@ the owner agrees it is ready.**
 | Magnifier (zoom) | P1 | ✅ | Super+Plus/Minus as on Windows, Settings, or ask Nexus (0.4) |
 | Sticky keys, slow keys, bounce keys | P2 | ⬜ | Hyprland has no AccessX; needs a compositor feature or an input filter |
 | Colour filters for colour blindness | P3 | ✅ | Greyscale, inverted, protanopia, deuteranopia, tritanopia (0.4) |
-| Live captions for any audio (local speech recognition) | P2 | ⬜ | Whisper on device |
+| Live captions for any audio (local speech recognition) | P2 | ✅ | Live Captions (Flathub, on device, English) from Settings, Accessibility (0.9) |
 | Voice control | P2 | ✅ | |
 
 ## 14. Languages

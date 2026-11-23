@@ -42,3 +42,17 @@ test("fingerprint set-up says what to do in plain words", () => {
   assert.match(A.enrollLine("No devices available"), /No fingerprint reader/);
   assert.equal(A.enrollLine("Using device /net/reactivated/Fprint/Device/0"), "");
 });
+
+test("screen time reads plainly and the form is checked", () => {
+  assert.equal(A.limitsText(null), "");
+  assert.equal(A.limitsText({ from: "07:00", to: "20:00", minutes: 120 }), "07:00–20:00 · 2 h a day");
+  assert.equal(A.limitsText({ from: "", to: "", minutes: 90 }), "1 h 30 min a day");
+  assert.equal(A.limitsText({ from: "", to: "", minutes: 45 }), "45 min a day");
+  assert.equal(A.limitsProblem("", "", ""), "");
+  assert.equal(A.limitsProblem("07:00", "20:00", "120"), "");
+  assert.match(A.limitsProblem("07:00", "", ""), /both/);
+  assert.match(A.limitsProblem("7am", "8pm", ""), /07:30/);
+  assert.match(A.limitsProblem("20:00", "07:00", ""), /after/);
+  assert.match(A.limitsProblem("", "", "lots"), /minutes/);
+  assert.match(A.limitsProblem("", "", "2000"), /1440/);
+});

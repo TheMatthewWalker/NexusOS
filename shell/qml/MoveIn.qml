@@ -20,9 +20,11 @@ import "settings"
 //    module (desktop.nix). An APFS container holds several volumes; they are
 //    tried in turn (vol=0, 1, ...) until one has people's folders, which is
 //    the data volume (/Users/<name>);
-//  - encrypted drives (BitLocker, FileVault, LUKS) are said plainly and not
-//    opened: FileVault shows as a Mac system volume with no readable data
-//    volume.
+//  - encrypted drives: BitLocker (Windows) and LUKS (Linux) are unlocked
+//    with their password or BitLocker recovery key (lib/movein.sh unlock,
+//    through udisks), then opened read-only like any other, and locked again
+//    when closed. FileVault is said plainly and not opened: it shows as a Mac
+//    system volume with no readable data volume.
 // Once the folders are found, Core (POST /movein/look, MoveIn.cs) finds each
 // person's browser bookmarks (saved as a file for Firefox's own import, which
 // adds and never replaces) and the old programs, matched to Flathub apps that
@@ -60,7 +62,8 @@ NexusWindow {
     property string os: ""
     property var found: []                 // { user, folder, bytes, on }
     property string status: ""
-    property string phase: "pick"          // pick | mounting | scanning | ready | copying | done
+    property string phase: "pick"          // pick | unlock | admin | mounting | scanning | ready | copying | done
+    property string lockedDevice: ""       // the encrypted drive we unlocked, to lock again when closed
     property real freeBytes: -1
     property var copyQueue: []
     property var copying: null
@@ -120,12 +123,14 @@ NexusWindow {
         const d = drives.find(x => x.path === path);
         if (d) {
             source = path; sourceKind = "drive";
-            if (d.fstype === "bitlocker") {
-                status = "This drive is encrypted with BitLocker, so NexusOS cannot read it. On the old Windows computer, turn BitLocker off " +
-                         "(or copy your files to a USB drive), then try again.";
-                phase = "pick"; return false;
+            if (d.fstype === "bitlocker" || d.fstype === "crypto_luks") {
+                unlockingRemovable = d.removable;
+                status = d.fstype === "bitlocker"
+                    ? "This drive is encrypted with BitLocker. Type its password, or its 48-digit recovery key (on the old computer, or at " +
+                      "aka.ms/myrecoverykey for a Microsoft account), to open it read-only."
+                    : "This drive is encrypted. Type its password to open it read-only.";
+                phase = "unlock"; return true;
             }
-            if (d.fstype === "crypto_luks") { status = "This drive is locked (encrypted). Unlock it in Disks first, then choose it again."; phase = "pick"; return false }
             if (d.mounts.length) { root = d.mounts[0]; weMounted = false; scan(); return true }
             // ext2/3/4: noload, so even the journal is not replayed. APFS: one volume at a time.
             mountOptions = /^ext[234]$/.test(d.fstype) ? "ro,noload" : "ro";
@@ -145,7 +150,7 @@ NexusWindow {
     // udisks mounts it read-only; with interactive, polkit asks for the password through the shell's agent.
     property bool interactive: false
     function mountDrive(withPassword) {
-        if (sourceKind !== "drive" || !["admin", "pick", "mounting", "scanning", "ready"].includes(phase)) return false;
+        if (sourceKind !== "drive" || !["unlock", "admin", "pick", "mounting", "scanning", "ready"].includes(phase)) return false;
         interactive = withPassword;
         phase = "mounting";
         status = apfsVol > 0 ? "Looking at the next part of the Mac drive…" : withPassword ? "Waiting for the administrator's password…" : "Opening the drive read-only…";
@@ -155,6 +160,47 @@ NexusWindow {
         return true;
     }
     function openWithPassword() { return phase === "admin" && mountDrive(true) }
+    // An encrypted drive: unlock it, then open what is inside read-only.
+    property bool unlockingRemovable: true
+    function unlock(key) {
+        if (phase !== "unlock" || !key || unlocker.running) return false;
+        status = "Unlocking…";
+        unlocker.key = key;
+        unlocker.command = ["sh", helper, "unlock", source];
+        unlocker.running = true;
+        return true;
+    }
+    Process {
+        id: unlocker
+        property string key: ""
+        stdinEnabled: true
+        stdout: StdioCollector { id: unlockOut }
+        stderr: StdioCollector { id: unlockErr }
+        onStarted: { write(key + "\n"); key = ""; stdinEnabled = false }
+        onExited: code => {
+            stdinEnabled = true;
+            const inner = unlockOut.text.trim();
+            if (code !== 0 || !/^\/dev\//.test(inner)) {
+                const err = unlockErr.text.trim();
+                win.status = /NotAuthorized|not authorized|dismissed/i.test(err)
+                    ? "Unlocking a drive inside this computer needs an administrator's password, and it was not given."
+                    : "That did not unlock the drive. Check the password or recovery key and try again.";
+                return;
+            }
+            win.lockedDevice = win.source; win.source = inner;
+            innerType.command = ["lsblk", "-ndo", "FSTYPE", inner];
+            innerType.running = true;
+        }
+    }
+    Process {
+        id: innerType
+        stdout: StdioCollector { id: innerOut }
+        onExited: {
+            const fs = innerOut.text.trim().toLowerCase();
+            win.mountOptions = /^ext[234]$/.test(fs) ? "ro,noload" : "ro";
+            win.mountDrive(!win.unlockingRemovable);
+        }
+    }
     // APFS: this volume had nothing to copy; close it and try the next one.
     function nextVolume() {
         if (os === "Mac") apfsSawMac = true;
@@ -213,8 +259,11 @@ NexusWindow {
     function cancel() { if (rsync.running) { copyQueue = []; rsync.running = false } }
     function unmount() {
         if (sourceKind === "drive" && weMounted && !busy()) {
-            Quickshell.execDetached(["udisksctl", "unmount", "--no-user-interaction", "-b", source]);
-            weMounted = false; status = "The old drive is closed. You can unplug it.";
+            if (lockedDevice)
+                Quickshell.execDetached(["sh", helper, "close", source, lockedDevice]);
+            else
+                Quickshell.execDetached(["udisksctl", "unmount", "--no-user-interaction", "-b", source]);
+            weMounted = false; lockedDevice = ""; status = "The old drive is closed. You can unplug it.";
             bookmarks = []; apps = []; notes = [];
             if (bridge && bridge.online) bridge.api("DELETE", "/movein", {});
         }
@@ -630,6 +679,10 @@ NexusWindow {
             spacing: 10
             Button { theme: win.theme; visible: win.phase === "copying"; label: "Stop"; onClicked: win.cancel() }
             Button { theme: win.theme; primary: true; visible: win.phase === "admin"; label: "Open it (asks for the password)"; onClicked: win.openWithPassword() }
+            TextField { id: driveKey; visible: win.phase === "unlock"; theme: win.theme; password: true; label: "Password or recovery key"
+                        onAccepted: if (win.unlock(text)) clear() }
+            Button { theme: win.theme; primary: true; visible: win.phase === "unlock"; label: "Unlock"; enabled: driveKey.text !== "" && !unlocker.running
+                     onClicked: if (win.unlock(driveKey.text)) driveKey.clear() }
             Button { theme: win.theme; visible: win.weMounted && !win.busy(); label: "Close the old drive"; onClicked: win.unmount() }
             Button { theme: win.theme; visible: win.phase === "done"; label: "Open home folder"; onClicked: Quickshell.execDetached(["xdg-open", win.home]) }
             Button {

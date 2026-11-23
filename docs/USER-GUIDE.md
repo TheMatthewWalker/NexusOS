@@ -114,6 +114,10 @@ Settings, Storage shows how full the disk is and what uses it. Emptying the tras
 
 Secure Boot makes the computer start only software signed with trusted keys. NexusOS uses keys made on your own computer. Turning it on takes a few steps, each explained in Settings, About: approve the change, clear the keys in the firmware settings (Setup Mode), put this computer's keys in, and switch Secure Boot on in the firmware. Microsoft's keys stay, so Windows still starts beside NexusOS. [Open Secure Boot](settings:about/secureboot)
 
+## For developers
+
+Settings, Developer has your SSH keys (create one and copy it for GitHub, GitLab or a server; the keyring keeps it unlocked while you are logged in). In a project folder, `nexus-dev init python` (or node, rust, go, java, dotnet, c) sets the project up: its tools are there whenever you are in the folder. `docker` and `docker compose` work, on Podman, without anything running as root. Arduino, ESP32 and other boards can be programmed straight away, and virtual machines can be turned on there too. [Open Developer](settings:developer/ssh)
+
 ## Privacy
 
 Everything Nexus does stays on this computer unless you choose otherwise. Settings, Privacy and AI shows what Nexus remembers, how long, and which model answers; a cloud model is used only if you add one. The **Timeline** lists every change Nexus or you made, and most can be undone from there. [Open Privacy and AI](settings:privacy/notes)

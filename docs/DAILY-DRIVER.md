@@ -142,7 +142,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Open a .exe or .msi: run it with Wine (Bottles), or explain the alternative | P1 | ⬜ | Double-click handler; Nexus suggests the Linux equivalent first |
-| Windows in a virtual machine (for apps that need it) | P2 | ⬜ | GNOME Boxes / virt-manager with KVM |
+| Windows in a virtual machine (for apps that need it) | P2 | 🟡 | Virtual machines can be turned on (0.3); a guided Windows set-up to add |
 | Program equivalents ("what do I use instead of X") | P1 | 🟡 | Move in matches old programs to apps; extend |
 | Dual boot with Windows, with the clocks agreeing | P1 | ✅ | |
 
@@ -193,18 +193,18 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Terminal, editor (VSCodium), git | P1 | ✅ | (0.2) |
-| SSH: keys, agent, connect to servers; SSH server off by default | P1 | 🟡 | Server is a Guardian option; keys/agent page |
-| Docker-compatible containers, `docker` and `docker compose` commands | P1 | 🟡 | `docker` on Podman and docker-compose (0.2); compose needs the Podman socket set up per person |
-| Language toolchains in a project (Python, Node, Rust, Go, Java, .NET, C/C++) | P1 | ⬜ | `nix develop` / devenv / direnv, with templates; "set up this project" from Nexus |
+| SSH: keys, agent, connect to servers; SSH server off by default | P1 | ✅ | Settings, Developer; keyring agent (0.3) |
+| Docker-compatible containers, `docker` and `docker compose` commands | P1 | ✅ | On rootless Podman, socket and DOCKER_HOST per person (0.2, 0.3) |
+| Language toolchains in a project (Python, Node, Rust, Go, Java, .NET, C/C++) | P1 | 🟡 | `nexus-dev init` and direnv (0.3); Nexus setting a project up to add |
 | Python and Node global tools that work like elsewhere (pip, npm -g) | P1 | ⬜ | nix-ld so downloaded binaries and pip wheels run |
 | Run downloaded Linux programs (nix-ld) | P1 | ✅ | (0.2) |
-| JetBrains IDEs, Android Studio | P2 | 🟡 | Flathub; adb udev rules for phones |
-| Microcontrollers and serial devices (Arduino, ESP32): serial port access | P2 | ⬜ | dialout group, udev rules |
-| Virtual machines (KVM, QEMU, virt-manager) | P2 | ⬜ | |
+| JetBrains IDEs, Android Studio | P2 | 🟡 | Flathub; adb and fastboot installed (0.3) |
+| Microcontrollers and serial devices (Arduino, ESP32): serial port access | P2 | ✅ | (0.3) |
+| Virtual machines (KVM, QEMU, virt-manager) | P2 | ✅ | Settings, Developer, through Guardian (0.3) |
 | Kubernetes and cloud CLIs (kubectl, aws, az, gcloud) | P3 | ⬜ | Through project shells |
 | Databases for development (PostgreSQL, MySQL, Redis) | P3 | ⬜ | Containers |
 | Local AI coding help | P2 | ✅ | Code (Super+C) |
-| GitHub/GitLab sign-in for git (credential helper) | P2 | ⬜ | Uses the keyring |
+| GitHub/GitLab sign-in for git (credential helper) | P2 | 🟡 | SSH keys (0.3); HTTPS credential helper to add |
 | man pages and documentation offline | P3 | 🟡 | |
 
 ## 13. Accessibility
@@ -261,7 +261,7 @@ new features, patch for fixes only).
 | 1 | Bluetooth on; password keyring; touchpad and mouse settings; on-screen indicators and media keys; screenshots and Windows-like shortcuts; fonts; developer and system basics | 0.2.0 |
 | 2 | Task manager; system tray; media controls; clipboard history and emoji picker; camera/mic indicators | 0.3.0 (with 3) |
 | 3 | Network shares, phone integration, VPN and work Wi-Fi in Settings (cloud drives moved to a later batch) | 0.3.0 |
-| 4 | Developer basics: nix-ld, Docker-compatible containers, project toolchains, SSH keys, serial devices, VMs | |
+| 4 | Developer basics: project toolchains, rootless containers, SSH keys, serial boards, VMs (nix-ld came in 0.2) | 0.3.0 |
 | 5 | Windows software: .exe handling with Bottles, Windows VM, program equivalents; Steam native, controllers | |
 | 6 | Email/calendar and online accounts; cloud drives (OneDrive, Google Drive, Nextcloud); PWAs; PDF forms; spell checking | |
 | 7 | Accessibility: magnifier, keyboard aids, colour filters, live captions | |

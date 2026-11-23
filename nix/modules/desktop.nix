@@ -18,6 +18,10 @@ let
         export "$key=$value"
       done < "$region"
     fi
+    # Docker clients talk to the person's own Podman (nix/modules/developer.nix).
+    if [ -z "''${DOCKER_HOST:-}" ] && [ -n "''${XDG_RUNTIME_DIR:-}" ]; then
+      export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
+    fi
     exec ${config.programs.hyprland.package}/bin/start-hyprland -- --config /etc/nexus/hyprland.conf
   '';
   hyprland = "${session}";

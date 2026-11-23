@@ -971,6 +971,19 @@ class ShellBuild(unittest.TestCase):
         for t in ("tasks.test.mjs", "privacy.test.mjs", "pickers.test.mjs", "network.test.mjs"):
             self.run_node_test(t)
 
+    def test_developer_tools_run_as_the_person(self):
+        page = (self.out / "settings/DeveloperPage.qml").read_text()
+        self.assertIn("page.host.proposeSystem(D.VM_PLAN)", page)
+        self.assertIn('copier.command = ["wl-copy", "--", text]', page)
+        self.assertIn('[ ! -e \\"$HOME/.ssh/id_ed25519\\" ]', page)          # never replaces a key
+        dev = (ROOT / "nix/modules/developer.nix").read_text()
+        for line in ("programs.direnv", "systemd.user.sockets.podman.wantedBy", "services.gnome.gcr-ssh-agent.enable", '"dialout"'):
+            self.assertIn(line, dev)
+        self.assertIn('export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"', (ROOT / "nix/modules/desktop.nix").read_text())
+        import json as _j
+        self.assertIn("nexusos.developer.virtualMachines.enable", _j.loads((ROOT / "schema/guardian-options.json").read_text())["options"])
+        self.run_node_test("developer.test.mjs")
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

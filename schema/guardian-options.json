@@ -36,6 +36,11 @@
       "elevatedWhen": true,
       "summary": "Secure Boot: sign the start-up menu and kernels with this computer's own keys",
       "riskNote": "Changes how the computer starts: keys are made on this computer and the start-up menu and kernels are signed with them, and the start-up menu's editor is turned off. Nothing in the firmware changes yet; Settings, About then guides you through putting the keys in the firmware (Microsoft's stay, so Windows still starts) and switching Secure Boot on."
+    },
+    "nexusos.developer.virtualMachines.enable": {
+      "type": "bool",
+      "risk": "review",
+      "summary": "Virtual machines: KVM with libvirt, QEMU and virt-manager"
     }
   },
   "packages": {

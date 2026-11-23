@@ -64,7 +64,7 @@ public static class NexusActions
 {
     public static readonly string[] SettingsPages =
         ["network", "bluetooth", "printers", "sound", "display", "power", "mouse", "desktop", "language", "defaults", "privacy", "search", "timeline", "automations",
-         "accessibility", "accounts", "health", "backups", "updates", "storage", "feedback", "help", "about"];
+         "accessibility", "accounts", "health", "backups", "updates", "developer", "storage", "feedback", "help", "about"];
     public static readonly string[] PersonalSettings =
         ["volume", "night_light", "scale", "windows", "blur", "animations", "high_contrast", "do_not_disturb"];
     public static readonly string[] Roles = ["files", "browser", "terminal", "settings", "studio"];
@@ -165,7 +165,7 @@ public static class NexusActions
         new("install_system_software", ActionSafety.System, "Install a NixOS package for every account (Guardian approval).",
             [new("package", "string", "nixpkgs name.", MaxLength: 128)]),
         new("change_system_option", ActionSafety.System,
-            "Turn a system service on or off (Guardian approval). openssh is Key-only remote login: explain it first.",
+            "System option on/off (Guardian approval). openssh is Key-only remote login: explain first.",
             [new("option", "string", "", Choices: GuardianSchema.Options.Keys.Order(StringComparer.Ordinal).ToArray()),
              new("enabled", "boolean", "")]),
     ];

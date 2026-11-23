@@ -58,6 +58,8 @@ Windows float like on Windows or macOS; you can switch to tiled windows in Setti
 
 **Web apps**: Apps, Web apps turns a website into an app with its own window, in All apps and Alt+Tab: Outlook, Teams, Microsoft 365, Google Docs, WhatsApp and others are suggested, or type any address. You stay signed in, as in Chromium. You can also ask Nexus: "make Outlook an app".
 
+**Netflix, Disney+ and Spotify** play in Firefox straight away. Netflix sends Linux computers at most 720p, whichever browser is used; that is Netflix's choice, not NexusOS's.
+
 **Default apps** decide which app opens web links, email, folders, music, videos, pictures, text files and PDFs. [Open Default apps](settings:defaults/defaults)
 
 **Startup apps**, on the same page, are the apps that open when you log in: apps such as Steam and Discord add themselves when you ask them to start with the computer, and you can turn each off or add your own. [Open Startup apps](settings:defaults/startup)

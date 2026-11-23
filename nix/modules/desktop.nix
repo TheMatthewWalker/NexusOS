@@ -503,6 +503,12 @@ in
     # stopped. Hyprland starts nexus-session.target (exec-once) and stops it
     # as it exits. Not graphical-session.target: that would also start
     # services NexusOS does not set up, such as hypridle.
+    # Electron and Chromium apps (VS Code, Discord, Slack, Chromium and the
+    # web apps) draw on Wayland themselves, so they stay sharp at 125% or
+    # 150% scale instead of being stretched through XWayland.
+    environment.sessionVariables.NIXOS_OZONE_WL = "1";
+    environment.sessionVariables.ELECTRON_OZONE_PLATFORM_HINT = "auto";
+
     systemd.user.targets.nexus-session = {
       description = "NexusOS desktop session (Hyprland)";
     };

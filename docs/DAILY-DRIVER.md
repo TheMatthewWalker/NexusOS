@@ -88,7 +88,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Browsers (Firefox, Chromium) | P1 | ✅ | |
-| DRM video (Netflix, Spotify web): Widevine | P1 | 🔍 | Firefox downloads it; Chromium needs it built in |
+| DRM video (Netflix, Spotify web): Widevine | P1 | 🟡 | Firefox allows it by policy, no prompt (0.5); Netflix itself limits Linux to 720p; Chromium has none |
 | Password keyring (Secret Service) for browsers and apps | P1 | ✅ | gnome-keyring unlocked at login, follows password changes, Seahorse (0.2) |
 | Email, calendar and contacts (Thunderbird), with Microsoft 365 and Google | P1 | ✅ | Thunderbird preinstalled, opens mail links; signs in itself (0.4) |
 | Online accounts (sign in to Google, Microsoft once for mail, calendar, files) | P2 | 🟡 | Mail and calendar sign in in Thunderbird, files in Cloud drives; one sign-in for both is later |

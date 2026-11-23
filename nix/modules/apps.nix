@@ -50,6 +50,10 @@ in
   config = lib.mkMerge [
     (lib.mkIf cfg.preinstalled {
       programs.firefox.enable = true;
+      # Netflix, Disney+, Spotify and other protected video and music play
+      # in Firefox straight away: its Widevine module is allowed and fetched
+      # on first use, with no prompt. (Netflix itself sends Linux at most 720p.)
+      programs.firefox.policies.EncryptedMediaExtensions = { Enabled = true; Locked = false; };
       environment.systemPackages = with pkgs; [
         chromium
         libreoffice-fresh

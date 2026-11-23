@@ -83,7 +83,7 @@ fi
 
 say ""
 say "Done: $DIR/$iso (checked against the release's SHA256SUMS)."
-say "Write it to a USB stick of 8 GB or more (everything on the stick is erased):"
+say "Write it to a USB stick of 16 GB or more, or 8 GB for the slim image (everything on the stick is erased):"
 say "  - with balenaEtcher (https://etcher.balena.io): Flash from file, pick the stick, Flash"
 say "  - or on Linux: sudo dd if=\"$iso\" of=/dev/sdX bs=4M status=progress conv=fsync   (sdX: the stick, see lsblk)"
 say "Then start the computer from the stick. Full steps: https://github.com/$REPO/blob/main/docs/INSTALL.md"

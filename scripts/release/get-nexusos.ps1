@@ -81,7 +81,7 @@ if ((Test-Path -LiteralPath $iso) -and (Hash $iso) -eq $sums[$iso]) {
 
 Write-Host ''
 Write-Host "Done: $(Join-Path $Dir $iso) (checked against the release's SHA256SUMS)." -ForegroundColor Green
-Write-Host 'Write it to a USB stick of 8 GB or more (everything on the stick is erased) with Rufus (https://rufus.ie)'
+Write-Host 'Write it to a USB stick of 16 GB or more, or 8 GB for the slim image (everything on the stick is erased) with Rufus (https://rufus.ie)'
 Write-Host 'or balenaEtcher (https://etcher.balena.io): choose the .iso, choose the stick, Start. In Rufus, pick "DD Image mode" if it asks.'
 Write-Host "Then start the computer from the stick. Full steps: https://github.com/$Repo/blob/main/docs/INSTALL.md"
 if (-not $env:NEXUSOS_DIR) { Start-Process explorer.exe "/select,`"$(Join-Path $Dir $iso)`"" }

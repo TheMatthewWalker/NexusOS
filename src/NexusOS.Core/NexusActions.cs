@@ -74,8 +74,8 @@ public static class NexusActions
 
     // Descriptions are kept short: they go to the model with every question
     // that is offered the action (ActionSelection.cs), so each word costs time.
-    // Guardian's system options by short name, for the model: "services.openssh.enable" is
-    // "openssh", "nexusos.developer.virtualMachines.enable" is "developer.virtualMachines".
+    // Guardian's system options by short name, for the model: the openssh option (services.openssh.enable) is
+    // offered as openssh, and nexusos.developer.virtualMachines.enable as developer.virtualMachines.
     // Each new option costs every system question its name in tokens, so the short form matters.
     public static string ShortOptionName(string key)
     {

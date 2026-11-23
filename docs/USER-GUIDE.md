@@ -68,6 +68,8 @@ NexusOS does not run Windows programs by itself, but most have a version or an e
 
 For games, get Steam (most Windows games work through its Proton), and Heroic for Epic and GOG games, from Apps or Welcome. Xbox, PlayStation and Switch controllers work by cable and Bluetooth. A few online games refuse Linux because of their anti-cheat (Valorant, Fortnite, Call of Duty and others): ask Nexus "will Valorant work?", and opening such a game's installer says so before anything is installed.
 
+**Windows in a window**: for programs that need Windows (Office's desktop apps, Adobe, work tools), turn on virtual machines in Settings, Developer, then open **Windows (in a window)** from Apps. It asks for Windows' installation file (an ISO, from Microsoft's website) and you need a Windows licence; Windows then runs in a window beside your apps. Games with anti-cheat refuse virtual machines: for those, Windows beside NexusOS is the answer.
+
 **Windows beside NexusOS**: the computer always starts NexusOS, with no menu to choose from. Where Windows is installed too, **Windows** is in your apps (and in Settings, Power): it restarts into Windows once, and the next start is NexusOS again.
 
 ## Files from your old computer

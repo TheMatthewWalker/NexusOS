@@ -1109,6 +1109,11 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("boot.loader.timeout = lib.mkDefault 0;", everyday)       # no start-up menu: Windows is an app
         self.assertIn('ExecStart = "${windows}/bin/nexus-windows entry";', everyday)
         self.assertIn("import Quickshell.Io", (self.out / "ActionCards.qml").read_text())
+        vm = (ROOT / "scripts/desktop/nexus-windows-vm.sh").read_text()
+        self.assertIn("uri=qemu:///session", vm)                                # as the person, no password
+        self.assertIn("--tpm backend.type=emulator,backend.version=2.0,model=tpm-crb", vm)
+        self.assertIn("virtualisation.libvirtd.qemu.swtpm.enable = true;", (ROOT / "nix/modules/developer.nix").read_text())
+        self.assertIn('Quickshell.execDetached(["nexus-windows-vm"])', (self.out / "settings/DeveloperPage.qml").read_text())
 
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()

@@ -136,7 +136,7 @@ the owner agrees it is ready.**
 | VRR / FreeSync / G-Sync, HDR | P3 | ⬜ | Hyprland supports VRR; HDR is early |
 | Anti-cheat games (some never work: tell people which) | P2 | ✅ | Nexus's check_game and the Windows program window say so before installing (0.5) |
 | Windows beside NexusOS without a boot menu | P2 | ✅ | Always starts NexusOS; Windows is an app that restarts into it once (0.5) |
-| Guided Windows VM set-up (Office desktop, Adobe, work tools) | P2 | ⬜ | Better than dual boot for apps; not for anti-cheat games |
+| Guided Windows VM set-up (Office desktop, Adobe, work tools) | P2 | ✅ | Windows (in a window): ISO, TPM, UEFI, as the person, no password (0.5); not for anti-cheat games |
 | Discord with screen sharing | P2 | 🟡 | Portal |
 
 ## 8. Running Windows software
@@ -144,7 +144,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Open a .exe or .msi: run it with Wine (Bottles), or explain the alternative | P1 | ✅ | Says what it is, offers the app here, Bottles for the rest (0.4) |
-| Windows in a virtual machine (for apps that need it) | P2 | 🟡 | Virtual machines can be turned on (0.3); a guided Windows set-up to add |
+| Windows in a virtual machine (for apps that need it) | P2 | ✅ | Guided set-up (0.5) |
 | Program equivalents ("what do I use instead of X") | P1 | ✅ | Move in and Windows installers share one list (0.4) |
 | Dual boot with Windows, with the clocks agreeing | P1 | ✅ | |
 

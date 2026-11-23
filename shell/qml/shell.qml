@@ -183,6 +183,12 @@ ShellRoot {
     Translations { id: translations }
     CrashWatcher { desktop: desktop }
     OnScreen { theme: root.dark }
+    Tasks { id: tasksWin; theme: root.dark }
+    Clipboard { id: clipboardWin; theme: root.dark }
+    GlobalShortcut { appid: "nexus"; name: "clipboard"; onPressed: clipboardWin.visible ? clipboardWin.visible = false : clipboardWin.open() }
+    Emoji { id: emojiWin; theme: root.dark }
+    GlobalShortcut { appid: "nexus"; name: "emoji"; onPressed: emojiWin.visible ? emojiWin.visible = false : emojiWin.open() }
+    GlobalShortcut { appid: "nexus"; name: "tasks"; onPressed: tasksWin.visible ? tasksWin.visible = false : tasksWin.open() }
     DesktopSettings { id: desktop; gameMode: root.gameMode; bridge: bridge }
     RuleRunner { bridge: bridge; desktop: desktop; wallpaper: wallpaper; apps: apps; wifi: settings.wifi }
     // Voice control and Describe this, on this computer (Voice.qml, Describe.qml).

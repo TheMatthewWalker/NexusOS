@@ -67,7 +67,24 @@ in
     virtualisation.podman.dockerCompat = lib.mkDefault true;
 
     environment.systemPackages = [ pkgs.libsecret keyringPassword screenshot snap pkgs.playerctl
-                                   pkgs.cifs-utils pkgs.exfatprogs pkgs.ntfs3g pkgs.docker-compose ];
+                                   pkgs.cifs-utils pkgs.exfatprogs pkgs.ntfs3g pkgs.docker-compose
+                                   pkgs.cliphist pkgs.wtype pkgs.wl-clipboard ];
+
+    # Clipboard history (Clipboard.qml): text and pictures, kept by cliphist in
+    # the person's cache, for the desktop session only.
+    systemd.user.services.nexus-clipboard = {
+      description = "Clipboard history";
+      partOf = [ "nexus-session.target" ];
+      wantedBy = [ "nexus-session.target" ];
+      after = [ "nexus-session.target" ];
+      path = [ pkgs.wl-clipboard pkgs.cliphist ];
+      script = ''
+        wl-paste --type text --watch cliphist store &
+        exec wl-paste --type image --watch cliphist store
+      '';
+      serviceConfig = { Restart = "on-failure"; RestartSec = 2; };
+    };
+    environment.etc."nexus/emoji-test.txt".source = "${pkgs.unicode-emoji}/share/unicode/emoji/emoji-test.txt";
 
     fonts.packages = with pkgs; [
       carlito caladea liberation_ttf dejavu_fonts

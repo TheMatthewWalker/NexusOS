@@ -33,6 +33,9 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 | Super+Left / Right | Snap the window to that half of the screen |
 | Super+Up / Down | Maximise the window / put it back |
 | Super+Shift+S | Screenshot of an area (Print: the whole screen; Alt+Print: the window) |
+| Ctrl+Shift+Esc | Task manager: what is running, and End task for an app that has stopped responding |
+| Super+Shift+V | Clipboard history: paste something you copied earlier |
+| Super+. | Emoji |
 | Super+A | Apps |
 | Super+E | Files |
 | Super+Return or Ctrl+Alt+T | Terminal |
@@ -42,6 +45,8 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 | Super+F / Super+M | Full screen / maximise |
 | Alt+Shift | Next keyboard layout (when you have more than one) |
 | Super+Alt+S | Screen reader on or off |
+
+The top bar shows when an app is using your microphone or camera, or sharing your screen, with its name; what is playing, with play, pause and skip; and the icons apps such as Steam or Discord keep there (right-click one for its menu).
 
 Screenshots are copied, so you can paste them straight away, and saved in Pictures, Screenshots. The volume, brightness and media keys work as on Windows and show how much on the screen.
 

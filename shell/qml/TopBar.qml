@@ -4,7 +4,10 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
+import Quickshell.Services.SystemTray
+import Quickshell.Services.Mpris
 import Quickshell.Networking
+import "lib/privacy.mjs" as Priv
 
 // The top bar (design: "Desktop B · Floating glass with top bar"): the Nexus
 // orb, workspaces, the date and time, and Wi-Fi, sound and battery. Each
@@ -131,6 +134,76 @@ PanelWindow {
                 TapHandler { onTapped: bar.settings.open(st.page, "") }
                 Accessible.role: Accessible.Button
                 Accessible.name: st.name
+            }
+            // Microphone, camera and screen sharing in use: always shown, never hidden.
+            Row {
+                id: privacy
+                readonly property var streams: Pipewire.nodes.values.filter(n => n.isStream)
+                readonly property var use: Priv.inUse(privacy.streams, "pw-record")
+                readonly property string text: Priv.describe(use)
+                PwObjectTracker { objects: privacy.streams }
+                visible: text !== ""; spacing: 6
+                Rectangle { width: 8; height: 8; radius: 4; color: "#FF8FA3"; anchors.verticalCenter: parent.verticalCenter }
+                Image { visible: privacy.use.microphone.length > 0; width: 16; height: 16; sourceSize: Qt.size(32, 32)
+                        source: "icons/mic.svg"; anchors.verticalCenter: parent.verticalCenter }
+                Image { visible: privacy.use.camera.length > 0 || privacy.use.screen; width: 16; height: 16; sourceSize: Qt.size(32, 32)
+                        source: "icons/display.svg"; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: privacy.use.screen ? "Sharing screen" : (privacy.use.microphone.concat(privacy.use.camera)[0] || "")
+                       color: bar.theme.ink; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter; textFormat: Text.PlainText
+                       width: Math.min(implicitWidth, 140); elide: Text.ElideRight }
+                Accessible.role: Accessible.StaticText
+                Accessible.name: privacy.text
+            }
+            // Now playing, from any app that says what it plays (MPRIS): play,
+            // pause and skip without finding its window.
+            Row {
+                id: media
+                readonly property var player: Priv.pick(Mpris.players.values)
+                visible: !!player && Priv.nowPlaying(player) !== ""
+                spacing: 6
+                Text { text: "⏮"; visible: !!media.player && media.player.canGoPrevious; color: bar.theme.inkSecondary; font.pixelSize: 12
+                       anchors.verticalCenter: parent.verticalCenter
+                       TapHandler { onTapped: media.player.previous() } Accessible.role: Accessible.Button; Accessible.name: "Previous" }
+                Text { text: media.player && media.player.isPlaying ? "⏸" : "▶"; color: bar.theme.ink; font.pixelSize: 12
+                       anchors.verticalCenter: parent.verticalCenter
+                       TapHandler { onTapped: if (media.player.canTogglePlaying) media.player.togglePlaying() }
+                       Accessible.role: Accessible.Button; Accessible.name: media.player && media.player.isPlaying ? "Pause" : "Play" }
+                Text { text: "⏭"; visible: !!media.player && media.player.canGoNext; color: bar.theme.inkSecondary; font.pixelSize: 12
+                       anchors.verticalCenter: parent.verticalCenter
+                       TapHandler { onTapped: media.player.next() } Accessible.role: Accessible.Button; Accessible.name: "Next" }
+                Text { width: Math.min(implicitWidth, 200); elide: Text.ElideRight; textFormat: Text.PlainText
+                       text: Priv.nowPlaying(media.player); color: bar.theme.inkSecondary; font.pixelSize: 12
+                       anchors.verticalCenter: parent.verticalCenter
+                       TapHandler { onTapped: if (media.player.canRaise) media.player.raise() } }
+            }
+            // The system tray: apps that keep an icon while running (Steam,
+            // Discord, VPN and sync clients). Click: the app; right-click: its menu.
+            Row {
+                spacing: 8
+                Repeater {
+                    model: SystemTray.items
+                    delegate: Image {
+                        id: trayIcon
+                        required property var modelData
+                        width: 16; height: 16; sourceSize: Qt.size(32, 32)
+                        source: modelData.icon; anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onTapped: (point, button) => {
+                                const item = trayIcon.modelData;
+                                if (button === Qt.RightButton || item.onlyMenu) {
+                                    if (item.hasMenu) {
+                                        const p = trayIcon.mapToItem(null, 0, trayIcon.height + 6);
+                                        item.display(bar, p.x, p.y);
+                                    }
+                                } else item.activate();
+                            }
+                        }
+                        Accessible.role: Accessible.Button
+                        Accessible.name: modelData.tooltipTitle || modelData.title || modelData.id
+                    }
+                }
             }
             Status {
                 icon: "network"; page: "network"; dim: bar.wifi.ssid || bar.wifi.wired ? 1 : 0.4

@@ -948,6 +948,25 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('"keyword input:touchpad:tap-to-click " + store.tapToClick', settings)
         self.run_node_test("onscreen.test.mjs")
 
+    def test_task_manager_tray_media_privacy_clipboard_and_emoji(self):
+        tasks = (self.out / "Tasks.qml").read_text()
+        self.assertIn('ender.command = ["kill", "-TERM"].concat(own.map(String))', tasks)
+        self.assertIn("T.canEnd(snap, p, uid)", tasks)                  # only the person's own processes
+        bar = (self.out / "TopBar.qml").read_text()
+        for line in ("model: SystemTray.items", "Priv.pick(Mpris.players.values)", "Priv.inUse(privacy.streams"):
+            self.assertIn(line, bar)
+        clip = (self.out / "Clipboard.qml").read_text()
+        self.assertIn('if (!/^\\d+$/.test(id)) return;', clip)
+        emoji = (self.out / "Emoji.qml").read_text()
+        self.assertIn('"emoji", e.char]', emoji)                          # passed as an argument, never in the script
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        for line in ("bind = CTRL SHIFT, Escape, global, nexus:tasks", "bind = SUPER SHIFT, V, global, nexus:clipboard",
+                     "bind = SUPER, period, global, nexus:emoji"):
+            self.assertIn(line, desktop)
+        self.assertIn("systemd.user.services.nexus-clipboard", (ROOT / "nix/modules/everyday.nix").read_text())
+        for t in ("tasks.test.mjs", "privacy.test.mjs", "pickers.test.mjs"):
+            self.run_node_test(t)
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

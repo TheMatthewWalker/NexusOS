@@ -233,6 +233,31 @@ Column {
         cloudRunner.running = true;
     }
 
+    // ---- fingerprint (fprintd, when turned on through Guardian) ----
+    property bool fingerprintOn: false
+    property string fingerNote: ""
+    Process { running: true; command: ["sh", "-c", "command -v fprintd-enroll"]; onExited: (code) => page.fingerprintOn = code === 0 }
+    Process {
+        id: enroll
+        command: ["fprintd-enroll"]
+        stdout: SplitParser { onRead: data => { const m = A.enrollLine(data); if (m) page.fingerNote = m } }
+        stderr: SplitParser { onRead: data => { const m = A.enrollLine(data); if (m) page.fingerNote = m } }
+    }
+    Process { id: unenroll; command: ["fprintd-delete", page.me]; onExited: page.fingerNote = "Your fingerprints were removed from this computer." }
+    SettingRow {
+        theme: page.theme; label: "Fingerprint"; highlighted: page.host.highlight === "fingerprint"
+        detail: page.fingerNote || (page.fingerprintOn
+            ? "A finger unlocks the lock screen and approves system changes. Logging in still asks for your password."
+            : "On a computer with a fingerprint reader, a finger can unlock the lock screen and approve system changes.")
+        Row {
+            spacing: 8
+            Button { visible: !page.fingerprintOn; theme: page.theme; label: "Turn on…"; onClicked: page.host.proposeSystem(A.FINGERPRINT_PLAN) }
+            Button { visible: page.fingerprintOn; theme: page.theme; label: "Remove"; enabled: !enroll.running; onClicked: unenroll.running = true }
+            Button { visible: page.fingerprintOn; theme: page.theme; primary: true; label: enroll.running ? "Touch the reader…" : "Add a fingerprint"
+                     enabled: !enroll.running; onClicked: { page.fingerNote = ""; enroll.running = true } }
+        }
+    }
+
     SettingRow {
         theme: page.theme; label: "Cloud drives"; highlighted: page.host.highlight === "clouddrives"
         detail: "OneDrive, Google Drive, Dropbox or Nextcloud as a folder in your home folder and in Files, as on Windows. " +

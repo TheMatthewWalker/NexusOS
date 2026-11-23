@@ -27,7 +27,7 @@ the owner agrees it is ready.**
 | On-screen indicators for volume, brightness, caps lock, media keys | P1 | ✅ | Volume, mute, microphone, brightness and media keys (0.2); Caps Lock (0.4) |
 | Keyboard backlight control | P3 | ⬜ | brightnessctl, kbd_backlight |
 | Webcam works in apps and browsers (portals, PipeWire camera) | P1 | 🔍 | Test in Firefox and a video-call site |
-| Fingerprint login and unlock (fprintd) | P2 | ⬜ | Settings, Accounts; PAM for login, lock, sudo/polkit |
+| Fingerprint login and unlock (fprintd) | P2 | ✅ | Settings, Accounts through Guardian: lock screen and approvals; login keeps the password (0.8) |
 | Touchscreen, screen rotation on convertibles, on-screen keyboard | P3 | ⬜ | iio-sensor-proxy, squeekboard/wvkbd |
 | Graphics tablets and pens (Wacom) | P3 | ⬜ | libwacom, Settings |
 | Thunderbolt devices and docks authorised (bolt) | P2 | ✅ | bolt (0.4) |

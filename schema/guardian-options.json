@@ -51,6 +51,11 @@
       "type": "bool",
       "risk": "review",
       "summary": "Share folders with other computers on this network (read-only)"
+    },
+    "nexusos.fingerprint.enable": {
+      "type": "bool",
+      "risk": "review",
+      "summary": "Fingerprint for the lock screen and approvals"
     }
   },
   "packages": {

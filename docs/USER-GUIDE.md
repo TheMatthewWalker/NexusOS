@@ -99,7 +99,7 @@ Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed b
 
 ## Bluetooth and passwords
 
-Turn Bluetooth on and pair devices in Settings, Bluetooth. Passwords you save in browsers and apps are kept in your keyring, which opens when you log in; Passwords and Keys shows them. When you change your password in Settings, Accounts, the keyring's changes with it.
+Turn Bluetooth on and pair devices in Settings, Bluetooth. Passwords you save in browsers and apps are kept in your keyring, which opens when you log in; Passwords and Keys shows them. When you change your password in Settings, Accounts, the keyring's changes with it. On a computer with a fingerprint reader, **Fingerprint** in Settings, Accounts lets a finger unlock the lock screen and approve system changes, as Windows Hello does; logging in still asks for your password, because it also unlocks your keyring (and the disk). [Open Fingerprint](settings:accounts/fingerprint)
 
 ## Screens, sound and power
 

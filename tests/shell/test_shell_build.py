@@ -474,7 +474,11 @@ class ShellBuild(unittest.TestCase):
         self.assertIn('mountOptions = /^ext[234]$/.test(d.fstype) ? "ro,noload" : "ro";', mi)
         self.assertIn('const opts = mountOptions + (apfsVol >= 0 ? ",vol=" + apfsVol : "");', mi)
         self.assertIn('["udisksctl", "mount"].concat(withPassword ? [] : ["--no-user-interaction"]).concat(["-b", source, "-o", opts])', mi)
-        self.assertEqual(len(re.findall(r'mountOptions = ', mi)), 1)
+        self.assertEqual(len(re.findall(r'mountOptions = ', mi)), 2)
+        # Inside an unlocked BitLocker or LUKS drive: the same rule.
+        self.assertIn('win.mountOptions = /^ext[234]$/.test(fs) ? "ro,noload" : "ro";', mi)
+        self.assertIn('unlocker.command = ["sh", helper, "unlock", source];', mi)
+        self.assertIn('onStarted: { write(key + "\\n"); key = ""; stdinEnabled = false }', mi)
         self.assertNotIn('"rw', mi)
         self.assertIn("if (!d.removable) {", mi)
         self.assertIn('d.fstype === "bitlocker"', mi)

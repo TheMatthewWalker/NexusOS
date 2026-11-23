@@ -73,7 +73,7 @@ the owner agrees it is ready.**
 |---|---|---|---|
 | File manager with thumbnails, drives, trash | P1 | ✅ | Thunar |
 | USB drives open by themselves; NTFS and exFAT | P1 | ✅ | NTFS and exFAT support (0.2); check on hardware |
-| BitLocker drives (read Windows encrypted drives) | P2 | ⬜ | cryptsetup bitlk |
+| BitLocker drives (read Windows encrypted drives) | P2 | ✅ | Bring my stuff over unlocks BitLocker and LUKS drives with the password or recovery key, read-only (0.9) |
 | Network shares: Windows (SMB) and NAS; browse and connect | P1 | ✅ | Settings, Network: type \\\\server\\share or browse (0.3) |
 | Share a folder with other computers | P3 | ✅ | Settings, Network, read-only, Guardian turns it on (0.7); changing files later |
 | Cloud drives: OneDrive, Google Drive, Dropbox, Nextcloud | P1 | ✅ | Settings, Accounts: a folder in the home folder and Files, rclone with a local cache (0.4) |

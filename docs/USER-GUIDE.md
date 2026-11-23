@@ -79,6 +79,8 @@ For games, get Steam (most Windows games work through its Proton), and Heroic fo
 
 **Move in** copies documents, photos, music and videos from a Windows or Mac drive (or a backup folder) into your home folder. The old drive is only read, never changed. [Open Move in](settings:about/movein)
 
+If the old drive is encrypted with BitLocker, Bring my stuff over asks for its password or its 48-digit recovery key (Windows shows it in Manage BitLocker; for a Microsoft account it is at aka.ms/myrecoverykey). The drive is opened read-only and locked again when you close it.
+
 ## Email, cloud drives and documents
 
 **Thunderbird** is the email, calendar and contacts app; it signs in to Microsoft 365, Outlook.com, Gmail and others by itself. Links to email addresses open it.

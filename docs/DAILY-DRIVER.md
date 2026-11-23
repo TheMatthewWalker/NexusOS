@@ -76,7 +76,7 @@ the owner agrees it is ready.**
 | BitLocker drives (read Windows encrypted drives) | P2 | ⬜ | cryptsetup bitlk |
 | Network shares: Windows (SMB) and NAS; browse and connect | P1 | ✅ | Settings, Network: type \\\\server\\share or browse (0.3) |
 | Share a folder with other computers | P3 | ⬜ | Samba, off by default |
-| Cloud drives: OneDrive, Google Drive, Dropbox, Nextcloud | P1 | ⬜ | rclone mounts or GNOME Online Accounts; Nextcloud client |
+| Cloud drives: OneDrive, Google Drive, Dropbox, Nextcloud | P1 | ✅ | Settings, Accounts: a folder in the home folder and Files, rclone with a local cache (0.4) |
 | Phone integration: files, notifications, texts (KDE Connect) | P2 | ✅ | KDE Connect (0.3) |
 | Phone file transfer over USB (MTP), iPhone photos | P2 | 🔍 | libmtp present; ifuse for iPhone |
 | Backups | P1 | ✅ | Settings, Backups |
@@ -90,15 +90,15 @@ the owner agrees it is ready.**
 | Browsers (Firefox, Chromium) | P1 | ✅ | |
 | DRM video (Netflix, Spotify web): Widevine | P1 | 🔍 | Firefox downloads it; Chromium needs it built in |
 | Password keyring (Secret Service) for browsers and apps | P1 | ✅ | gnome-keyring unlocked at login, follows password changes, Seahorse (0.2) |
-| Email, calendar and contacts (Thunderbird), with Microsoft 365 and Google | P1 | ⬜ | Preinstall or offer in Welcome |
-| Online accounts (sign in to Google, Microsoft once for mail, calendar, files) | P2 | ⬜ | GNOME Online Accounts |
+| Email, calendar and contacts (Thunderbird), with Microsoft 365 and Google | P1 | ✅ | Thunderbird preinstalled, opens mail links; signs in itself (0.4) |
+| Online accounts (sign in to Google, Microsoft once for mail, calendar, files) | P2 | 🟡 | Mail and calendar sign in in Thunderbird, files in Cloud drives; one sign-in for both is later |
 | Video calls: Teams, Zoom, Meet (camera, mic, screen sharing) | P1 | 🔍 | Screen sharing needs xdg-desktop-portal-hyprland; test |
 | Chat apps (WhatsApp, Discord, Slack, Signal, Telegram) | P2 | 🟡 | Flathub; offered in Welcome bundles |
 | VPN: WireGuard, OpenVPN, corporate (Cisco AnyConnect, GlobalProtect, Fortinet) | P1 | ✅ | Settings, Network: from a file, or the connection editor (0.3) |
 | Work and school Wi-Fi (802.1X, eduroam) in Settings | P1 | ✅ | The connection editor from Settings (0.3) |
 | Wi-Fi hotspot | P3 | ⬜ | |
 | Proxy settings | P3 | ⬜ | |
-| Install a website as an app (PWA) | P2 | ⬜ | Chromium/Firefox web apps in the launcher |
+| Install a website as an app (PWA) | P2 | ✅ | Apps, Web apps, or ask Nexus (0.4) |
 
 ## 5. Office, school and productivity
 
@@ -106,11 +106,11 @@ the owner agrees it is ready.**
 |---|---|---|---|
 | Office suite (LibreOffice) | P1 | ✅ | |
 | Microsoft Office documents look right (fonts, templates) | P1 | ⬜ | See fonts |
-| Microsoft 365 / Google Docs in the browser, as apps | P1 | ⬜ | PWA |
-| PDF: read, fill forms, sign, annotate, merge | P1 | 🟡 | Papers reads; add form filling and editing |
-| Notes, to-do, calendar apps | P2 | ⬜ | |
+| Microsoft 365 / Google Docs in the browser, as apps | P1 | ✅ | Suggested in Apps, Web apps (0.4) |
+| PDF: read, fill forms, sign, annotate, merge | P1 | ✅ | Papers reads and fills forms; PDF Arranger merges and splits; Xournal++ annotates and signs (0.4) |
+| Notes, to-do, calendar apps | P2 | 🟡 | Calendar and tasks in Thunderbird; notes apps on Flathub |
 | Text recognition (OCR) for scans and screenshots | P3 | ⬜ | Tesseract; local AI |
-| Spell checking in many languages | P2 | ⬜ | hunspell dictionaries per chosen language |
+| Spell checking in many languages | P2 | ✅ | hunspell dictionaries for the installer's languages, in LibreOffice and Firefox (0.4) |
 
 ## 6. Media and creative
 
@@ -263,7 +263,7 @@ new features, patch for fixes only).
 | 3 | Network shares, phone integration, VPN and work Wi-Fi in Settings (cloud drives moved to a later batch) | 0.3.0 |
 | 4 | Developer basics: project toolchains, rootless containers, SSH keys, serial boards, VMs (nix-ld came in 0.2) | 0.3.0 |
 | 5 | Windows software: .exe handling with Bottles, program equivalents; controllers, GameMode (Windows VM set-up moved later) | 0.4.0 |
-| 6 | Email/calendar and online accounts; cloud drives (OneDrive, Google Drive, Nextcloud); PWAs; PDF forms; spell checking | |
+| 6 | Email/calendar (Thunderbird); cloud drives (OneDrive, Google Drive, Dropbox, Nextcloud); web apps; PDF tools; spell checking | 0.4.0 |
 | 7 | Accessibility: magnifier, keyboard aids, colour filters, live captions | |
 | 8 | Parental controls, TPM unlock, app permissions, remote help, reset | |
 | … | The rest of the list, by priority | |

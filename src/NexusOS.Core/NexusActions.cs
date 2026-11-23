@@ -119,6 +119,9 @@ public static class NexusActions
         new("apt_install", ActionSafety.Personal, "Install an Ubuntu apt package in a visible terminal. Not a sandbox: runs as them, reads their home.",
             [new("package", "string", "apt package, e.g. htop.", MaxLength: 100, Pattern: @"[a-z0-9][a-z0-9+.-]{0,99}"),
              new("isolated", "boolean", "true for untrusted software: separate container, own home, command-line only.", Required: false)]),
+        new("add_web_app", ActionSafety.Personal, "Add a website as an app in its own window (Outlook, Teams, Google Docs).",
+            [new("url", "string", "https address.", MaxLength: 300, Pattern: WebAddress),
+             new("name", "string", "", Required: false, MaxLength: 40, Pattern: @"[A-Za-z0-9][A-Za-z0-9 ._+&-]{0,39}")]),
         new("undo_app_change", ActionSafety.Personal, "Undo an app install or removal (entry id from get_today_summary).",
             [new("entry", "integer", "", Min: 1, Max: int.MaxValue)]),
         new("create_automation", ActionSafety.Personal, "Create an automation from one sentence.",
@@ -170,6 +173,8 @@ public static class NexusActions
              new("enabled", "boolean", "")]),
     ];
 
+    // As nexus-webapp checks: https only, no characters a desktop file's Exec line would need quoted.
+    private const string WebAddress = @"https://[A-Za-z0-9.-]+(:\d{1,5})?(/[A-Za-z0-9._~:/?#@!&()*+,;=%-]*)?";
     private const string FlathubId = @"[A-Za-z][A-Za-z0-9_-]{0,63}(\.[A-Za-z0-9_-]{1,64}){2,6}";
 
     public static readonly IReadOnlyDictionary<string, NexusAction> ByName = All.ToDictionary(x => x.Name, StringComparer.Ordinal);

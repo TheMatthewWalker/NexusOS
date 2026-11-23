@@ -36,6 +36,8 @@ public static class ActionSelection
         G("install", @"install\w*|software|packages?|flathub|flatpak|apt|download|get me|tools?|spotify|discord|steam|gimp|obs|vlc|" +
                      @"libreoffice|office|games?",
             "install_app", "apt_install", "install_system_software", "get_app_details"),
+        G("web", @"web ?apps?|websites?|sites?|pwas?|outlook|teams|gmail|whatsapp|microsoft 365|office 365|google docs|web page",
+            "add_web_app"),
         G("remove", @"uninstall\w*|remove|delete|get rid of|undo|put back|reinstall", "remove_app", "list_installed_apps", "undo_app_change", "get_today_summary"),
         G("try", @"try|trial|without installing|sandbox\w*", "try_app"),
         G("settings", @"settings?|preferences?|volume|loud\w*|quiet\w*|mute\w*|sound|audio|speakers?|headphones?|night ?light|" +

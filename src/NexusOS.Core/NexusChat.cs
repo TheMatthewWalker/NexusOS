@@ -396,6 +396,15 @@ public sealed class ActionRunner(IServiceProvider services, IConfiguration confi
                     Perform("flathub.install", ("appId", id), ("name", found.Name ?? id)),
                     details: new { lines = found.Lines, warning = found.Warning });
             }
+            case "add_web_app":
+            {
+                var url = Str(args, "url");
+                var host = new Uri(url).Host;
+                var name = args["name"]?.GetValue<string>() is { Length: > 0 } given ? given
+                    : System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(host.Replace("www.", "").Split('.')[0]);
+                return pending.Add(action, args, $"Add {NexusActions.Clean(name, 40)} ({host}) to your apps, opening in its own window",
+                    Perform("webapp.add", ("name", name), ("url", url)));
+            }
             case "remove_app":
             {
                 var id = Str(args, "app_id");

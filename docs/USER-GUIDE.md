@@ -52,6 +52,8 @@ Screenshots are copied, so you can paste them straight away, and saved in Pictur
 
 Windows float like on Windows or macOS; you can switch to tiled windows in Settings, Desktop. [Open Desktop](settings:desktop/windows)
 
+**Web apps**: Apps, Web apps turns a website into an app with its own window, in All apps and Alt+Tab: Outlook, Teams, Microsoft 365, Google Docs, WhatsApp and others are suggested, or type any address. You stay signed in, as in Chromium. You can also ask Nexus: "make Outlook an app".
+
 **Default apps** decide which app opens web links, email, folders, music, videos, pictures, text files and PDFs. [Open Default apps](settings:defaults/defaults)
 
 ## Windows programs and games
@@ -63,6 +65,14 @@ For games, get Steam (most Windows games work through its Proton), and Heroic fo
 ## Files from your old computer
 
 **Move in** copies documents, photos, music and videos from a Windows or Mac drive (or a backup folder) into your home folder. The old drive is only read, never changed. [Open Move in](settings:about/movein)
+
+## Email, cloud drives and documents
+
+**Thunderbird** is the email, calendar and contacts app; it signs in to Microsoft 365, Outlook.com, Gmail and others by itself. Links to email addresses open it.
+
+**Cloud drives**: Settings, Accounts adds OneDrive, Google Drive, Dropbox or Nextcloud. Sign in in the browser window that opens (Nextcloud asks for an app password instead), and the drive is a folder in your home folder and in Files, as on Windows. Files open from a copy on this computer and your changes upload by themselves. Removing a drive there only removes it from this computer. [Open Cloud drives](settings:accounts/clouddrives)
+
+**PDF**: Papers opens PDFs and fills in forms; PDF Arranger joins, splits, reorders and rotates pages; Xournal++ writes and signs on them. Spelling is checked in LibreOffice and Firefox in your language.
 
 ## Wi-Fi, Bluetooth and printers
 

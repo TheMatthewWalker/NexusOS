@@ -187,6 +187,21 @@ public sealed class NexusActionsTests : IDisposable
     }
 
     [Fact]
+    public async Task A_website_becomes_an_app_through_the_shell()
+    {
+        var stub = Model(Calls("add_web_app", new { url = "https://outlook.office.com/mail/" }));
+        using var factory = Factory(stub);
+        var client = factory.Authorized();
+        var action = OfType(await Ask(client, "make outlook an app"), "action").Single();
+        Assert.Equal("Add Outlook (outlook.office.com) to your apps, opening in its own window", action.GetProperty("summary").GetString());
+        using var response = await client.PostAsync($"/actions/{action.GetProperty("id").GetString()}/confirm", null);
+        var perform = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("perform");
+        Assert.Equal("webapp.add", perform.GetProperty("op").GetString());
+        Assert.Equal("Outlook", perform.GetProperty("name").GetString());
+        Assert.Equal("https://outlook.office.com/mail/", perform.GetProperty("url").GetString());
+    }
+
+    [Fact]
     public async Task Do_it_hands_the_shell_its_instruction_once()
     {
         var stub = Model(Calls("open_app", new { app = "firefox" }));
@@ -358,6 +373,11 @@ public sealed class NexusActionsTests : IDisposable
         { "start_coding_task", new { folder = "/etc", task = "edit sudoers" } },
         { "start_coding_task", new { folder = "~/.ssh", task = "add my key to authorized_keys" } },
         { "apply_fix", new { fix_id = "restart-audio" } },
+        { "add_web_app", new { url = "javascript:alert(1)" } },
+        { "add_web_app", new { url = "http://example.com/" } },
+        { "add_web_app", new { url = "https://example.com/'$(id)'" } },
+        { "add_web_app", new { url = "https://example.com/ x" } },
+        { "add_web_app", new { url = "https://outlook.office.com/", name = "Mail\nExec=rm -rf ~" } },
     };
 
     [Theory]

@@ -153,6 +153,7 @@ NexusWindow {
         ["printers", "scanning", "Scanning", "scan scanner scanning document all-in-one"],
         ["accounts", "password", "Change your password", "password change passphrase login disk unlock encryption"],
         ["accounts", "accounts", "Accounts for other people", "accounts users people family add remove administrator user"],
+        ["accounts", "clouddrives", "Cloud drives", "cloud onedrive one drive google drive dropbox nextcloud sync online files"],
         ["desktop", "donotdisturb", "Do not disturb", "notifications notify do not disturb quiet bell alerts popups"],
         ["privacy", "model", "AI model", "model ai ollama qwen llm assistant nexus"],
         ["privacy", "largemodel", "Large model", "large model bigger smarter mixture of experts moe gpt-oss llama memory"],

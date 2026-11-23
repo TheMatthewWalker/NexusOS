@@ -826,7 +826,7 @@ class ShellBuild(unittest.TestCase):
         for line in page.splitlines():
             if "command = " in line or "command: [" in line:
                 self.assertNotIn("password", line.replace("nexus-account-password", "").replace("nexus-keyring-password", ""))
-        self.assertEqual(page.count("password: true"), 7)
+        self.assertEqual(page.count("password: true"), 8)      # 7 account fields and the Nextcloud app password
         settings = (self.out / "Settings.qml").read_text()
         self.assertIn('accounts: "AccountsPage"', settings)
         policy = (ROOT / "nix/modules/accounts.nix").read_text()
@@ -1006,6 +1006,23 @@ class ShellBuild(unittest.TestCase):
                      "hardware.xpadneo.enable", "programs.gamemode.enable"):
             self.assertIn(line, mod)
         self.assertIn("../modules/gaming-windows.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+
+    def test_web_apps_cloud_drives_mail_pdf_and_spelling(self):
+        apps = (self.out / "Apps.qml").read_text()
+        self.assertIn('webQueue = webQueue.concat([{ summary: "Added the web app " + n, command: [webappCmd, "add", n, url] }]);', apps)
+        self.assertIn('case "webapp.add":', apps)
+        self.assertIn('case "webapp.add": {', (self.out / "ActionCards.qml").read_text())
+        page = (self.out / "settings/AccountsPage.qml").read_text()
+        self.assertIn('cloudRunner.command = [cloudCmd, "add-nextcloud", name, url, user];', page)
+        self.assertIn('cloudRunner.input = appPassword;', page)        # the app password goes on stdin
+        self.assertEqual(page.count("Component.onCompleted"), 1)
+        mod = (ROOT / "nix/modules/online.nix").read_text()
+        for line in ("pkgs.thunderbird", "pkgs.pdfarranger", "pkgs.xournalpp", 'systemd.user.services."nexus-cloud@"',
+                     "environment.sessionVariables.DICPATH", '"spellchecker.dictionary_path"'):
+            self.assertIn(line, mod)
+        self.assertIn("../modules/online.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.run_node_test("webapps.test.mjs")
+        self.run_node_test("accounts.test.mjs")
 
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()

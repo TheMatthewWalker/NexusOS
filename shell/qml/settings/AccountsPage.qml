@@ -8,6 +8,8 @@ import "../lib/accounts.mjs" as A
 // as root by nexus-account (nix/modules/accounts.nix) through pkexec, which
 // asks for your password (or an administrator's, to add or remove accounts).
 // Passwords go to it on standard input, never on a command line.
+// Cloud drives (OneDrive, Google Drive, Dropbox, Nextcloud as folders) are
+// nexus-cloud's (nix/modules/online.nix), run as the person.
 Column {
     id: page
     property var theme
@@ -26,7 +28,7 @@ Column {
 
     function say(text, error) { message = text; messageIsError = !!error }
     function refresh() { lister.running = true }
-    Component.onCompleted: refresh()
+    Component.onCompleted: { refresh(); refreshDrives() }
 
     Process {
         id: lister
@@ -179,6 +181,108 @@ Column {
                      enabled: !root.running && A.loginProblem(login.text) === "" && A.passwordProblem(accountPassword.text, accountAgain.text) === ""
                      onClicked: page.runAs("nexus-account-manage", "add", { login: login.text, fullName: fullName.text,
                                                                              password: accountPassword.text, admin: admin.checked }) }
+        }
+    }
+
+    // ---- cloud drives ----
+    readonly property string cloudCmd: Quickshell.env("NEXUS_CLOUD") || "nexus-cloud"
+    property var drives: []
+    property string cloudNote: ""
+    property string cloudKind: ""
+    readonly property var cloudKinds: [
+        { kind: "onedrive", label: "OneDrive", name: "OneDrive" },
+        { kind: "googledrive", label: "Google Drive", name: "GoogleDrive" },
+        { kind: "dropbox", label: "Dropbox", name: "Dropbox" },
+        { kind: "nextcloud", label: "Nextcloud", name: "Nextcloud" }
+    ]
+    function refreshDrives() { if (!cloudLister.running) cloudLister.running = true }
+    Process { id: cloudLister; command: [page.cloudCmd, "list"]
+              stdout: StdioCollector { onStreamFinished: { try { page.drives = JSON.parse(text) } catch (e) { page.drives = [] } } } }
+    Process {
+        id: cloudRunner
+        property string input: ""
+        stdinEnabled: true
+        onStarted: { if (input !== "") write(input + "\n"); input = ""; stdinEnabled = false }
+        onExited: stdinEnabled = true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let r = {};
+                try { r = JSON.parse(text) } catch (e) { r = { error: "nexus-cloud did not answer." } }
+                page.cloudNote = r.error || r.message || "";
+                if (!r.error) page.cloudKind = "";
+                page.refreshDrives();
+            }
+        }
+    }
+    function addDrive(kind, name) {
+        if (cloudRunner.running) return;
+        cloudNote = "Sign in in the browser window that opens, and allow access. This page waits for it.";
+        cloudRunner.command = [cloudCmd, "add", kind, name];
+        cloudRunner.running = true;
+    }
+    function addNextcloud(name, url, user, appPassword) {
+        if (cloudRunner.running) return;
+        cloudNote = "Checking with Nextcloud…";
+        cloudRunner.input = appPassword;
+        cloudRunner.command = [cloudCmd, "add-nextcloud", name, url, user];
+        cloudRunner.running = true;
+    }
+    function removeDrive(name) {
+        if (cloudRunner.running) return;
+        cloudRunner.command = [cloudCmd, "remove", name];
+        cloudRunner.running = true;
+    }
+
+    SettingRow {
+        theme: page.theme; label: "Cloud drives"; highlighted: page.host.highlight === "clouddrives"
+        detail: "OneDrive, Google Drive, Dropbox or Nextcloud as a folder in your home folder and in Files, as on Windows. " +
+                "Files open from a copy kept on this computer and changes upload by themselves."
+    }
+    Text { visible: page.cloudNote !== ""; width: parent.width; wrapMode: Text.Wrap; textFormat: Text.PlainText
+           text: page.cloudNote; color: page.theme.inkSecondary; font.pixelSize: 12; leftPadding: 4 }
+    Repeater {
+        model: page.drives
+        delegate: SettingRow {
+            required property var modelData
+            theme: page.theme; label: modelData.name + " · " + modelData.label
+            detail: modelData.folder + (modelData.mounted ? "" : " (connecting…)")
+            Row {
+                spacing: 8
+                Button { theme: page.theme; label: "Open"; onClicked: Quickshell.execDetached(["xdg-open", modelData.folder]) }
+                Button { theme: page.theme; label: "Remove"; enabled: !cloudRunner.running; onClicked: page.removeDrive(modelData.name) }
+            }
+        }
+    }
+    Row {
+        spacing: 8; leftPadding: 4
+        Repeater {
+            model: page.cloudKinds
+            delegate: Button {
+                required property var modelData
+                theme: page.theme; label: "Add " + modelData.label; enabled: !cloudRunner.running
+                onClicked: { page.cloudKind = modelData.kind; cloudName.text = A.freeDriveName(modelData.name, page.drives) }
+            }
+        }
+    }
+    Column {
+        visible: page.cloudKind !== ""
+        spacing: 8; leftPadding: 4
+        TextField { id: cloudName; theme: page.theme; label: "Folder name (letters and digits)" }
+        TextField { id: cloudUrl; visible: page.cloudKind === "nextcloud"; theme: page.theme; label: "Nextcloud address, e.g. https://cloud.example.com" }
+        TextField { id: cloudUser; visible: page.cloudKind === "nextcloud"; theme: page.theme; label: "Nextcloud user name" }
+        TextField { id: cloudPass; visible: page.cloudKind === "nextcloud"; theme: page.theme; password: true
+                    label: "App password (Nextcloud: Settings, Security, Create new app password)" }
+        Row {
+            spacing: 8
+            Button { theme: page.theme; label: "Cancel"; onClicked: page.cloudKind = "" }
+            Button {
+                theme: page.theme; primary: true; enabled: !cloudRunner.running && A.driveNameOk(cloudName.text)
+                label: page.cloudKind === "nextcloud" ? "Connect" : "Sign in"
+                onClicked: {
+                    if (page.cloudKind === "nextcloud") { page.addNextcloud(cloudName.text, cloudUrl.text, cloudUser.text, cloudPass.text); cloudPass.clear() }
+                    else page.addDrive(page.cloudKind, cloudName.text);
+                }
+            }
         }
     }
 }

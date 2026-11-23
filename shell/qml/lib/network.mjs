@@ -30,3 +30,9 @@ export function smbUrl(address) {
   if (!/^[A-Za-z0-9._-]+(\/[^\/\s][^\/]*)*\/?$/.test(a) || a.includes("..")) return "";
   return "smb://" + a.replace(/\/$/, "");
 }
+
+// Sharing this computer's folders (nix/modules/sharing.nix): a Guardian change to turn on.
+export const SHARING_PLAN = {
+  description: "Let other computers on this network open folders you share (read-only)",
+  changes: [{ option: "nexusos.sharing.enable", enabled: true }]
+};

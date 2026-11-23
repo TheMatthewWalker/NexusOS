@@ -24,3 +24,7 @@ test("VPN files and shared-folder addresses", () => {
   assert.equal(N.smbUrl("nas/../etc"), "");
   assert.equal(N.smbUrl(""), "");
 });
+
+test("sharing this computer's folders is a Guardian change", () => {
+  assert.deepEqual(N.SHARING_PLAN.changes, [{ option: "nexusos.sharing.enable", enabled: true }]);
+});

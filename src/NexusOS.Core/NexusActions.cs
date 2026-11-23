@@ -27,8 +27,11 @@ using System.Text.RegularExpressions;
 public enum ActionSafety { Read, Personal, System }
 
 // Type is "string", "integer", "boolean" or "value" (a string, number or true/false).
+// Aliases: other spellings accepted for a choice, mapped to the value the action uses
+// (system options are offered by short name, and their full Guardian key is accepted too).
 public sealed record ActionParam(string Name, string Type, string Description, bool Required = true,
-    string[]? Choices = null, int MaxLength = 200, string? Pattern = null, int Min = 0, int Max = 0);
+    string[]? Choices = null, int MaxLength = 200, string? Pattern = null, int Min = 0, int Max = 0,
+    IReadOnlyDictionary<string, string>? Aliases = null);
 
 public sealed record NexusAction(string Name, ActionSafety Safety, string Description, IReadOnlyList<ActionParam> Params,
     bool Private = false)
@@ -71,6 +74,21 @@ public static class NexusActions
 
     // Descriptions are kept short: they go to the model with every question
     // that is offered the action (ActionSelection.cs), so each word costs time.
+    // Guardian's system options by short name, for the model: the openssh option (services.openssh.enable) is
+    // offered as openssh, and nexusos.developer.virtualMachines.enable as developer.virtualMachines.
+    // Each new option costs every system question its name in tokens, so the short form matters.
+    public static string ShortOptionName(string key)
+    {
+        foreach (var prefix in (string[])["nexusos.", "services.", "networking."])
+            if (key.StartsWith(prefix, StringComparison.Ordinal)) { key = key[prefix.Length..]; break; }
+        return key.EndsWith(".enable", StringComparison.Ordinal) ? key[..^".enable".Length] : key;
+    }
+    public static readonly IReadOnlyDictionary<string, string> SystemOptionNames =
+        GuardianSchema.Options.Keys.ToDictionary(ShortOptionName, k => k, StringComparer.OrdinalIgnoreCase);
+    public static readonly IReadOnlyDictionary<string, string> SystemOptionAliases =
+        SystemOptionNames.Concat(GuardianSchema.Options.Keys.Select(k => KeyValuePair.Create(k, k)))
+            .ToDictionary(p => p.Key, p => p.Value, StringComparer.OrdinalIgnoreCase);
+
     public static readonly NexusAction[] All =
     [
         // ---- read: run at once ----
@@ -92,7 +110,7 @@ public static class NexusActions
         new("get_today_summary", ActionSafety.Read, "Today in the activity journal: changes, installs, what left the computer.", [],
             Private: true),
         new("get_settings", ActionSafety.Read, "Current desktop settings and the AI model in use.", []),
-        new("get_app_details", ActionSafety.Read, "A Flathub app before install: publisher, verified, licence, size, permissions.",
+        new("get_app_details", ActionSafety.Read, "A Flathub app's publisher, licence, size and permissions.",
             [new("app_id", "string", "Flathub id.", MaxLength: 128, Pattern: FlathubId)]),
         new("get_system_updates", ActionSafety.Read, "System security updates: last check, and whether any wait for approval.", []),
         new("get_picture_usage", ActionSafety.Read, "Room taken by pictures in ~/Pictures/Nexus, how long they are kept, what a clean-up would remove.", []),
@@ -114,7 +132,7 @@ public static class NexusActions
             "colour_filter e.g. greyscale, protanopia.",
             [new("setting", "string", "", Choices: PersonalSettings),
              new("value", "value", "", MaxLength: 16)]),
-        new("install_app", ActionSafety.Personal, "Install a Flathub desktop app for this person (no password).",
+        new("install_app", ActionSafety.Personal, "Install a Flathub app for this person (no password).",
             [new("app_id", "string", "Flathub id, e.g. com.spotify.Client.", MaxLength: 128, Pattern: FlathubId)]),
         new("remove_app", ActionSafety.Personal, "Remove a Flathub app this person installed.",
             [new("app_id", "string", "Flathub id.", MaxLength: 128, Pattern: FlathubId)]),
@@ -172,7 +190,7 @@ public static class NexusActions
             [new("package", "string", "nixpkgs name.", MaxLength: 128)]),
         new("change_system_option", ActionSafety.System,
             "System option on/off (Guardian approval). openssh is Key-only remote login: explain first.",
-            [new("option", "string", "", Choices: GuardianSchema.Options.Keys.Order(StringComparer.Ordinal).ToArray()),
+            [new("option", "string", "", Choices: SystemOptionNames.Keys.Order(StringComparer.Ordinal).ToArray(), Aliases: SystemOptionAliases),
              new("enabled", "boolean", "")]),
     ];
 
@@ -232,6 +250,7 @@ public static class NexusActions
         text = text.Trim();
         if (text.Length == 0 || text.Length > p.MaxLength)
             throw new ActionRejectedException($"'{p.Name}' must be 1-{p.MaxLength} characters.");
+        if (p.Aliases is not null && p.Aliases.TryGetValue(text, out var canonical)) return canonical;
         if (p.Choices is not null)
             return p.Choices.FirstOrDefault(c => string.Equals(c, text, StringComparison.OrdinalIgnoreCase))
                 ?? throw new ActionRejectedException($"'{p.Name}' must be one of: {string.Join(", ", p.Choices)}.");

@@ -118,6 +118,7 @@ NexusWindow {
     readonly property var index: [
         ["network", "vpn", "VPN", "vpn openvpn wireguard tunnel privacy work remote"],
         ["network", "hotspot", "Mobile hotspot", "hotspot tethering share internet wifi phone"],
+        ["network", "sharing", "Share folders from this computer", "share folder sharing samba network windows read only"],
         ["network", "advanced", "Work, school and company networks", "eduroam enterprise 802.1x certificate anyconnect cisco globalprotect fortinet company vpn"],
         ["network", "shares", "Shared folders", "share shared folder network drive nas smb samba windows server map drive"],
         ["network", "phone", "Your phone", "phone android iphone kde connect files texts sms notifications"],
@@ -214,6 +215,7 @@ NexusWindow {
         ["about", "welcome", "Welcome setup", "welcome first run setup bundles start again apps for studying gaming office coding"],
         ["about", "movein", "Bring files from Windows or macOS", "move in old computer windows mac macos transfer copy files documents photos drive"],
         ["about", "generations", "Earlier versions", "rollback undo update generation boot earlier version"]
+        ["about", "reset", "Start fresh", "reset settings start fresh factory default restore defaults keep files"],
     ]
     function search(text) {
         const q = text.trim().toLowerCase();

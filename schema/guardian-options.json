@@ -46,6 +46,11 @@
       "type": "bool",
       "risk": "review",
       "summary": "Battery care: stop charging at 80%"
+    },
+    "nexusos.sharing.enable": {
+      "type": "bool",
+      "risk": "review",
+      "summary": "Share folders with other computers on this network (read-only)"
     }
   },
   "packages": {

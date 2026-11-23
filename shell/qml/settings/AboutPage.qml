@@ -69,7 +69,26 @@ Column {
     }
     SettingRow {
         theme: page.theme; label: "Earlier versions"; highlighted: page.host.highlight === "generations"
-        detail: "Every system change makes a new version. If an update breaks something, restart and choose an earlier one in the boot menu."
+        detail: "Every system change makes a new version. If an update breaks something, it goes back by itself; or restart, hold Space as the computer starts, and choose an earlier one."
+    }
+    // Start fresh: NexusOS's own settings back to how they came, files and apps kept (nexus-reset-settings).
+    property string resetKept: ""
+    property bool confirmReset: false
+    Process { id: resetStatus; running: true; command: ["nexus-reset-settings", "status"]
+              stdout: StdioCollector { onStreamFinished: page.resetKept = text.trim() } }
+    SettingRow {
+        theme: page.theme; label: "Start fresh"; highlighted: page.host.highlight === "reset"
+        detail: page.confirmReset ? "Your desktop, language and Nexus settings go back to how they came, and the desktop restarts. Files and apps stay; the old settings are kept, so this can be undone."
+              : page.resetKept ? "Settings were reset. Put back brings the earlier settings back."
+              : "Settings back to how they came, keeping all your files and apps."
+        Row {
+            spacing: 8
+            Button { visible: page.resetKept !== "" && !page.confirmReset; theme: page.theme; label: "Put back"
+                     onClicked: Quickshell.execDetached(["nexus-reset-settings", "undo"]) }
+            Button { visible: page.confirmReset; theme: page.theme; label: "Cancel"; onClicked: page.confirmReset = false }
+            Button { theme: page.theme; primary: page.confirmReset; label: page.confirmReset ? "Reset settings" : "Start fresh…"
+                     onClicked: { if (!page.confirmReset) { page.confirmReset = true; return } Quickshell.execDetached(["nexus-reset-settings"]) } }
+        }
     }
 
     property var secureBoot: null

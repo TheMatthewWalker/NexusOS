@@ -392,3 +392,22 @@ public class ActionSelectionTimeoutTests
         Assert.Contains("get_system_state", names);
     }
 }
+
+public class SystemOptionNameTests
+{
+    [Fact]
+    public void System_options_are_offered_by_short_name_and_both_spellings_reach_Guardian_as_its_key()
+    {
+        var p = NexusActions.ByName["change_system_option"].Params.Single(x => x.Name == "option");
+        Assert.Contains("openssh", p.Choices!);
+        Assert.Contains("developer.virtualMachines", p.Choices!);
+        Assert.DoesNotContain(p.Choices!, c => c.EndsWith(".enable"));
+        Assert.Equal(GuardianSchema.Options.Count, p.Choices!.Length);                      // one each, none lost
+        Assert.Equal("services.openssh.enable", NexusActions.Validate(NexusActions.ByName["change_system_option"],
+            """{"option":"openssh","enabled":true}""")["option"]!.GetValue<string>());
+        Assert.Equal("services.openssh.enable", NexusActions.Validate(NexusActions.ByName["change_system_option"],
+            """{"option":"services.openssh.enable","enabled":true}""")["option"]!.GetValue<string>());
+        Assert.Throws<ActionRejectedException>(() => NexusActions.Validate(NexusActions.ByName["change_system_option"],
+            """{"option":"boot.kernelParams","enabled":true}"""));
+    }
+}

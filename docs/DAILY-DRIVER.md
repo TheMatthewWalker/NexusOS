@@ -75,7 +75,7 @@ the owner agrees it is ready.**
 | USB drives open by themselves; NTFS and exFAT | P1 | ✅ | NTFS and exFAT support (0.2); check on hardware |
 | BitLocker drives (read Windows encrypted drives) | P2 | ⬜ | cryptsetup bitlk |
 | Network shares: Windows (SMB) and NAS; browse and connect | P1 | ✅ | Settings, Network: type \\\\server\\share or browse (0.3) |
-| Share a folder with other computers | P3 | ⬜ | Samba, off by default |
+| Share a folder with other computers | P3 | ✅ | Settings, Network, read-only, Guardian turns it on (0.7); changing files later |
 | Cloud drives: OneDrive, Google Drive, Dropbox, Nextcloud | P1 | ✅ | Settings, Accounts: a folder in the home folder and Files, rclone with a local cache (0.4) |
 | Phone integration: files, notifications, texts (KDE Connect) | P2 | ✅ | KDE Connect (0.3) |
 | Phone file transfer over USB (MTP), iPhone photos | P2 | 🔍 | libmtp present; ifuse for iPhone |
@@ -162,8 +162,8 @@ the owner agrees it is ready.**
 | Users and passwords | P1 | ✅ | |
 | Parental controls, screen time, child accounts | P2 | ⬜ | malcontent; app limits |
 | Guest session | P3 | ⬜ | |
-| Reset / reinstall without losing files | P2 | ⬜ | Earlier versions cover most cases; a guided reset for the rest |
-| Remote help (let a friend see the screen and help) | P2 | ⬜ | RustDesk or a portal-based viewer |
+| Reset / reinstall without losing files | P2 | 🟡 | Start fresh resets settings, keeps files, can be undone (0.7); earlier versions for the system |
+| Remote help (let a friend see the screen and help) | P2 | 🟡 | RustDesk from Flathub, in the guide (0.7); remote control on Wayland is limited |
 
 ## 10. Security and privacy
 

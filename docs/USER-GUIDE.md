@@ -89,7 +89,7 @@ For games, get Steam (most Windows games work through its Proton), and Heroic fo
 
 ## Wi-Fi, Bluetooth and printers
 
-Choose a Wi-Fi network from the top bar or Settings, Network. **Mobile hotspot** there shares this computer's internet with a phone or another computer over Wi-Fi, and shows the name and password to connect with. Bluetooth devices pair in Settings, Bluetooth.
+Choose a Wi-Fi network from the top bar or Settings, Network. **Share folders from this computer** (also in Settings, Network) lets other computers on your network, Windows ones included, open folders you choose and copy from them, but not change them. Turning sharing on is a system change Guardian checks first. **Mobile hotspot** there shares this computer's internet with a phone or another computer over Wi-Fi, and shows the name and password to connect with. Bluetooth devices pair in Settings, Bluetooth.
 
 Printers and scanners on your network, or plugged in with USB, **appear by themselves** within a minute of switching them on. Settings, Printers shows them, sets the default and prints a test page; **Scan a document** opens the scanner app. [Open Printers](settings:printers/printers)
 
@@ -163,6 +163,14 @@ Everything Nexus does stays on this computer unless you choose otherwise. Settin
 - **An app stopped**: turn on **Crash notices** in Settings, Feedback to be told when an app crashes.
 - **Tell the NexusOS project**: Settings, Feedback writes a report of the problem or idea. You see all of it first; sending opens it on GitHub, where you can still change it. Nothing is sent by itself. [Open Feedback](settings:feedback/report)
 - **The computer does not start properly after an update**: restart, hold **Space** as it starts, and choose an earlier version in the start-up menu.
+
+## Getting help from someone
+
+To let a friend or a support person see your screen and help, as with Windows' Quick Assist, get **RustDesk** from Apps (search for it), on both computers. You give them the number and password RustDesk shows; only someone you give them to can connect, and you can end it at any time. On NexusOS they see your screen and you stay in control of the mouse and keyboard.
+
+## Starting fresh
+
+Settings, About, **Start fresh** puts your desktop, language and Nexus settings back to how they came and restarts the desktop. Your files and apps stay, and the old settings are kept: **Put back** brings them back. For the system itself, every change makes a new version, and an earlier one can be chosen as the computer starts (hold Space). [Open Start fresh](settings:about/reset)
 
 ## Where to learn more
 

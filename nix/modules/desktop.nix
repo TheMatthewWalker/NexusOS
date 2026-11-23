@@ -310,6 +310,14 @@ let
     general {
       hide_cursor = false
     }
+    # A finger unlocks too where fingerprint sign-in is on (nix/modules/fingerprint.nix).
+    auth {
+      fingerprint {
+        enabled = ${lib.boolToString config.services.fprintd.enable}
+        ready_message = Or touch the fingerprint reader
+        present_message = Reading your fingerprint…
+      }
+    }
     background {
       color = rgb(04050c)
     }

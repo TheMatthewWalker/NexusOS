@@ -6,14 +6,7 @@ public sealed class LlamaServerProcessTests
     private static string Fixture => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
         "..", "..", "..", "..", "fixtures", "fake_llama_server.py"));
 
-    private static int FreePort()
-    {
-        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
-    }
+    private static int FreePort() => TestPorts.Next();
 
     private static bool PortOpen(int port)
     {

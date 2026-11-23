@@ -13,14 +13,7 @@ public sealed class LargeModelTests
     private static string Fixture => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
         "..", "..", "..", "..", "fixtures", "fake_llama_server.py"));
 
-    private static int FreePort()
-    {
-        var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
-    }
+    private static int FreePort() => TestPorts.Next();
 
     // Requests to the fake llama-server's port go out for real; the standard model (Ollama) stays a stub.
     private sealed class Split(int port, HttpMessageHandler rest) : HttpMessageHandler

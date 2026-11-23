@@ -89,7 +89,7 @@ For games, get Steam (most Windows games work through its Proton), and Heroic fo
 
 ## Wi-Fi, Bluetooth and printers
 
-Choose a Wi-Fi network from the top bar or Settings, Network. **Share folders from this computer** (also in Settings, Network) lets other computers on your network, Windows ones included, open folders you choose and copy from them, but not change them. Turning sharing on is a system change Guardian checks first. **Mobile hotspot** there shares this computer's internet with a phone or another computer over Wi-Fi, and shows the name and password to connect with. Bluetooth devices pair in Settings, Bluetooth.
+Choose a Wi-Fi network from the top bar or Settings, Network. The **firewall** is on: other computers on the network cannot reach this one, except for what Settings, Network lists (your phone with KDE Connect, finding printers); turning on sharing or remote login opens only what they need. **Share folders from this computer** (also in Settings, Network) lets other computers on your network, Windows ones included, open folders you choose and copy from them, but not change them. Turning sharing on is a system change Guardian checks first. **Mobile hotspot** there shares this computer's internet with a phone or another computer over Wi-Fi, and shows the name and password to connect with. Bluetooth devices pair in Settings, Bluetooth.
 
 Printers and scanners on your network, or plugged in with USB, **appear by themselves** within a minute of switching them on. Settings, Printers shows them, sets the default and prints a test page; **Scan a document** opens the scanner app. [Open Printers](settings:printers/printers)
 
@@ -99,7 +99,7 @@ Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed b
 
 ## Bluetooth and passwords
 
-Turn Bluetooth on and pair devices in Settings, Bluetooth. Passwords you save in browsers and apps are kept in your keyring, which opens when you log in; Passwords and Keys shows them. When you change your password in Settings, Accounts, the keyring's changes with it.
+Turn Bluetooth on and pair devices in Settings, Bluetooth. Passwords you save in browsers and apps are kept in your keyring, which opens when you log in; Passwords and Keys shows them. When you change your password in Settings, Accounts, the keyring's changes with it. On a computer with a fingerprint reader, **Fingerprint** in Settings, Accounts lets a finger unlock the lock screen and approve system changes, as Windows Hello does; logging in still asks for your password, because it also unlocks your keyring (and the disk). [Open Fingerprint](settings:accounts/fingerprint)
 
 ## Screens, sound and power
 

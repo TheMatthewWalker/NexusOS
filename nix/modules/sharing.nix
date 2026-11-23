@@ -1,4 +1,5 @@
 # Sharing folders with other computers on this network (Settings, Network),
+# and what the firewall lets in (/etc/nexus/firewall.json, shown there too),
 # as Windows' Share tab. Off until turned on through Guardian
 # (nexusos.sharing.enable): it opens Samba's ports (and WS-Discovery's,
 # so this computer shows in Windows' Network) on the local firewall. Each
@@ -20,7 +21,12 @@ in
 
   config = lib.mkMerge [
     # The helper is always there, so Settings can say sharing is off.
-    { environment.systemPackages = [ share ]; }
+    # The firewall's openings, for Settings, Network to say in words (it cannot read the rules).
+    { environment.systemPackages = [ share ];
+      environment.etc."nexus/firewall.json".text = builtins.toJSON {
+        inherit (config.networking.firewall) enable allowedTCPPorts allowedUDPPorts allowedTCPPortRanges allowedUDPPortRanges;
+      };
+    }
     (lib.mkIf config.nexusos.sharing.enable {
       services.samba = {
         enable = true;

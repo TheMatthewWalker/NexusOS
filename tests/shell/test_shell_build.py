@@ -1140,6 +1140,14 @@ class ShellBuild(unittest.TestCase):
         self.assertNotIn("rm -", reset)
         self.assertIn('Quickshell.execDetached(["nexus-reset-settings", "undo"])', (self.out / "settings/AboutPage.qml").read_text())
 
+    def test_fingerprint_unlocks_and_approves_but_login_keeps_the_password(self):
+        fp = (ROOT / "nix/modules/fingerprint.nix").read_text()
+        for line in ("security.pam.services.greetd.fprintAuth = false;", "security.pam.services.login.fprintAuth = false;"):
+            self.assertIn(line, fp)                         # the password unlocks the keyring and the disk
+        self.assertIn("enabled = ${lib.boolToString config.services.fprintd.enable}", (ROOT / "nix/modules/desktop.nix").read_text())
+        self.assertIn("page.host.proposeSystem(A.FINGERPRINT_PLAN)", (self.out / "settings/AccountsPage.qml").read_text())
+        self.run_node_test("accounts.test.mjs")
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

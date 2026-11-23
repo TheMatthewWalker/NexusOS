@@ -27,7 +27,7 @@ the owner agrees it is ready.**
 | On-screen indicators for volume, brightness, caps lock, media keys | P1 | ✅ | Volume, mute, microphone, brightness and media keys (0.2); Caps Lock (0.4) |
 | Keyboard backlight control | P3 | ⬜ | brightnessctl, kbd_backlight |
 | Webcam works in apps and browsers (portals, PipeWire camera) | P1 | 🔍 | Test in Firefox and a video-call site |
-| Fingerprint login and unlock (fprintd) | P2 | ⬜ | Settings, Accounts; PAM for login, lock, sudo/polkit |
+| Fingerprint login and unlock (fprintd) | P2 | ✅ | Settings, Accounts through Guardian: lock screen and approvals; login keeps the password (0.8) |
 | Touchscreen, screen rotation on convertibles, on-screen keyboard | P3 | ⬜ | iio-sensor-proxy, squeekboard/wvkbd |
 | Graphics tablets and pens (Wacom) | P3 | ⬜ | libwacom, Settings |
 | Thunderbolt devices and docks authorised (bolt) | P2 | ✅ | bolt (0.4) |
@@ -173,7 +173,7 @@ the owner agrees it is ready.**
 | Unlock the disk with the TPM (no second password) | P2 | ⬜ | systemd-cryptenroll; keep the password as a fallback |
 | Secure Boot | P2 | ✅ | Own keys, guided |
 | Automatic security updates | P1 | ✅ | Guardian |
-| Firewall, with a simple Settings page | P2 | 🟡 | NixOS firewall on; no page |
+| Firewall, with a simple Settings page | P2 | ✅ | On; Settings, Network says in words what is let in (0.8) |
 | Camera, microphone and screen-sharing in use: indicators | P1 | ✅ | Top bar, with the app's name (0.3) |
 | App permissions (Flatpak: files, camera, location) | P2 | ✅ | Settings, Privacy: internet, files, devices, camera, background (0.4); location later |
 | Passkeys and security keys (FIDO2, YubiKey) | P2 | 🟡 | libfido2's udev rules (0.4); check with a real key |

@@ -33,3 +33,12 @@ test("cloud drive folder names", () => {
   assert.equal(A.freeDriveName("OneDrive", []), "OneDrive");
   assert.equal(A.freeDriveName("OneDrive", [{ name: "OneDrive" }, { name: "OneDrive2" }]), "OneDrive3");
 });
+
+test("fingerprint set-up says what to do in plain words", () => {
+  assert.deepEqual(A.FINGERPRINT_PLAN.changes, [{ option: "nexusos.fingerprint.enable", enabled: true }]);
+  assert.match(A.enrollLine("Enrolling right-index-finger finger."), /Touch the fingerprint reader/);
+  assert.match(A.enrollLine("Enroll result: enroll-stage-passed"), /touch the reader again/);
+  assert.equal(A.enrollLine("Enroll result: enroll-completed"), "Done: your fingerprint is saved.");
+  assert.match(A.enrollLine("No devices available"), /No fingerprint reader/);
+  assert.equal(A.enrollLine("Using device /net/reactivated/Fprint/Device/0"), "");
+});

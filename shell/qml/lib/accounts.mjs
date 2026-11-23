@@ -59,3 +59,21 @@ export function freeDriveName(base, drives) {
   if (!taken.has(base)) return base;
   for (let n = 2; ; n++) if (!taken.has(base + n)) return base + n;
 }
+
+// Fingerprint sign-in (nix/modules/fingerprint.nix): a Guardian change to turn on.
+export const FINGERPRINT_PLAN = {
+  description: "Use a fingerprint for the lock screen and approvals",
+  changes: [{ option: "nexusos.fingerprint.enable", enabled: true }]
+};
+// One line of fprintd-enroll's output -> what to tell the person, or "" to show nothing.
+export function enrollLine(line) {
+  const l = String(line || "");
+  if (/enroll-completed/.test(l)) return "Done: your fingerprint is saved.";
+  if (/enroll-stage-passed/.test(l)) return "Good. Lift your finger and touch the reader again.";
+  if (/enroll-retry-scan|enroll-swipe-too-short|enroll-finger-not-centered|enroll-remove-and-retry/.test(l)) return "Not quite: touch the reader again, a little differently.";
+  if (/enroll-duplicate/.test(l)) return "That finger is already saved.";
+  if (/No devices available/i.test(l)) return "No fingerprint reader was found on this computer.";
+  if (/enroll-failed|enroll-data-full|enroll-disconnected|enroll-unknown-error/.test(l)) return "That did not work. Try again.";
+  if (/Enrolling/.test(l)) return "Touch the fingerprint reader with your finger, again each time it asks.";
+  return "";
+}

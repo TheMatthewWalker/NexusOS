@@ -49,6 +49,10 @@ Column {
             page.say(r.message || "Done.", false);
             if (operation === "password") {
                 page.diskDiffers = r.disk === "different";
+                // The login keyring (saved passwords) is unlocked with the login
+                // password: change its password too, as you (nix/modules/everyday.nix).
+                keyring.input = current.text + "\n" + newPassword.text + "\n";
+                keyring.running = true;
                 current.clear(); newPassword.clear(); again.clear();
             } else if (operation === "disk") {
                 page.diskDiffers = false; diskPassword.clear();
@@ -58,6 +62,14 @@ Column {
                 page.refresh();
             }
         }
+    }
+    Process {
+        id: keyring
+        property string input: ""
+        command: ["nexus-keyring-password"]
+        stdinEnabled: true
+        onStarted: { write(input); input = ""; stdinEnabled = false }
+        onExited: stdinEnabled = true
     }
     function runAs(helper, operation, request) {
         if (root.running) return;

@@ -813,7 +813,7 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("onStarted: { write(request + \"\\n\"); stdinEnabled = false }", page)
         for line in page.splitlines():
             if "command = " in line or "command: [" in line:
-                self.assertNotIn("password", line.replace("nexus-account-password", ""))
+                self.assertNotIn("password", line.replace("nexus-account-password", "").replace("nexus-keyring-password", ""))
         self.assertEqual(page.count("password: true"), 7)
         settings = (self.out / "Settings.qml").read_text()
         self.assertIn('accounts: "AccountsPage"', settings)
@@ -927,6 +927,26 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("boot.loader.systemd-boot.editor = lib.mkForce false", module)
         self.assertIn('"enroll-keys", "--microsoft", "--firmware-builtin"', (ROOT / "scripts/boot/nexus_secure_boot.py").read_text())
         self.run_node_test("secureboot.test.mjs")
+
+    def test_keys_show_how_much_and_windows_shortcuts_are_bound(self):
+        osd = (self.out / "OnScreen.qml").read_text()
+        for name in ("volup", "voldown", "mute", "micmute", "brightup", "brightdown"):
+            self.assertIn('name: "%s"' % name, osd)
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        for line in ("bindel = , XF86AudioRaiseVolume, global, nexus:volup", "bind = ALT, Tab, cyclenext",
+                     "bind = SUPER SHIFT, S, exec, /run/current-system/sw/bin/nexus-screenshot area",
+                     "bind = SUPER, left, exec, /run/current-system/sw/bin/nexus-snap left", "gesture = 3, horizontal, workspace"):
+            self.assertIn(line, desktop)
+        everyday = (ROOT / "nix/modules/everyday.nix").read_text()
+        for line in ("hardware.bluetooth", "security.pam.services.greetd.enableGnomeKeyring", "carlito caladea liberation_ttf"):
+            self.assertIn(line, everyday)
+        self.assertIn('command: ["nexus-keyring-password"]', (self.out / "settings/AccountsPage.qml").read_text())
+        mouse = (self.out / "settings/MousePage.qml").read_text()
+        for key in ("tapToClick", "naturalScroll", "scrollSpeed", "pointerSpeed", "pointerAcceleration", "leftHanded"):
+            self.assertIn('page.desktop.set("%s"' % key, mouse)
+        settings = (self.out / "DesktopSettings.qml").read_text()
+        self.assertIn('"keyword input:touchpad:tap-to-click " + store.tapToClick', settings)
+        self.run_node_test("onscreen.test.mjs")
 
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()

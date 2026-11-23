@@ -58,6 +58,7 @@ NexusWindow {
         { id: "sound", label: "Sound", colour: "#9C8FFF", icon: "sound" },
         { id: "display", label: "Display", colour: "#FFA65C", icon: "display" },
         { id: "power", label: "Power", colour: "#7FE0B0", icon: "power" },
+        { id: "mouse", label: "Mouse and touchpad", colour: "#FFA65C", icon: "mouse" },
         { id: "desktop", label: "Desktop", colour: "#9C8FFF", icon: "desktop" },
         { id: "language", label: "Language and region", colour: "#9C8FFF", icon: "language" },
         { id: "defaults", label: "Default apps", colour: "#9C8FFF", icon: "defaults" },
@@ -81,7 +82,7 @@ NexusWindow {
     // a page (open("health", "")): its group opens with it.
     readonly property var allGroups: [
         { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth", "printers"] },
-        { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power"] },
+        { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power", "mouse"] },
         { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "language", "defaults", "accounts", "accessibility", "privacy"] },
         { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "storage", "backups", "updates", "timeline", "automations", "search", "feedback", "help", "about"] }
     ]
@@ -125,6 +126,14 @@ NexusWindow {
         ["display", "brightness", "Brightness", "brightness dim bright screen backlight"],
         ["display", "nightlight", "Night light", "night light warm blue light evening eyes colour temperature"],
         ["display", "scale", "Scale", "scale zoom size bigger text resolution dpi"],
+        ["mouse", "pointerspeed", "Pointer speed", "mouse pointer cursor speed sensitivity fast slow"],
+        ["mouse", "acceleration", "Pointer acceleration", "mouse acceleration precision gaming"],
+        ["mouse", "lefthanded", "Left-handed", "left handed mouse swap buttons"],
+        ["mouse", "mousescroll", "Mouse wheel direction", "mouse wheel scroll direction reverse natural"],
+        ["mouse", "taptoclick", "Tap to click", "touchpad trackpad tap click"],
+        ["mouse", "naturalscroll", "Natural scrolling", "touchpad trackpad scroll direction natural reverse"],
+        ["mouse", "scrollspeed", "Scrolling speed", "touchpad scroll speed"],
+        ["mouse", "gestures", "Gestures", "touchpad gestures swipe three fingers workspaces"],
         ["power", "battery", "Battery", "battery charge charging time left"],
         ["power", "powermode", "Power mode", "power mode performance saver balanced fan"],
         ["power", "screenoff", "Screen off", "screen off blank display timeout idle"],
@@ -490,7 +499,7 @@ NexusWindow {
                 id: pageLoader
                 width: scroller.width
                 readonly property string file: "settings/" + ({ network: "NetworkPage", bluetooth: "BluetoothPage", sound: "SoundPage",
-                    display: "DisplayPage", power: "PowerPage", accounts: "AccountsPage", backups: "BackupsPage", language: "RegionPage", defaults: "DefaultAppsPage", storage: "StoragePage", feedback: "FeedbackPage", help: "HelpPage", updates: "UpdatesPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
+                    display: "DisplayPage", power: "PowerPage", mouse: "MousePage", accounts: "AccountsPage", backups: "BackupsPage", language: "RegionPage", defaults: "DefaultAppsPage", storage: "StoragePage", feedback: "FeedbackPage", help: "HelpPage", updates: "UpdatesPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
                     timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage",
                     search: "SearchPage" })[win.page] + ".qml"
                 function reload() {

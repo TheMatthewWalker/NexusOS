@@ -36,6 +36,13 @@ Item {
     property alias keyboardLayouts: store.keyboardLayouts
     property alias monitorLayout: store.monitorLayout
     property alias crashNotices: store.crashNotices
+    property alias tapToClick: store.tapToClick
+    property alias naturalScroll: store.naturalScroll
+    property alias scrollSpeed: store.scrollSpeed
+    property alias pointerSpeed: store.pointerSpeed
+    property alias pointerAcceleration: store.pointerAcceleration
+    property alias leftHanded: store.leftHanded
+    property alias mouseNaturalScroll: store.mouseNaturalScroll
     property var monitors: []            // the screens connected now (hyprctl monitors all -j), for Settings, Display
     readonly property string baseLayout: Quickshell.env("NEXUS_KEYBOARD_LAYOUT") || "us"
     // False while game mode has blur and animations off, so applying settings does not undo it.
@@ -59,6 +66,13 @@ Item {
         case "keyboardLayouts": return "Keyboard layouts: " + [baseLayout].concat(value ? value.split(",") : []).join(", ");
         case "monitorLayout": return "Screen arrangement";
         case "crashNotices": return "Crash notices " + (value ? "on" : "off");
+        case "tapToClick": return "Tap to click " + (value ? "on" : "off");
+        case "naturalScroll": return "Touchpad natural scrolling " + (value ? "on" : "off");
+        case "mouseNaturalScroll": return "Mouse natural scrolling " + (value ? "on" : "off");
+        case "scrollSpeed": return "Touchpad scrolling speed " + Math.round(value * 100) + "%";
+        case "pointerSpeed": return "Pointer speed " + (value > 0 ? "+" : "") + Math.round(value * 100);
+        case "pointerAcceleration": return "Pointer acceleration " + (value ? "on" : "off");
+        case "leftHanded": return "Left-handed mouse " + (value ? "on" : "off");
         case "lidAction": return "Closing the lid: " + ({ sleep: "sleep", lock: "lock the screen", nothing: "do nothing" })[value];
         default: return key;
         }
@@ -105,6 +119,14 @@ Item {
             property string keyboardLayouts: ""    // extra XKB layouts, "fr,de"; Alt+Shift switches
             property string monitorLayout: "{}"    // lib/displays.mjs: where each screen goes, its mode and scale
             property bool crashNotices: false      // say when an app crashes (CrashWatcher.qml); off until chosen
+            // Settings, Mouse and touchpad (Hyprland input:)
+            property bool tapToClick: true
+            property bool naturalScroll: true
+            property real scrollSpeed: 1           // touchpad scroll_factor, 0.5 to 2
+            property real pointerSpeed: 0          // input:sensitivity, -1 to 1
+            property bool pointerAcceleration: true
+            property bool leftHanded: false
+            property bool mouseNaturalScroll: false
         }
     }
 
@@ -130,6 +152,13 @@ Item {
             k.push("keyword animations:enabled " + store.animations);
         }
         if (store.scale !== 1) k.push("keyword monitor ,preferred,auto," + store.scale);
+        k.push("keyword input:touchpad:tap-to-click " + store.tapToClick,
+               "keyword input:touchpad:natural_scroll " + store.naturalScroll,
+               "keyword input:touchpad:scroll_factor " + Math.min(2, Math.max(0.5, store.scrollSpeed)),
+               "keyword input:sensitivity " + Math.min(1, Math.max(-1, store.pointerSpeed)),
+               "keyword input:accel_profile " + (store.pointerAcceleration ? "adaptive" : "flat"),
+               "keyword input:left_handed " + store.leftHanded,
+               "keyword input:natural_scroll " + store.mouseNaturalScroll);
         const kb = R.keyboard(baseLayout, store.keyboardLayouts);
         if (kb) k.push("keyword input:kb_layout " + kb.layout, "keyword input:kb_options " + kb.options);
         return k;

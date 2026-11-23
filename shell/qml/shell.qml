@@ -182,6 +182,7 @@ ShellRoot {
     AppDirectory { id: apps }
     Translations { id: translations }
     CrashWatcher { desktop: desktop }
+    OnScreen { theme: root.dark }
     DesktopSettings { id: desktop; gameMode: root.gameMode; bridge: bridge }
     RuleRunner { bridge: bridge; desktop: desktop; wallpaper: wallpaper; apps: apps; wifi: settings.wifi }
     // Voice control and Describe this, on this computer (Voice.qml, Describe.qml).

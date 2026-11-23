@@ -13,7 +13,11 @@ Column {
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
     readonly property var outputs: Pipewire.nodes.values.filter(n => n.isSink && !n.isStream && n.audio)
-    PwObjectTracker { objects: [page.sink, page.source].filter(x => x) }
+    // Apps playing sound now, each with its own volume, as Windows' volume mixer.
+    readonly property var playing: Pipewire.nodes.values.filter(n => n.isStream && n.audio &&
+                                                               (n.properties || {})["media.class"] === "Stream/Output/Audio")
+    PwObjectTracker { objects: [page.sink, page.source].filter(x => x).concat(page.playing) }
+    function appName(n) { const p = n.properties || {}; return p["application.name"] || p["application.process.binary"] || n.name || "An app" }
     readonly property bool hasOut: !!(sink && sink.audio)
     readonly property bool hasIn: !!(source && source.audio)
     function deviceName(n) { return n ? (n.description || n.nickname || n.name || "Unknown device") : "" }
@@ -31,6 +35,27 @@ Column {
                      onMoved: v => { page.sink.audio.volume = v; if (v > 0) page.sink.audio.muted = false } }
             Switch { theme: page.theme; name: "Sound on"; enabled: page.hasOut; anchors.verticalCenter: parent.verticalCenter
                      checked: page.hasOut && !page.sink.audio.muted; onToggled: page.sink.audio.muted = !page.sink.audio.muted }
+        }
+    }
+    SettingRow {
+        theme: page.theme; label: "Apps"; highlighted: page.host.highlight === "apps"
+        detail: page.playing.length === 0 ? "Apps playing sound appear here, each with its own volume." : "Each app's own volume."
+    }
+    Repeater {
+        model: page.playing
+        delegate: SettingRow {
+            required property var modelData
+            theme: page.theme; label: page.appName(modelData)
+            detail: modelData.audio ? (modelData.audio.muted ? "Muted" : Math.round(modelData.audio.volume * 100) + "%") : ""
+            Row {
+                spacing: 14
+                Slider { theme: page.theme; name: page.appName(modelData) + " volume"; anchors.verticalCenter: parent.verticalCenter
+                         value: modelData.audio ? modelData.audio.volume : 0
+                         onMoved: v => { if (modelData.audio) { modelData.audio.volume = v; if (v > 0) modelData.audio.muted = false } } }
+                Switch { theme: page.theme; name: page.appName(modelData) + " sound on"; anchors.verticalCenter: parent.verticalCenter
+                         checked: !!modelData.audio && !modelData.audio.muted
+                         onToggled: if (modelData.audio) modelData.audio.muted = !modelData.audio.muted }
+            }
         }
     }
     SettingRow {

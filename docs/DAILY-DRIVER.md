@@ -51,7 +51,7 @@ the owner agrees it is ready.**
 | Taskbar-like view of open apps; Alt+Tab | P1 | ✅ | Alt+Tab shows the windows while Alt is held (0.4); Super+Tab the overview |
 | System tray icons (Steam, Discord, Nextcloud, VPN apps) | P1 | ✅ | Top bar, with menus (0.3) |
 | Media controls (play/pause/next, now playing) from any app | P2 | ✅ | Media keys (0.2); now playing in the top bar (0.3) |
-| Per-app volume and output device | P2 | 🔍 | Settings, Sound |
+| Per-app volume and output device | P2 | 🟡 | Each app's volume in Settings, Sound (0.6); per-app output device to add |
 | Screenshots: whole screen, window, area; Super+Shift+S like Windows | P1 | ✅ | Super+Shift+S, Print, Alt+Print; copied and saved (0.2) |
 | Screen recording | P2 | ✅ | Super+Alt+R, with sound (0.4); OBS on Flathub |
 | Clipboard history (Super+V on Windows) | P2 | ✅ | Super+Shift+V (Super+V is push-to-talk) (0.3) |

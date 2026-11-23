@@ -29,6 +29,11 @@
       "detail": "Edit photos and images"
     },
     {
+      "flathub": "org.gnome.Shotwell",
+      "name": "Shotwell",
+      "detail": "Photo library: import from a camera or phone, albums"
+    },
+    {
       "flathub": "org.kde.krita",
       "name": "Krita",
       "detail": "Digital painting"

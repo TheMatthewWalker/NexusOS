@@ -113,6 +113,8 @@ Settings, Power sets when the screen turns off, when the computer sleeps (on bat
 
 Settings, Accessibility has bigger text, high contrast, a bigger pointer, less motion, the **screen reader** (Super+Alt+S), and Describe this, which tells you what is on the screen. The **magnifier** enlarges the screen around the pointer: Super+Plus and Super+Minus, as on Windows. A **colour filter** shows the screen in grey or inverted, or makes colours easier to tell apart if you are colour blind. You can also ask Nexus: "zoom in", "turn on the colour blind filter". [Open Accessibility](settings:accessibility/magnifier)
 
+**Live captions** in Settings, Accessibility installs Live Captions, which shows captions for anything you hear (a video, a call) as Windows' Live captions does. The speech is turned into text on this computer; it understands English. [Open Live captions](settings:accessibility/captions)
+
 ## Notifications
 
 App notifications appear at the top right and stay in the **notification centre** (the bell in the top bar) until you clear them. **Do not disturb** keeps them quiet: urgent ones still show. You can also ask Nexus to turn it on, or make an automation do it (for example, while a presentation is open). [Open Desktop](settings:desktop/donotdisturb)

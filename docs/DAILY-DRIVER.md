@@ -117,7 +117,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Video and music players with codecs | P1 | ✅ | VLC |
-| Photo library (import from camera/phone, albums) | P2 | ⬜ | Shotwell / digiKam via Flathub |
+| Photo library (import from camera/phone, albums) | P2 | ✅ | Shotwell in the Creative bundle (0.9) |
 | Image editing (GIMP, Krita), vector (Inkscape) | P2 | 🟡 | Flathub; Creative bundle |
 | Video editing (Kdenlive, DaVinci Resolve) | P2 | 🟡 | Flathub |
 | Audio recording and editing; music production (low-latency audio) | P3 | ⬜ | PipeWire JACK, realtime |
@@ -218,7 +218,7 @@ the owner agrees it is ready.**
 | Magnifier (zoom) | P1 | ✅ | Super+Plus/Minus as on Windows, Settings, or ask Nexus (0.4) |
 | Sticky keys, slow keys, bounce keys | P2 | ⬜ | Hyprland has no AccessX; needs a compositor feature or an input filter |
 | Colour filters for colour blindness | P3 | ✅ | Greyscale, inverted, protanopia, deuteranopia, tritanopia (0.4) |
-| Live captions for any audio (local speech recognition) | P2 | ⬜ | Whisper on device |
+| Live captions for any audio (local speech recognition) | P2 | ✅ | Live Captions (Flathub, on device, English) from Settings, Accessibility (0.9) |
 | Voice control | P2 | ✅ | |
 
 ## 14. Languages

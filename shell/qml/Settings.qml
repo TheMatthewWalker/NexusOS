@@ -184,6 +184,7 @@ NexusWindow {
         ["accessibility", "reader", "Screen reader", "screen reader orca blind accessibility read aloud"],
         ["accessibility", "pointer", "Pointer size", "pointer cursor mouse size bigger"],
         ["accessibility", "motion", "Less motion", "reduce motion animations dizzy accessibility"],
+        ["accessibility", "captions", "Live captions", "live captions subtitles deaf hard of hearing transcribe speech text audio video call"],
         ["accessibility", "describe", "Describe this", "describe screen picture image vision blind what is on screen"],
         ["accessibility", "voice", "Voice control", "voice speech talk microphone dictate push to talk"],
         ["accessibility", "spoken", "Spoken replies", "read aloud speak text to speech voice replies"],

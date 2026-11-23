@@ -945,7 +945,7 @@ class ShellBuild(unittest.TestCase):
         for name in ("volup", "voldown", "mute", "micmute", "brightup", "brightdown"):
             self.assertIn('name: "%s"' % name, osd)
         desktop = (ROOT / "nix/modules/desktop.nix").read_text()
-        for line in ("bindel = , XF86AudioRaiseVolume, global, nexus:volup", "bind = ALT, Tab, cyclenext",
+        for line in ("bindel = , XF86AudioRaiseVolume, global, nexus:volup", "bind = ALT, Tab, global, nexus:switchnext", "bindrn = ALT, Alt_L, global, nexus:switchdone",
                      "bind = SUPER SHIFT, S, exec, /run/current-system/sw/bin/nexus-screenshot area",
                      "bind = SUPER, left, exec, /run/current-system/sw/bin/nexus-snap left", "gesture = 3, horizontal, workspace"):
             self.assertIn(line, desktop)
@@ -1043,6 +1043,28 @@ class ShellBuild(unittest.TestCase):
                 run = subprocess.run([tool, str(self.out / "filters" / f"{name}.frag")], capture_output=True, text=True)
                 self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.run_node_test("access.test.mjs")
+
+    def test_alt_tab_caps_lock_theme_archives_and_developer_tools(self):
+        sw = (self.out / "Switcher.qml").read_text()
+        for name in ("switchnext", "switchprev", "switchdone"):
+            self.assertIn(f'name: "{name}"', sw)
+        self.assertIn("WlrLayershell.keyboardFocus: WlrKeyboardFocus.None", sw)      # never takes the keyboard
+        self.assertIn("Switcher { theme: root.dark; apps: apps }", (self.out / "shell.qml").read_text())
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertNotIn("cyclenext", desktop)
+        self.assertIn("bindrn = , Caps_Lock, global, nexus:capslock", desktop)
+        self.assertIn('name: "capslock"', (self.out / "OnScreen.qml").read_text())
+        everyday = (ROOT / "nix/modules/everyday.nix").read_text()
+        for line in ("pkgs.p7zip pkgs.unar", 'color-scheme = "prefer-dark";', 'platformTheme = lib.mkDefault "gnome"'):
+            self.assertIn(line, everyday)
+        self.assertIn('"dconf write /org/gnome/desktop/interface/color-scheme', (self.out / "DesktopSettings.qml").read_text())
+        dev = (ROOT / "nix/modules/developer.nix").read_text()
+        self.assertIn("environment.localBinInPath = lib.mkDefault true;", dev)
+        self.assertIn('NPM_CONFIG_PREFIX = lib.mkDefault "$HOME/.local";', dev)
+        self.assertIn("cat /proc/diskstats", (self.out / "Tasks.qml").read_text())
+        self.run_node_test("switcher.test.mjs")
+        self.run_node_test("tasks.test.mjs")
+        self.run_node_test("onscreen.test.mjs")
 
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()

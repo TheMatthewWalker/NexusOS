@@ -28,12 +28,12 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 | Keys | What they do |
 | --- | --- |
 | Super+Space | Nexus |
-| Alt+Tab | Next window (Alt+Shift+Tab: the one before) |
+| Alt+Tab | Switch windows: hold Alt and press Tab to choose, let go to switch (Alt+Shift+Tab goes back) |
 | Super+D | The desktop (an empty workspace) |
 | Super+Left / Right | Snap the window to that half of the screen |
 | Super+Up / Down | Maximise the window / put it back |
 | Super+Shift+S | Screenshot of an area (Print: the whole screen; Alt+Print: the window) |
-| Ctrl+Shift+Esc | Task manager: what is running, and End task for an app that has stopped responding |
+| Ctrl+Shift+Esc | Task manager: what is running, how busy the processor, memory, disk and graphics are, and End task for an app that has stopped responding |
 | Super+Shift+V | Clipboard history: paste something you copied earlier |
 | Super+. | Emoji |
 | Super+A | Apps |
@@ -49,7 +49,9 @@ Press **Super+A** for Apps: what is installed, and thousands more from Flathub, 
 
 The top bar shows when an app is using your microphone or camera, or sharing your screen, with its name; what is playing, with play, pause and skip; and the icons apps such as Steam or Discord keep there (right-click one for its menu).
 
-Screenshots are copied, so you can paste them straight away, and saved in Pictures, Screenshots. The volume, brightness and media keys work as on Windows and show how much on the screen.
+Screenshots are copied, so you can paste them straight away, and saved in Pictures, Screenshots. The volume, brightness and media keys work as on Windows and show how much on the screen; so does Caps Lock. Zip, 7z and RAR archives open in Archive Manager.
+
+Apps are dark, like the desktop; Settings, Desktop switches them to light. [Open Desktop](settings:desktop/apptheme)
 
 Windows float like on Windows or macOS; you can switch to tiled windows in Settings, Desktop. [Open Desktop](settings:desktop/windows)
 
@@ -137,7 +139,7 @@ Secure Boot makes the computer start only software signed with trusted keys. Nex
 
 ## For developers
 
-Settings, Developer has your SSH keys (create one and copy it for GitHub, GitLab or a server; the keyring keeps it unlocked while you are logged in). In a project folder, `nexus-dev init python` (or node, rust, go, java, dotnet, c) sets the project up: its tools are there whenever you are in the folder. `docker` and `docker compose` work, on Podman, without anything running as root. Arduino, ESP32 and other boards can be programmed straight away, and virtual machines can be turned on there too. [Open Developer](settings:developer/ssh)
+Settings, Developer has your SSH keys (create one and copy it for GitHub, GitLab or a server; the keyring keeps it unlocked while you are logged in). In a project folder, `nexus-dev init python` (or node, rust, go, java, dotnet, c) sets the project up: its tools are there whenever you are in the folder. `docker` and `docker compose` work, on Podman, without anything running as root. `pip install --user`, `pipx install` and `npm install -g` install into your home folder, as on other systems. Arduino, ESP32 and other boards can be programmed straight away, and virtual machines can be turned on there too. [Open Developer](settings:developer/ssh)
 
 ## Privacy
 

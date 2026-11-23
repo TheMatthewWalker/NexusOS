@@ -168,10 +168,13 @@ let
     # workspace), Super+arrows snap a window to half the screen or maximise it,
     # and screenshots with Super+Shift+S (an area), Print (the screen) and
     # Alt+Print (the window), saved in Pictures, Screenshots, and copied.
-    bind = ALT, Tab, cyclenext
-    bind = ALT, Tab, bringactivetotop
-    bind = ALT SHIFT, Tab, cyclenext, prev
-    bind = ALT SHIFT, Tab, bringactivetotop
+    # Alt+Tab shows the windows while Alt is held (Switcher.qml); letting go
+    # of Alt switches. The release binds do not take Alt from apps.
+    bind = ALT, Tab, global, nexus:switchnext
+    bind = ALT SHIFT, Tab, global, nexus:switchprev
+    bindrn = ALT, Alt_L, global, nexus:switchdone
+    bindrn = ALT, Alt_R, global, nexus:switchdone
+    bindrn = ALT SHIFT, Alt_L, global, nexus:switchdone
     bind = SUPER, D, workspace, empty
     # Ctrl+Shift+Esc: the task manager (Tasks.qml).
     bind = CTRL SHIFT, Escape, global, nexus:tasks
@@ -201,6 +204,8 @@ let
     bindl = , XF86AudioMicMute, global, nexus:micmute
     bindel = , XF86MonBrightnessUp, global, nexus:brightup
     bindel = , XF86MonBrightnessDown, global, nexus:brightdown
+    # Caps Lock on or off is shown too: on release, without taking the key.
+    bindrn = , Caps_Lock, global, nexus:capslock
     # Media keys play, pause and skip in whichever app is playing.
     bindl = , XF86AudioPlay, exec, /run/current-system/sw/bin/playerctl play-pause
     bindl = , XF86AudioPause, exec, /run/current-system/sw/bin/playerctl play-pause

@@ -8,7 +8,7 @@ import "lib/onscreen.mjs" as O
 
 // The volume, mute, microphone and brightness keys (bound in desktop.nix to
 // global shortcuts): each press changes the setting and shows how much, at the
-// bottom of the screen, for a moment, as Windows does.
+// bottom of the screen, for a moment, as Windows does. Caps Lock too.
 Scope {
     id: osd
     property var theme
@@ -57,6 +57,16 @@ Scope {
     GlobalShortcut { appid: "nexus"; name: "brightup"; onPressed: osd.brightness(true) }
     GlobalShortcut { appid: "nexus"; name: "brightdown"; onPressed: osd.brightness(false) }
 
+    // Caps Lock: bound on release without taking the key (desktop.nix), so
+    // the state read here is the new one.
+    readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"
+    Process {
+        id: readCaps
+        command: [osd.hyprctl, "devices", "-j"]
+        stdout: StdioCollector { onStreamFinished: { const on = O.capsLock(text); if (on !== null) osd.show("capslock", on ? 1 : 0, false) } }
+    }
+    GlobalShortcut { appid: "nexus"; name: "capslock"; onPressed: if (!readCaps.running) readCaps.running = true }
+
     PanelWindow {
         id: card
         visible: false
@@ -75,7 +85,7 @@ Scope {
             Image { x: 16; anchors.verticalCenter: parent.verticalCenter; width: 22; height: 22; sourceSize: Qt.size(44, 44)
                     source: "icons/" + O.icon(osd.kind) + ".svg"; opacity: osd.muted ? 0.4 : 1 }
             Rectangle {
-                visible: osd.kind !== "microphone"
+                visible: O.hasBar(osd.kind)
                 x: 50; width: parent.width - 120; height: 6; radius: 3; anchors.verticalCenter: parent.verticalCenter
                 color: osd.theme ? osd.theme.chip : "#33ffffff"
                 Rectangle { width: parent.width * (osd.muted ? 0 : Math.min(1, osd.value)); height: parent.height; radius: 3

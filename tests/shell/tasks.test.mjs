@@ -49,3 +49,23 @@ test("names and figures in words", () => {
   assert.equal(T.percent(3.14), "3.1%");
   assert.equal(T.percent(42.4), "42%");
 });
+
+test("disk activity counts whole disks only, and graphics busy is read when there", () => {
+  const stats = (r, w) => [
+    `   8       0 sda 100 0 ${r} 0 50 0 ${w} 0 0 0 0`,
+    `   8       1 sda1 100 0 ${r} 0 50 0 ${w} 0 0 0 0`,
+    ` 259       0 nvme0n1 10 0 ${r} 0 5 0 ${w} 0 0 0 0`,
+    ` 259       1 nvme0n1p1 10 0 ${r} 0 5 0 ${w} 0 0 0 0`,
+    `   7       0 loop0 1 0 999999 0 0 0 0 0 0 0 0`,
+    ` 252       0 zram0 1 0 999999 0 1 0 999999 0 0 0 0`].join("\n");
+  assert.deepEqual(T.diskBytes(stats(1000, 2000)), { read: 2 * 1000 * 512, written: 2 * 2000 * 512 });
+  const snap = (r, w, gpu) => T.parseSnapshot(["", "===", "", "===", "cpu 1 0 0 1 0", "===", "MemTotal: 1 kB", "===", "4096\n100\n4",
+                                               "===", stats(r, w), "===", gpu].join("\n"));
+  const a = snap(0, 0, ""), b = snap(2000, 0, "37\n12\n");
+  assert.equal(a.gpu, null);
+  assert.equal(b.gpu, 37);
+  const u = T.usage(a, b, 2);
+  assert.equal(u.disk.read, 2 * 2000 * 512 / 2);
+  assert.equal(u.disk.written, 0);
+  assert.equal(T.rate(1.5e6), "2 MB/s");
+});

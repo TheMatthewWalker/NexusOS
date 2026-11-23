@@ -18,3 +18,12 @@ test("brightness is read from brightnessctl; labels", () => {
   assert.equal(O.label("volume", 0.4, true), "Muted");
   assert.equal(O.label("microphone", 1, true), "Microphone off");
 });
+
+test("caps lock is read from the main keyboard", () => {
+  assert.equal(O.capsLock(JSON.stringify({ keyboards: [{ name: "a", capsLock: true, main: false }, { name: "b", capsLock: false, main: true }] })), false);
+  assert.equal(O.capsLock(JSON.stringify({ keyboards: [{ name: "a", capsLock: true }] })), true);
+  assert.equal(O.capsLock("not json"), null);
+  assert.equal(O.capsLock(JSON.stringify({ keyboards: [] })), null);
+  assert.equal(O.label("capslock", 1, false), "Caps Lock on");
+  assert.ok(!O.hasBar("capslock") && O.hasBar("volume"));
+});

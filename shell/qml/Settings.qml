@@ -146,6 +146,7 @@ NexusWindow {
         ["power", "lid", "Closing the lid", "lid close laptop sleep lock docked external monitor"],
         ["power", "session", "Lock, log out, restart, shut down", "lock log out logout restart reboot shut down shutdown power off sleep"],
         ["desktop", "windows", "Floating or tiled windows", "windows floating tiling tiled tile layout"],
+        ["desktop", "apptheme", "Apps light or dark", "dark mode light mode theme appearance colours apps night"],
         ["desktop", "blur", "Blur", "blur glass transparency effects"],
         ["desktop", "animations", "Animations", "animations motion effects reduce"],
         ["desktop", "shortcuts", "Keyboard shortcuts", "keyboard shortcuts keys hotkeys super"],

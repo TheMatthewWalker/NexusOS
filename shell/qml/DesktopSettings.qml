@@ -14,6 +14,7 @@ import "lib/access.mjs" as Access
 //   blur, animations   Hyprland decoration and animations
 //   scale       the screen scale (1, 1.25, 1.5, 1.75 or 2)
 //   nightLight, warmth   hyprsunset's colour temperature, in kelvin
+//   appTheme    "dark" or "light": GTK and libadwaita apps (dconf color-scheme)
 //   zoom, colourFilter   the magnifier (cursor:zoom_factor) and a colour
 //               filter (decoration:screen_shader, filters/*.frag)
 // The NixOS options (services.nexus-desktop.*) give the starting values.
@@ -47,6 +48,7 @@ Item {
     property alias leftHanded: store.leftHanded
     property alias mouseNaturalScroll: store.mouseNaturalScroll
     property alias zoom: store.zoom
+    property alias appTheme: store.appTheme
     property alias colourFilter: store.colourFilter
     // Super+Plus / Super+Minus: the next magnifier level.
     function zoomBy(direction) { set("zoom", Access.zoomStep(store.zoom, direction)) }
@@ -79,6 +81,7 @@ Item {
         case "scrollSpeed": return "Touchpad scrolling speed " + Math.round(value * 100) + "%";
         case "pointerSpeed": return "Pointer speed " + (value > 0 ? "+" : "") + Math.round(value * 100);
         case "pointerAcceleration": return "Pointer acceleration " + (value ? "on" : "off");
+        case "appTheme": return "Apps " + (value === "light" ? "light" : "dark");
         case "zoom": return value > 1 ? "Magnifier " + Math.round(value * 100) + "%" : "Magnifier off";
         case "colourFilter": return "Colour filter: " + Access.filterLabel(value);
         case "leftHanded": return "Left-handed mouse " + (value ? "on" : "off");
@@ -99,6 +102,7 @@ Item {
         if (key === "windows") applyWindows(wasTiling);
         else if (key === "keyboardLayouts" && !value) run(["keyword", "input:kb_layout", baseLayout]);
         else if (key === "monitorLayout") readMonitors();
+        else if (key === "appTheme") applyTheme();
         else { apply(); if (key === "scale") readMonitors() }
     }
 
@@ -136,6 +140,7 @@ Item {
             property bool pointerAcceleration: true
             property bool leftHanded: false
             property bool mouseNaturalScroll: false
+            property string appTheme: "dark"       // "dark" or "light"
             property real zoom: 1                  // the magnifier: 1 (off), 1.5, 2, 3 or 4
             property string colourFilter: "none"   // lib/access.mjs filters
         }
@@ -216,7 +221,19 @@ Item {
         applied = true;
         run(["--batch", (store.windows === "floating" ? [floatRules] : []).concat(keywords()).join(" ; ")]);
         if (store.cursorSize !== 24) run(["setcursor", "Adwaita", String(store.cursorSize)]);
+        applyTheme();
         readMonitors();
+    }
+
+    // Light or dark apps: GTK 3 (adw-gtk3), GTK 4 and libadwaita read these
+    // (everyday.nix sets dark as the default for everyone).
+    Process { id: themer }
+    function applyTheme() {
+        const light = store.appTheme === "light";
+        themer.command = ["sh", "-c", "dconf write /org/gnome/desktop/interface/color-scheme \"$1\" && " +
+                          "dconf write /org/gnome/desktop/interface/gtk-theme \"$2\"", "sh",
+                          light ? "'prefer-light'" : "'prefer-dark'", light ? "'adw-gtk3'" : "'adw-gtk3-dark'"];
+        themer.running = true;
     }
 
     // Night light: hyprsunset runs while it is on; changing the warmth restarts it.

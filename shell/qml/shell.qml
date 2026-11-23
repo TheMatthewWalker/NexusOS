@@ -183,6 +183,7 @@ ShellRoot {
     Translations { id: translations }
     CrashWatcher { desktop: desktop }
     OnScreen { theme: root.dark }
+    Switcher { theme: root.dark; apps: apps }   // Alt+Tab
     Tasks { id: tasksWin; theme: root.dark }
     WindowsProgram { id: windowsWin; theme: root.dark; bridge: bridge; onGetApps: list => appsWin.suggest(list)
                      onAskNexus: text => { root.open(); input.text = text; root.ask(text) } }

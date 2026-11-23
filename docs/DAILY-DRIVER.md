@@ -24,7 +24,7 @@ the owner agrees it is ready.**
 | Touchpad: tap to click, natural scrolling, two-finger scroll, speed | P1 | ✅ | Settings, Mouse and touchpad (0.2) |
 | Touchpad gestures (swipe between workspaces, overview) | P2 | 🟡 | Three-finger swipe between workspaces (0.2); overview gesture to add |
 | Mouse: speed, acceleration, left-handed, scroll direction | P1 | ✅ | Settings, Mouse and touchpad (0.2) |
-| On-screen indicators for volume, brightness, caps lock, media keys | P1 | 🟡 | Volume, mute, microphone, brightness and media keys (0.2); caps lock to add |
+| On-screen indicators for volume, brightness, caps lock, media keys | P1 | ✅ | Volume, mute, microphone, brightness and media keys (0.2); Caps Lock (0.4) |
 | Keyboard backlight control | P3 | ⬜ | brightnessctl, kbd_backlight |
 | Webcam works in apps and browsers (portals, PipeWire camera) | P1 | 🔍 | Test in Firefox and a video-call site |
 | Fingerprint login and unlock (fprintd) | P2 | ⬜ | Settings, Accounts; PAM for login, lock, sudo/polkit |
@@ -48,7 +48,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Launcher, windows, workspaces, overview | P1 | ✅ | Nexus shell |
-| Taskbar-like view of open apps; Alt+Tab | P1 | 🟡 | Alt+Tab cycles windows (0.2); a visual switcher to add |
+| Taskbar-like view of open apps; Alt+Tab | P1 | ✅ | Alt+Tab shows the windows while Alt is held (0.4); Super+Tab the overview |
 | System tray icons (Steam, Discord, Nextcloud, VPN apps) | P1 | ✅ | Top bar, with menus (0.3) |
 | Media controls (play/pause/next, now playing) from any app | P2 | ✅ | Media keys (0.2); now playing in the top bar (0.3) |
 | Per-app volume and output device | P2 | 🔍 | Settings, Sound |
@@ -58,7 +58,7 @@ the owner agrees it is ready.**
 | Emoji and symbol picker (Super+. on Windows) | P2 | ✅ | Super+. (0.3) |
 | Windows-like shortcuts: Super+D show desktop, Super+E files, Ctrl+Shift+Esc task manager, Super+arrows snap | P1 | ✅ | (0.2, 0.3) |
 | Keyboard shortcuts page (see and change them) | P2 | ⬜ | |
-| Light and dark mode, followed by GTK, Qt and Flatpak apps | P1 | 🔍 | Theme consistency across toolkits |
+| Light and dark mode, followed by GTK, Qt and Flatpak apps | P1 | 🟡 | GTK 3/4, libadwaita and Qt dark by default, GTK light or dark in Settings (0.4); Qt stays dark; check Flatpak GTK 3 apps |
 | Fonts: good defaults, Microsoft-compatible metrics (Carlito, Caladea, Liberation), emoji, CJK | P1 | ✅ | (0.2) |
 | Icon theme, cursor theme, sound theme consistent | P2 | 🟡 | |
 | Wallpapers and a picker | P3 | 🟡 | |
@@ -81,7 +81,7 @@ the owner agrees it is ready.**
 | Phone file transfer over USB (MTP), iPhone photos | P2 | 🔍 | libmtp present; ifuse for iPhone |
 | Backups | P1 | ✅ | Settings, Backups |
 | Search | P1 | ✅ | Super+S |
-| Archives (zip, 7z, rar) | P1 | 🟡 | File Roller; check 7z and rar |
+| Archives (zip, 7z, rar) | P1 | ✅ | File Roller with p7zip and unar (0.4) |
 
 ## 4. Internet and communication
 
@@ -105,7 +105,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Office suite (LibreOffice) | P1 | ✅ | |
-| Microsoft Office documents look right (fonts, templates) | P1 | ⬜ | See fonts |
+| Microsoft Office documents look right (fonts, templates) | P1 | 🟡 | Metric-compatible fonts (0.2), which fontconfig substitutes for Calibri, Cambria, Arial…; check real documents |
 | Microsoft 365 / Google Docs in the browser, as apps | P1 | ✅ | Suggested in Apps, Web apps (0.4) |
 | PDF: read, fill forms, sign, annotate, merge | P1 | ✅ | Papers reads and fills forms; PDF Arranger merges and splits; Xournal++ annotates and signs (0.4) |
 | Notes, to-do, calendar apps | P2 | 🟡 | Calendar and tasks in Thunderbird; notes apps on Flathub |
@@ -150,7 +150,7 @@ the owner agrees it is ready.**
 
 | Item | P | Status | Notes |
 |---|---|---|---|
-| Task manager: apps and processes, CPU/memory/disk/GPU, end a frozen app | P1 | 🟡 | Ctrl+Shift+Esc: apps, processes, CPU, memory, End task (0.3); disk and GPU to add |
+| Task manager: apps and processes, CPU/memory/disk/GPU, end a frozen app | P1 | ✅ | Ctrl+Shift+Esc (0.3); disk, and graphics where the driver reports it (0.4) |
 | Startup apps (what runs at login) | P2 | ⬜ | Settings |
 | Disk and partition tools | P2 | ✅ | GNOME Disks |
 | System information, health check | P1 | ✅ | About, Health |
@@ -196,7 +196,7 @@ the owner agrees it is ready.**
 | SSH: keys, agent, connect to servers; SSH server off by default | P1 | ✅ | Settings, Developer; keyring agent (0.3) |
 | Docker-compatible containers, `docker` and `docker compose` commands | P1 | ✅ | On rootless Podman, socket and DOCKER_HOST per person (0.2, 0.3) |
 | Language toolchains in a project (Python, Node, Rust, Go, Java, .NET, C/C++) | P1 | 🟡 | `nexus-dev init` and direnv (0.3); Nexus setting a project up to add |
-| Python and Node global tools that work like elsewhere (pip, npm -g) | P1 | ⬜ | nix-ld so downloaded binaries and pip wheels run |
+| Python and Node global tools that work like elsewhere (pip, npm -g) | P1 | 🟡 | pip --user, pipx and npm -g into ~/.local (0.4); wheels needing system libraries are best in `nexus-dev init python` |
 | Run downloaded Linux programs (nix-ld) | P1 | ✅ | (0.2) |
 | JetBrains IDEs, Android Studio | P2 | 🟡 | Flathub; adb and fastboot installed (0.3) |
 | Microcontrollers and serial devices (Arduino, ESP32): serial port access | P2 | ✅ | (0.3) |
@@ -235,7 +235,7 @@ the owner agrees it is ready.**
 |---|---|---|---|
 | Join a company or school directory (Active Directory, Entra ID) | P3 | ⬜ | SSSD |
 | Managed settings for an organisation | P3 | ⬜ | |
-| Microsoft 365 apps, Teams, OneDrive | P1 | ⬜ | Browser apps and OneDrive sync |
+| Microsoft 365 apps, Teams, OneDrive | P1 | ✅ | Web apps and OneDrive as a folder (0.4) |
 
 ## 16. Reliability and support
 
@@ -265,5 +265,6 @@ new features, patch for fixes only).
 | 5 | Windows software: .exe handling with Bottles, program equivalents; controllers, GameMode (Windows VM set-up moved later) | 0.4.0 |
 | 6 | Email/calendar (Thunderbird); cloud drives (OneDrive, Google Drive, Dropbox, Nextcloud); web apps; PDF tools; spell checking | 0.4.0 |
 | 7 | Accessibility: magnifier and colour filters (keyboard aids and live captions later) | 0.4.0 |
-| 8 | Parental controls, TPM unlock, app permissions, remote help, reset | |
+| 8 | P1 polish: Alt+Tab switcher, Caps Lock indicator, light/dark apps, 7z and RAR, disk and graphics in the task manager, pip and npm -g | 0.4.0 |
+| 9 | Parental controls, TPM unlock, app permissions, remote help, reset | |
 | … | The rest of the list, by priority | |

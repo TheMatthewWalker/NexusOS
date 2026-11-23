@@ -18,7 +18,8 @@
 #    tools), AppImages run by double-click, and USB drives in NTFS or exFAT,
 #    and Windows shares (SMB), work;
 #  - for developers: git, and the `docker` and `docker compose` commands on
-#    Podman (no daemon running as root).
+#    Podman (no daemon running as root);
+#  - archives in 7z and RAR, and one light or dark look for GTK and Qt apps.
 { config, lib, pkgs, ... }:
 let
   cfg = config.nexusos.everyday;
@@ -69,7 +70,22 @@ in
     environment.systemPackages = [ pkgs.libsecret keyringPassword screenshot snap pkgs.playerctl
                                    pkgs.cifs-utils pkgs.exfatprogs pkgs.ntfs3g pkgs.docker-compose
                                    pkgs.cliphist pkgs.wtype pkgs.wl-clipboard
-                                   pkgs.networkmanagerapplet pkgs.zenity pkgs.wireguard-tools ];
+                                   pkgs.networkmanagerapplet pkgs.zenity pkgs.wireguard-tools
+                                   pkgs.p7zip pkgs.unar pkgs.adw-gtk3 pkgs.adwaita-qt pkgs.adwaita-qt6 pkgs.dconf ];
+
+    # Archives: File Roller opens 7z with p7zip and RAR with unar (free, no unrar licence).
+    #
+    # One look for every app: GTK 3 (adw-gtk3), GTK 4 and libadwaita, and Qt
+    # (QGnomePlatform) all follow org.gnome.desktop.interface color-scheme,
+    # dark to start with like the desktop itself. Settings, Desktop switches
+    # it per person with dconf (DesktopSettings.qml, appTheme).
+    programs.dconf.profiles.user.databases = [{
+      settings."org/gnome/desktop/interface" = {
+        color-scheme = "prefer-dark";
+        gtk-theme = "adw-gtk3-dark";
+      };
+    }];
+    qt = { enable = lib.mkDefault true; platformTheme = lib.mkDefault "gnome"; style = lib.mkDefault "adwaita-dark"; };
 
     # Networks: VPNs from a file or set up in the connection editor (Settings,
     # Network): OpenVPN, OpenConnect (Cisco AnyConnect, Palo Alto GlobalProtect,

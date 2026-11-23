@@ -58,6 +58,8 @@ Column {
                 current.clear(); newPassword.clear(); again.clear();
             } else if (operation === "disk") {
                 page.diskDiffers = false; diskPassword.clear();
+            } else if (operation === "limits") {
+                page.limitsFor = ""; page.refresh();
             } else if (operation === "tpm") {
                 page.tpmOn = !!r.tpm; page.tpmAsking = false; tpmPassword.clear();
             } else {
@@ -171,12 +173,16 @@ Column {
             Column {
                 x: 16; anchors.verticalCenter: parent.verticalCenter; spacing: 2
                 Text { text: A.title(modelData, page.me); color: page.theme.ink; font.pixelSize: 14; textFormat: Text.PlainText }
-                Text { text: modelData.login + (modelData.admin ? " · administrator" : ""); color: page.theme.inkSecondary; font.pixelSize: 12 }
+                Text { text: modelData.login + (modelData.admin ? " · administrator" : "") +
+                             (A.limitsText(modelData.limits) ? " · screen time " + A.limitsText(modelData.limits) : "")
+                       color: page.theme.inkSecondary; font.pixelSize: 12 }
             }
             Row {
                 anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
                 spacing: 8
                 visible: A.removable(modelData, page.me)
+                Button { theme: page.theme; visible: !modelData.admin && page.confirmRemove !== modelData.login; label: "Screen time…"
+                         onClicked: page.editLimits(modelData) }
                 Button { theme: page.theme; visible: page.confirmRemove !== modelData.login; label: "Remove"
                          onClicked: { page.confirmRemove = modelData.login; page.keepFiles = true } }
                 Button { theme: page.theme; visible: page.confirmRemove === modelData.login; label: page.keepFiles ? "Keep their files" : "Delete their files too"
@@ -185,6 +191,36 @@ Column {
                 Button { theme: page.theme; visible: page.confirmRemove === modelData.login; primary: true; danger: true; label: "Remove " + modelData.login
                          onClicked: page.runAs("nexus-account-manage", "remove", { login: modelData.login, keepFiles: page.keepFiles }) }
             }
+        }
+    }
+    // Screen time for a child's account: hours it may be used, and minutes a day.
+    property string limitsFor: ""
+    function editLimits(person) {
+        limitsFor = person.login;
+        const l = person.limits || {};
+        limitsFrom.text = l.from || ""; limitsTo.text = l.to || ""; limitsMinutes.text = l.minutes ? String(l.minutes) : "";
+    }
+    Column {
+        visible: page.limitsFor !== ""
+        spacing: 8; leftPadding: 4
+        Text { width: page.width - 8; wrapMode: Text.Wrap; color: page.theme.inkSecondary; font.pixelSize: 13; textFormat: Text.PlainText
+               text: "Screen time for " + page.limitsFor + ": outside these hours, or once the day's minutes are used, they cannot log in, " +
+                     "and are signed out (with 5 minutes' warning). Leave both empty for no limits." }
+        TextField { id: limitsFrom; theme: page.theme; label: "From (e.g. 07:00; empty for any time)" }
+        TextField { id: limitsTo; theme: page.theme; label: "Until (e.g. 20:00)" }
+        TextField { id: limitsMinutes; theme: page.theme; label: "Minutes a day (empty for no daily limit)" }
+        Text {
+            readonly property string problem: A.limitsProblem(limitsFrom.text, limitsTo.text, limitsMinutes.text)
+            visible: problem !== ""
+            text: problem; color: page.theme.error; font.pixelSize: 12
+        }
+        Row {
+            spacing: 8
+            Button { theme: page.theme; label: "Cancel"; onClicked: page.limitsFor = "" }
+            Button { theme: page.theme; primary: true; label: "Save"
+                     enabled: !root.running && A.limitsProblem(limitsFrom.text, limitsTo.text, limitsMinutes.text) === ""
+                     onClicked: page.runAs("nexus-account-manage", "limits", { login: page.limitsFor, from: limitsFrom.text, to: limitsTo.text,
+                                                                                minutes: Number(limitsMinutes.text) || 0 }) }
         }
     }
     Column {

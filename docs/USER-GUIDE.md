@@ -121,6 +121,8 @@ App notifications appear at the top right and stay in the **notification centre*
 
 Settings, Accounts changes your password. If the disk is encrypted, the disk's password changes with it, so you only ever have one. You can add accounts for other people (an administrator's password is asked) and remove them, keeping or removing their files. [Open Accounts](settings:accounts/password)
 
+For a child's account (a standard one, not an administrator), **Screen time…** beside it sets the hours it can be used, such as 07:00 to 20:00, and how many minutes a day, as Windows' Family Safety does. Outside those hours, or once the day's minutes are used, the child cannot log in; if they are already using the computer they get 5 minutes' warning and are then signed out, so they should save their work. Time counts while they are signed in, locked or not. Only an administrator can change it. [Open accounts for other people](settings:accounts/accounts)
+
 ## Language, formats and time zone
 
 Settings, Language and region sets your language, how dates, numbers and money are written, and your time zone; they take effect when you log in again. **Keyboard layouts** can be added there to type in more than one language: Alt+Shift switches between them. **Chinese, Japanese and Korean** typing (Pinyin, Mozc and Hangul) is on by itself when your language is one of them, and can be turned on for anyone; Ctrl+Space switches. [Open Language and region](settings:language/language)

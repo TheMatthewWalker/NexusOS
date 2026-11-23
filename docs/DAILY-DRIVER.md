@@ -160,7 +160,7 @@ the owner agrees it is ready.**
 | Storage cleanup | P1 | ✅ | Settings, Storage |
 | Date, time, time zone | P1 | ✅ | |
 | Users and passwords | P1 | ✅ | |
-| Parental controls, screen time, child accounts | P2 | ⬜ | malcontent; app limits |
+| Parental controls, screen time, child accounts | P2 | ✅ | Screen time (hours, minutes a day) at login and each minute; app and web limits still ⬜ (0.9) |
 | Guest session | P3 | ⬜ | |
 | Reset / reinstall without losing files | P2 | 🟡 | Start fresh resets settings, keeps files, can be undone (0.7); earlier versions for the system |
 | Remote help (let a friend see the screen and help) | P2 | 🟡 | RustDesk from Flathub, in the guide (0.7); remote control on Wayland is limited |

@@ -5,6 +5,7 @@
   nexus-account disk       {disk, new}               the disk's password only (it differed from the login one)
   nexus-account add        {login, fullName, password, admin}
   nexus-account remove     {login, keepFiles}
+  nexus-account limits     {login, from, to, minutes}  a child's screen time (nexus-screen-time set)
   nexus-account tpm        {disk, on}                unlock the disk with the TPM at start-up, or stop
   nexus-account list                                  (no root needed)
 
@@ -175,8 +176,33 @@ def people():
         if entry.pw_uid < 1000 or entry.pw_uid >= 60000 or entry.pw_shell.endswith(("nologin", "false")):
             continue
         out.append({"login": entry.pw_name, "fullName": entry.pw_gecos.split(",")[0], "uid": entry.pw_uid,
-                    "home": entry.pw_dir, "admin": is_admin(entry.pw_name)})
+                    "home": entry.pw_dir, "admin": is_admin(entry.pw_name), "limits": screen_time(entry.pw_name)})
     return sorted(out, key=lambda p: p["uid"])
+
+
+SCREEN_TIME = "/var/lib/nexus/screen-time/limits"
+
+
+def screen_time(login, folder=SCREEN_TIME):
+    """A child's screen time limits ({from, to, minutes}), or None."""
+    try:
+        with open(os.path.join(folder, login + ".json")) as stream:
+            data = json.load(stream)
+        return {"from": str(data.get("from") or ""), "to": str(data.get("to") or ""), "minutes": int(data.get("minutes") or 0)}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def set_screen_time(request, runner=run):
+    tool = os.environ.get("NEXUS_SCREEN_TIME", "nexus-screen-time")
+    _, out, err = runner([tool, "set"], json.dumps(request))
+    try:
+        result = json.loads(out or "{}")
+    except ValueError:
+        result = {"error": (err.strip().splitlines() or ["Screen time could not be set."])[-1]}
+    if "error" in result:
+        raise AccountError(result["error"])
+    return result
 
 
 def is_admin(login):
@@ -296,7 +322,7 @@ def set_tpm_unlock(disk_password, on, runner=run, secure_boot=secure_boot_on, tp
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    if not argv or argv[0] not in ("password", "disk", "add", "remove", "tpm", "list"):
+    if not argv or argv[0] not in ("password", "disk", "add", "remove", "tpm", "limits", "list"):
         print(__doc__, file=sys.stderr)
         return 2
     command = argv[0]
@@ -317,6 +343,8 @@ def main(argv=None):
                 result = change_password(caller, str(request.get("current", "")), request.get("new"))
             elif command == "disk":
                 result = change_disk_password(str(request.get("disk", "")), request.get("new"))
+            elif command == "limits":
+                result = set_screen_time({k: request.get(k) for k in ("login", "from", "to", "minutes")})
             elif command == "tpm":
                 result = set_tpm_unlock(str(request.get("disk", "")), bool(request.get("on")))
             elif command == "add":

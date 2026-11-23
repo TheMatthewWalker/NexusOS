@@ -67,7 +67,34 @@ in
     virtualisation.podman.dockerCompat = lib.mkDefault true;
 
     environment.systemPackages = [ pkgs.libsecret keyringPassword screenshot snap pkgs.playerctl
-                                   pkgs.cifs-utils pkgs.exfatprogs pkgs.ntfs3g pkgs.docker-compose ];
+                                   pkgs.cifs-utils pkgs.exfatprogs pkgs.ntfs3g pkgs.docker-compose
+                                   pkgs.cliphist pkgs.wtype pkgs.wl-clipboard
+                                   pkgs.networkmanagerapplet pkgs.zenity pkgs.wireguard-tools ];
+
+    # Networks: VPNs from a file or set up in the connection editor (Settings,
+    # Network): OpenVPN, OpenConnect (Cisco AnyConnect, Palo Alto GlobalProtect,
+    # Fortinet, Juniper) and L2TP; WireGuard is built in. Work and school
+    # Wi-Fi (802.1X, eduroam) in the same editor. Phones through KDE Connect
+    # (it opens its own ports, 1714-1764, on the local network).
+    # (vpnc is left out: nixpkgs marks it insecure; OpenConnect covers Cisco.)
+    networking.networkmanager.plugins = with pkgs; [ networkmanager-openvpn networkmanager-openconnect networkmanager-l2tp ];
+    programs.kdeconnect.enable = lib.mkDefault true;
+
+    # Clipboard history (Clipboard.qml): text and pictures, kept by cliphist in
+    # the person's cache, for the desktop session only.
+    systemd.user.services.nexus-clipboard = {
+      description = "Clipboard history";
+      partOf = [ "nexus-session.target" ];
+      wantedBy = [ "nexus-session.target" ];
+      after = [ "nexus-session.target" ];
+      path = [ pkgs.wl-clipboard pkgs.cliphist ];
+      script = ''
+        wl-paste --type text --watch cliphist store &
+        exec wl-paste --type image --watch cliphist store
+      '';
+      serviceConfig = { Restart = "on-failure"; RestartSec = 2; };
+    };
+    environment.etc."nexus/emoji-test.txt".source = "${pkgs.unicode-emoji}/share/unicode/emoji/emoji-test.txt";
 
     fonts.packages = with pkgs; [
       carlito caladea liberation_ttf dejavu_fonts

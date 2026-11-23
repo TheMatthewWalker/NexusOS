@@ -49,14 +49,14 @@ the owner agrees it is ready.**
 |---|---|---|---|
 | Launcher, windows, workspaces, overview | P1 | ✅ | Nexus shell |
 | Taskbar-like view of open apps; Alt+Tab | P1 | 🟡 | Alt+Tab cycles windows (0.2); a visual switcher to add |
-| System tray icons (Steam, Discord, Nextcloud, VPN apps) | P1 | ⬜ | StatusNotifierItem in the top bar |
-| Media controls (play/pause/next, now playing) from any app | P2 | 🟡 | Media keys (0.2); now playing in the top bar to add |
+| System tray icons (Steam, Discord, Nextcloud, VPN apps) | P1 | ✅ | Top bar, with menus (0.3) |
+| Media controls (play/pause/next, now playing) from any app | P2 | ✅ | Media keys (0.2); now playing in the top bar (0.3) |
 | Per-app volume and output device | P2 | 🔍 | Settings, Sound |
 | Screenshots: whole screen, window, area; Super+Shift+S like Windows | P1 | ✅ | Super+Shift+S, Print, Alt+Print; copied and saved (0.2) |
 | Screen recording | P2 | ⬜ | wf-recorder or OBS; portal for apps |
-| Clipboard history (Super+V on Windows) | P2 | ⬜ | Super+V is push-to-talk here; pick a binding |
-| Emoji and symbol picker (Super+. on Windows) | P2 | ⬜ | |
-| Windows-like shortcuts: Super+D show desktop, Super+E files, Ctrl+Shift+Esc task manager, Super+arrows snap | P1 | 🟡 | Alt+Tab, Super+D, Super+arrows (0.2); Ctrl+Shift+Esc with the task manager |
+| Clipboard history (Super+V on Windows) | P2 | ✅ | Super+Shift+V (Super+V is push-to-talk) (0.3) |
+| Emoji and symbol picker (Super+. on Windows) | P2 | ✅ | Super+. (0.3) |
+| Windows-like shortcuts: Super+D show desktop, Super+E files, Ctrl+Shift+Esc task manager, Super+arrows snap | P1 | ✅ | (0.2, 0.3) |
 | Keyboard shortcuts page (see and change them) | P2 | ⬜ | |
 | Light and dark mode, followed by GTK, Qt and Flatpak apps | P1 | 🔍 | Theme consistency across toolkits |
 | Fonts: good defaults, Microsoft-compatible metrics (Carlito, Caladea, Liberation), emoji, CJK | P1 | ✅ | (0.2) |
@@ -74,10 +74,10 @@ the owner agrees it is ready.**
 | File manager with thumbnails, drives, trash | P1 | ✅ | Thunar |
 | USB drives open by themselves; NTFS and exFAT | P1 | ✅ | NTFS and exFAT support (0.2); check on hardware |
 | BitLocker drives (read Windows encrypted drives) | P2 | ⬜ | cryptsetup bitlk |
-| Network shares: Windows (SMB) and NAS; browse and connect | P1 | 🟡 | cifs-utils and gvfs (0.2); a Settings/Files flow to connect to add |
+| Network shares: Windows (SMB) and NAS; browse and connect | P1 | ✅ | Settings, Network: type \\\\server\\share or browse (0.3) |
 | Share a folder with other computers | P3 | ⬜ | Samba, off by default |
 | Cloud drives: OneDrive, Google Drive, Dropbox, Nextcloud | P1 | ⬜ | rclone mounts or GNOME Online Accounts; Nextcloud client |
-| Phone integration: files, notifications, texts (KDE Connect) | P2 | ⬜ | Firewall ports |
+| Phone integration: files, notifications, texts (KDE Connect) | P2 | ✅ | KDE Connect (0.3) |
 | Phone file transfer over USB (MTP), iPhone photos | P2 | 🔍 | libmtp present; ifuse for iPhone |
 | Backups | P1 | ✅ | Settings, Backups |
 | Search | P1 | ✅ | Super+S |
@@ -94,8 +94,8 @@ the owner agrees it is ready.**
 | Online accounts (sign in to Google, Microsoft once for mail, calendar, files) | P2 | ⬜ | GNOME Online Accounts |
 | Video calls: Teams, Zoom, Meet (camera, mic, screen sharing) | P1 | 🔍 | Screen sharing needs xdg-desktop-portal-hyprland; test |
 | Chat apps (WhatsApp, Discord, Slack, Signal, Telegram) | P2 | 🟡 | Flathub; offered in Welcome bundles |
-| VPN: WireGuard, OpenVPN, corporate (Cisco AnyConnect, GlobalProtect, Fortinet) | P1 | ⬜ | NetworkManager plugins and a Settings UI |
-| Work and school Wi-Fi (802.1X, eduroam) in Settings | P1 | 🟡 | Today: a terminal (nmtui) |
+| VPN: WireGuard, OpenVPN, corporate (Cisco AnyConnect, GlobalProtect, Fortinet) | P1 | ✅ | Settings, Network: from a file, or the connection editor (0.3) |
+| Work and school Wi-Fi (802.1X, eduroam) in Settings | P1 | ✅ | The connection editor from Settings (0.3) |
 | Wi-Fi hotspot | P3 | ⬜ | |
 | Proxy settings | P3 | ⬜ | |
 | Install a website as an app (PWA) | P2 | ⬜ | Chromium/Firefox web apps in the launcher |
@@ -142,7 +142,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Open a .exe or .msi: run it with Wine (Bottles), or explain the alternative | P1 | ⬜ | Double-click handler; Nexus suggests the Linux equivalent first |
-| Windows in a virtual machine (for apps that need it) | P2 | ⬜ | GNOME Boxes / virt-manager with KVM |
+| Windows in a virtual machine (for apps that need it) | P2 | 🟡 | Virtual machines can be turned on (0.3); a guided Windows set-up to add |
 | Program equivalents ("what do I use instead of X") | P1 | 🟡 | Move in matches old programs to apps; extend |
 | Dual boot with Windows, with the clocks agreeing | P1 | ✅ | |
 
@@ -150,7 +150,7 @@ the owner agrees it is ready.**
 
 | Item | P | Status | Notes |
 |---|---|---|---|
-| Task manager: apps and processes, CPU/memory/disk/GPU, end a frozen app | P1 | ⬜ | Ctrl+Shift+Esc; also "force quit" a window |
+| Task manager: apps and processes, CPU/memory/disk/GPU, end a frozen app | P1 | 🟡 | Ctrl+Shift+Esc: apps, processes, CPU, memory, End task (0.3); disk and GPU to add |
 | Startup apps (what runs at login) | P2 | ⬜ | Settings |
 | Disk and partition tools | P2 | ✅ | GNOME Disks |
 | System information, health check | P1 | ✅ | About, Health |
@@ -172,7 +172,7 @@ the owner agrees it is ready.**
 | Secure Boot | P2 | ✅ | Own keys, guided |
 | Automatic security updates | P1 | ✅ | Guardian |
 | Firewall, with a simple Settings page | P2 | 🟡 | NixOS firewall on; no page |
-| Camera, microphone and screen-sharing in use: indicators | P1 | ⬜ | Top bar |
+| Camera, microphone and screen-sharing in use: indicators | P1 | ✅ | Top bar, with the app's name (0.3) |
 | App permissions (Flatpak: files, camera, location) | P2 | ⬜ | A Settings page over portals/Flatseal |
 | Passkeys and security keys (FIDO2, YubiKey) | P2 | 🔍 | udev rules for U2F |
 | Password manager | P2 | 🟡 | Browsers; Bitwarden/KeePassXC on Flathub |
@@ -193,18 +193,18 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Terminal, editor (VSCodium), git | P1 | ✅ | (0.2) |
-| SSH: keys, agent, connect to servers; SSH server off by default | P1 | 🟡 | Server is a Guardian option; keys/agent page |
-| Docker-compatible containers, `docker` and `docker compose` commands | P1 | 🟡 | `docker` on Podman and docker-compose (0.2); compose needs the Podman socket set up per person |
-| Language toolchains in a project (Python, Node, Rust, Go, Java, .NET, C/C++) | P1 | ⬜ | `nix develop` / devenv / direnv, with templates; "set up this project" from Nexus |
+| SSH: keys, agent, connect to servers; SSH server off by default | P1 | ✅ | Settings, Developer; keyring agent (0.3) |
+| Docker-compatible containers, `docker` and `docker compose` commands | P1 | ✅ | On rootless Podman, socket and DOCKER_HOST per person (0.2, 0.3) |
+| Language toolchains in a project (Python, Node, Rust, Go, Java, .NET, C/C++) | P1 | 🟡 | `nexus-dev init` and direnv (0.3); Nexus setting a project up to add |
 | Python and Node global tools that work like elsewhere (pip, npm -g) | P1 | ⬜ | nix-ld so downloaded binaries and pip wheels run |
 | Run downloaded Linux programs (nix-ld) | P1 | ✅ | (0.2) |
-| JetBrains IDEs, Android Studio | P2 | 🟡 | Flathub; adb udev rules for phones |
-| Microcontrollers and serial devices (Arduino, ESP32): serial port access | P2 | ⬜ | dialout group, udev rules |
-| Virtual machines (KVM, QEMU, virt-manager) | P2 | ⬜ | |
+| JetBrains IDEs, Android Studio | P2 | 🟡 | Flathub; adb and fastboot installed (0.3) |
+| Microcontrollers and serial devices (Arduino, ESP32): serial port access | P2 | ✅ | (0.3) |
+| Virtual machines (KVM, QEMU, virt-manager) | P2 | ✅ | Settings, Developer, through Guardian (0.3) |
 | Kubernetes and cloud CLIs (kubectl, aws, az, gcloud) | P3 | ⬜ | Through project shells |
 | Databases for development (PostgreSQL, MySQL, Redis) | P3 | ⬜ | Containers |
 | Local AI coding help | P2 | ✅ | Code (Super+C) |
-| GitHub/GitLab sign-in for git (credential helper) | P2 | ⬜ | Uses the keyring |
+| GitHub/GitLab sign-in for git (credential helper) | P2 | 🟡 | SSH keys (0.3); HTTPS credential helper to add |
 | man pages and documentation offline | P3 | 🟡 | |
 
 ## 13. Accessibility
@@ -258,12 +258,12 @@ new features, patch for fixes only).
 
 | Batch | Contents | Release |
 |---|---|---|
-| 1 | Bluetooth on; password keyring; touchpad and mouse settings; on-screen indicators and media keys; screenshots and Windows-like shortcuts; fonts | 0.2.0 |
-| 2 | Task manager; system tray; media controls; clipboard history and emoji picker; camera/mic indicators | next |
-| 3 | Network shares, cloud drives, phone integration, VPN and work Wi-Fi in Settings | |
-| 4 | Developer basics: nix-ld, Docker-compatible containers, project toolchains, SSH keys, serial devices, VMs | |
+| 1 | Bluetooth on; password keyring; touchpad and mouse settings; on-screen indicators and media keys; screenshots and Windows-like shortcuts; fonts; developer and system basics | 0.2.0 |
+| 2 | Task manager; system tray; media controls; clipboard history and emoji picker; camera/mic indicators | 0.3.0 (with 3) |
+| 3 | Network shares, phone integration, VPN and work Wi-Fi in Settings (cloud drives moved to a later batch) | 0.3.0 |
+| 4 | Developer basics: project toolchains, rootless containers, SSH keys, serial boards, VMs (nix-ld came in 0.2) | 0.3.0 |
 | 5 | Windows software: .exe handling with Bottles, Windows VM, program equivalents; Steam native, controllers | |
-| 6 | Email/calendar and online accounts; PWAs; PDF forms; spell checking | |
+| 6 | Email/calendar and online accounts; cloud drives (OneDrive, Google Drive, Nextcloud); PWAs; PDF forms; spell checking | |
 | 7 | Accessibility: magnifier, keyboard aids, colour filters, live captions | |
 | 8 | Parental controls, TPM unlock, app permissions, remote help, reset | |
 | … | The rest of the list, by priority | |

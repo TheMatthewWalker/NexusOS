@@ -71,6 +71,7 @@ NexusWindow {
         { id: "health", label: "Health", colour: "#7FE0B0", icon: "health" },
         { id: "backups", label: "Backups", colour: "#7FE0B0", icon: "backup" },
         { id: "updates", label: "Updates", colour: "#7FE0B0", icon: "update" },
+        { id: "developer", label: "Developer", colour: "#7FE0B0", icon: "developer" },
         { id: "storage", label: "Storage", colour: "#7FE0B0", icon: "storage" },
         { id: "feedback", label: "Feedback", colour: "#9AA9C9", icon: "feedback" },
         { id: "help", label: "Help", colour: "#9AA9C9", icon: "help" },
@@ -84,7 +85,7 @@ NexusWindow {
         { key: "connections", label: "Connections", colour: "#86A8FF", icon: "network", members: ["network", "bluetooth", "printers"] },
         { key: "device", label: "Device", colour: "#FFA65C", icon: "display", members: ["sound", "display", "power", "mouse"] },
         { key: "you", label: "You", colour: "#9C8FFF", icon: "accessibility", members: ["desktop", "language", "defaults", "accounts", "accessibility", "privacy"] },
-        { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "storage", "backups", "updates", "timeline", "automations", "search", "feedback", "help", "about"] }
+        { key: "system", label: "System", colour: "#7FE0B0", icon: "health", members: ["health", "storage", "backups", "updates", "developer", "timeline", "automations", "search", "feedback", "help", "about"] }
     ]
     // Only the pages this Settings shows (`only`); a group left empty is not shown.
     readonly property var groups: allGroups.map(g => Object.assign({}, g, { label: tr(g.label), members: g.members.filter(m => pages.some(p => p.id === m)) }))
@@ -115,6 +116,10 @@ NexusWindow {
     }
     // What the search box finds: [page, highlight id, label, words people might type].
     readonly property var index: [
+        ["network", "vpn", "VPN", "vpn openvpn wireguard tunnel privacy work remote"],
+        ["network", "advanced", "Work, school and company networks", "eduroam enterprise 802.1x certificate anyconnect cisco globalprotect fortinet company vpn"],
+        ["network", "shares", "Shared folders", "share shared folder network drive nas smb samba windows server map drive"],
+        ["network", "phone", "Your phone", "phone android iphone kde connect files texts sms notifications"],
         ["network", "wifi", "Wi-Fi", "wifi wireless internet network password connect hotspot"],
         ["network", "wired", "Wired connection", "ethernet cable lan wired"],
         ["network", "advanced", "VPN and work networks", "vpn eduroam enterprise certificate nmtui proxy"],
@@ -184,6 +189,11 @@ NexusWindow {
         ["help", "", "Help", "help guide how do i manual instructions user guide learn tutorial"],
         ["feedback", "report", "Report a problem or an idea", "feedback report bug problem idea suggestion issue github send tell developers"],
         ["feedback", "crashnotices", "Crash notices", "crash crashed stopped unexpectedly crash report notify coredump"],
+        ["developer", "ssh", "SSH keys", "ssh key keys github gitlab server sign in public key ed25519"],
+        ["developer", "projects", "Project tools", "programming project python node javascript rust go java dotnet c compiler toolchain direnv nix develop"],
+        ["developer", "containers", "Containers", "docker compose podman containers dev containers"],
+        ["developer", "boards", "Boards and phones", "arduino esp32 raspberry pi pico serial usb adb android fastboot"],
+        ["developer", "vms", "Virtual machines", "virtual machine vm kvm qemu virtualbox windows virt-manager"],
         ["updates", "system", "NexusOS updates", "update updates upgrade security patches new version check for updates nexusos"],
         ["updates", "channel", "Update channel", "channel stable testing beta preview pre-release early updates"],
         ["updates", "firmware", "Firmware", "firmware bios uefi update fwupd thunderbolt dock ssd lvfs"],
@@ -499,7 +509,7 @@ NexusWindow {
                 id: pageLoader
                 width: scroller.width
                 readonly property string file: "settings/" + ({ network: "NetworkPage", bluetooth: "BluetoothPage", sound: "SoundPage",
-                    display: "DisplayPage", power: "PowerPage", mouse: "MousePage", accounts: "AccountsPage", backups: "BackupsPage", language: "RegionPage", defaults: "DefaultAppsPage", storage: "StoragePage", feedback: "FeedbackPage", help: "HelpPage", updates: "UpdatesPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
+                    display: "DisplayPage", power: "PowerPage", mouse: "MousePage", accounts: "AccountsPage", backups: "BackupsPage", language: "RegionPage", defaults: "DefaultAppsPage", storage: "StoragePage", feedback: "FeedbackPage", help: "HelpPage", updates: "UpdatesPage", developer: "DeveloperPage", printers: "PrintersPage", desktop: "DesktopPage", privacy: "PrivacyPage", about: "AboutPage",
                     timeline: "TimelinePage", automations: "AutomationsPage", accessibility: "AccessibilityPage", health: "HealthPage",
                     search: "SearchPage" })[win.page] + ".qml"
                 function reload() {

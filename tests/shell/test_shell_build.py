@@ -44,6 +44,18 @@ class ShellBuild(unittest.TestCase):
                      "lib/orbit.mjs", "lib/describe.mjs", "lib/game.mjs", "lib/wifi.mjs", "lib/tokens.mjs", "lib/nova.frag", "lib/nova-noise-atlas.png"]:
             self.assertTrue((self.out / name).exists(), name)
 
+    def test_scripts_use_only_syntax_the_qml_engine_parses(self):
+        # Qt's JavaScript engine has no object spread ({ ...a }): Node runs the
+        # module tests happily, but the shell then fails to load at all.
+        spread = re.compile(r"\{\s*\.\.\.[\w(]")
+        for path in (SHELL / "qml").rglob("*"):
+            if path.suffix not in (".mjs", ".js", ".qml"):
+                continue
+            for n, line in enumerate(path.read_text().splitlines(), 1):
+                if line.lstrip().startswith("//"):
+                    continue
+                self.assertNotRegex(line, spread, f"{path.relative_to(SHELL)}:{n} uses object spread; use Object.assign")
+
     def test_every_referenced_icon_exists(self):
         icons = set()
         for qml in self.out.rglob("*.qml"):
@@ -947,6 +959,42 @@ class ShellBuild(unittest.TestCase):
         settings = (self.out / "DesktopSettings.qml").read_text()
         self.assertIn('"keyword input:touchpad:tap-to-click " + store.tapToClick', settings)
         self.run_node_test("onscreen.test.mjs")
+
+    def test_task_manager_tray_media_privacy_clipboard_and_emoji(self):
+        tasks = (self.out / "Tasks.qml").read_text()
+        self.assertIn('ender.command = ["kill", "-TERM"].concat(own.map(String))', tasks)
+        self.assertIn("T.canEnd(snap, p, uid)", tasks)                  # only the person's own processes
+        bar = (self.out / "TopBar.qml").read_text()
+        for line in ("model: SystemTray.items", "Priv.pick(Mpris.players.values)", "Priv.inUse(privacy.streams"):
+            self.assertIn(line, bar)
+        clip = (self.out / "Clipboard.qml").read_text()
+        self.assertIn('if (!/^\\d+$/.test(id)) return;', clip)
+        emoji = (self.out / "Emoji.qml").read_text()
+        self.assertIn('"emoji", e.char]', emoji)                          # passed as an argument, never in the script
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        for line in ("bind = CTRL SHIFT, Escape, global, nexus:tasks", "bind = SUPER SHIFT, V, global, nexus:clipboard",
+                     "bind = SUPER, period, global, nexus:emoji"):
+            self.assertIn(line, desktop)
+        self.assertIn("systemd.user.services.nexus-clipboard", (ROOT / "nix/modules/everyday.nix").read_text())
+        net = (self.out / "settings/NetworkPage.qml").read_text()
+        self.assertIn('vpnSwitch.command = ["nmcli", "connection", up ? "up" : "down", "uuid", uuid]', net)
+        self.assertIn('Quickshell.execDetached(["gio", "open", url])', net)
+        self.assertIn("networking.networkmanager.plugins", (ROOT / "nix/modules/everyday.nix").read_text())
+        for t in ("tasks.test.mjs", "privacy.test.mjs", "pickers.test.mjs", "network.test.mjs"):
+            self.run_node_test(t)
+
+    def test_developer_tools_run_as_the_person(self):
+        page = (self.out / "settings/DeveloperPage.qml").read_text()
+        self.assertIn("page.host.proposeSystem(D.VM_PLAN)", page)
+        self.assertIn('copier.command = ["wl-copy", "--", text]', page)
+        self.assertIn('[ ! -e \\"$HOME/.ssh/id_ed25519\\" ]', page)          # never replaces a key
+        dev = (ROOT / "nix/modules/developer.nix").read_text()
+        for line in ("programs.direnv", "systemd.user.sockets.podman.wantedBy", "services.gnome.gcr-ssh-agent.enable", '"dialout"'):
+            self.assertIn(line, dev)
+        self.assertIn('export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"', (ROOT / "nix/modules/desktop.nix").read_text())
+        import json as _j
+        self.assertIn("nexusos.developer.virtualMachines.enable", _j.loads((ROOT / "schema/guardian-options.json").read_text())["options"])
+        self.run_node_test("developer.test.mjs")
 
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()

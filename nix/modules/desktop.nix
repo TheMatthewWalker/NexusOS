@@ -18,6 +18,10 @@ let
         export "$key=$value"
       done < "$region"
     fi
+    # Docker clients talk to the person's own Podman (nix/modules/developer.nix).
+    if [ -z "''${DOCKER_HOST:-}" ] && [ -n "''${XDG_RUNTIME_DIR:-}" ]; then
+      export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
+    fi
     exec ${config.programs.hyprland.package}/bin/start-hyprland -- --config /etc/nexus/hyprland.conf
   '';
   hyprland = "${session}";
@@ -169,6 +173,11 @@ let
     bind = ALT SHIFT, Tab, cyclenext, prev
     bind = ALT SHIFT, Tab, bringactivetotop
     bind = SUPER, D, workspace, empty
+    # Ctrl+Shift+Esc: the task manager (Tasks.qml).
+    bind = CTRL SHIFT, Escape, global, nexus:tasks
+    # Super+Shift+V: clipboard history (Super+V is push-to-talk); Super+. emoji.
+    bind = SUPER SHIFT, V, global, nexus:clipboard
+    bind = SUPER, period, global, nexus:emoji
     bind = SUPER, left, exec, /run/current-system/sw/bin/nexus-snap left
     bind = SUPER, right, exec, /run/current-system/sw/bin/nexus-snap right
     bind = SUPER, up, exec, /run/current-system/sw/bin/nexus-snap up

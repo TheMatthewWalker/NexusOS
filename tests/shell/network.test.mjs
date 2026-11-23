@@ -28,3 +28,12 @@ test("VPN files and shared-folder addresses", () => {
 test("sharing this computer's folders is a Guardian change", () => {
   assert.deepEqual(N.SHARING_PLAN.changes, [{ option: "nexusos.sharing.enable", enabled: true }]);
 });
+
+test("the firewall's openings are named in words", () => {
+  const f = N.firewall(JSON.stringify({ enable: true, allowedTCPPorts: [445, 139, 8080], allowedUDPPorts: [5353],
+                                        allowedTCPPortRanges: [{ from: 1714, to: 1764 }], allowedUDPPortRanges: [] }));
+  assert.equal(f.on, true);
+  assert.deepEqual(f.open, ["Shared folders (Samba)", "Finding printers and devices on this network (mDNS)", "Your phone (KDE Connect)"]);
+  assert.deepEqual(f.other, ["TCP 8080"]);
+  assert.equal(N.firewall("nope"), null);
+});

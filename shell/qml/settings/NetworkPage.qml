@@ -303,6 +303,16 @@ Column {
                      onClicked: { shareRunner.command = ["nexus-share", "remove", modelData.name]; shareRunner.running = true } }
         }
     }
+    // The firewall: what other computers may reach here (from the system's own settings).
+    property var firewall: null
+    FileView { path: "/etc/nexus/firewall.json"; onLoaded: page.firewall = Net.firewall(text()) }
+    SettingRow {
+        visible: page.firewall !== null
+        theme: page.theme; label: "Firewall"; highlighted: page.host.highlight === "firewall"
+        detail: !page.firewall ? "" : !page.firewall.on ? "Off: other computers can reach anything this computer offers."
+            : "On: other computers cannot reach this one, except for " +
+              (page.firewall.open.concat(page.firewall.other).join(", ") || "nothing") + ". Turning on sharing or remote login opens what they need."
+    }
     SettingRow {
         theme: page.theme; label: "Your phone"; highlighted: page.host.highlight === "phone"
         detail: "KDE Connect links an Android phone (or an iPhone, with fewer features) on the same Wi-Fi: files both ways, notifications, texts and the clipboard. Install KDE Connect on the phone, then pair here."

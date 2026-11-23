@@ -173,7 +173,7 @@ the owner agrees it is ready.**
 | Unlock the disk with the TPM (no second password) | P2 | ⬜ | systemd-cryptenroll; keep the password as a fallback |
 | Secure Boot | P2 | ✅ | Own keys, guided |
 | Automatic security updates | P1 | ✅ | Guardian |
-| Firewall, with a simple Settings page | P2 | 🟡 | NixOS firewall on; no page |
+| Firewall, with a simple Settings page | P2 | ✅ | On; Settings, Network says in words what is let in (0.8) |
 | Camera, microphone and screen-sharing in use: indicators | P1 | ✅ | Top bar, with the app's name (0.3) |
 | App permissions (Flatpak: files, camera, location) | P2 | ✅ | Settings, Privacy: internet, files, devices, camera, background (0.4); location later |
 | Passkeys and security keys (FIDO2, YubiKey) | P2 | 🟡 | libfido2's udev rules (0.4); check with a real key |

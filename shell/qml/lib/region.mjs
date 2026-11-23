@@ -21,7 +21,8 @@ export function parseEnv(text) {
     const m = /^([A-Z_]+)=([A-Za-z0-9_.@:\/+-]+)$/.exec(line.trim());
     if (m) out[m[1]] = m[2];
   }
-  return { language: out.LANG || "", formats: out.LC_TIME || "", timeZone: out.TZ || "" };
+  return { language: out.LANG || "", formats: out.LC_TIME || "", timeZone: out.TZ || "",
+           input: ["fcitx5", "none"].includes(out.NEXUS_INPUT) ? out.NEXUS_INPUT : "" };
 }
 
 // What the person chose -> region.env. Anything not valid is left out (the system's own is used).
@@ -35,6 +36,8 @@ export function envFile(choice) {
   if (validLocale(choice.formats))
     for (const k of ["LC_TIME", "LC_NUMERIC", "LC_MONETARY", "LC_PAPER", "LC_MEASUREMENT"]) lines.push(k + "=" + choice.formats);
   if (validZone(choice.timeZone)) lines.push("TZ=" + choice.timeZone);
+  // Chinese, Japanese and Korean typing (fcitx5): "" is automatic (on for those languages).
+  if (choice.input === "fcitx5" || choice.input === "none") lines.push("NEXUS_INPUT=" + choice.input);
   return lines.join("\n") + (lines.length ? "\n" : "");
 }
 
@@ -64,4 +67,11 @@ export function zoneLabel(z) { return String(z || "").replace(/_/g, " ").replace
 export function localeName(list, locale) {
   const f = (list || []).find(l => l.locale === locale);
   return f ? f.name : (locale || "").replace(".UTF-8", "");
+}
+
+// Whether the input method is on at the next login (the session launcher's rule).
+export function inputMethodOn(choice) {
+  if (choice.input === "fcitx5") return true;
+  if (choice.input === "none") return false;
+  return /^(zh|ja|ko)_/.test(String(choice.language || ""));
 }

@@ -1083,6 +1083,38 @@ class ShellBuild(unittest.TestCase):
                      "gesture = 3, up, dispatcher, global, nexus:overview"):
             self.assertIn(line, desktop)
 
+    def test_chinese_japanese_and_korean_typing_starts_only_when_wanted(self):
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn("NEXUS_INPUT) input=\"$value\" ;;", desktop)
+        self.assertIn("zh_*|ja_*|ko_*) im=1", desktop)
+        self.assertIn('[ "\'\'${NEXUS_INPUT_METHOD:-}" = 1 ] && exec ${inputMethod}/bin/fcitx5 -d --replace', desktop)
+        page = (self.out / "settings/RegionPage.qml").read_text()
+        self.assertIn('onChose: v => page.choose("input", v)', page)
+
+    def test_battery_care_is_a_guardian_change(self):
+        import json as _j
+        self.assertIn("nexusos.power.chargeLimit.enable", _j.loads((ROOT / "schema/guardian-options.json").read_text())["options"])
+        battery = (ROOT / "nix/modules/battery.nix").read_text()
+        self.assertIn('ATTR{charge_control_end_threshold}="80"', battery)
+        self.assertIn("../modules/battery.nix", (ROOT / "nix/profiles/nexusos.nix").read_text())
+        self.assertIn("page.host.proposeSystem(P.chargeLimitPlan(", (self.out / "settings/PowerPage.qml").read_text())
+        self.run_node_test("power.test.mjs")
+
+    def test_restart_into_windows_and_game_answers(self):
+        power = (self.out / "settings/PowerPage.qml").read_text()
+        self.assertIn('Quickshell.execDetached(["systemctl", "reboot", "--boot-loader-entry=" + page.windowsEntry])', power)
+        self.assertIn('case "power.windows": windowsBoot.running = true;', (self.out / "ActionCards.qml").read_text())
+        self.assertIn("win.game = data.game || null", (self.out / "WindowsProgram.qml").read_text())
+        everyday = (ROOT / "nix/modules/everyday.nix").read_text()
+        self.assertIn("boot.loader.timeout = lib.mkDefault 0;", everyday)       # no start-up menu: Windows is an app
+        self.assertIn('ExecStart = "${windows}/bin/nexus-windows entry";', everyday)
+        self.assertIn("import Quickshell.Io", (self.out / "ActionCards.qml").read_text())
+        vm = (ROOT / "scripts/desktop/nexus-windows-vm.sh").read_text()
+        self.assertIn("uri=qemu:///session", vm)                                # as the person, no password
+        self.assertIn("--tpm backend.type=emulator,backend.version=2.0,model=tpm-crb", vm)
+        self.assertIn("virtualisation.libvirtd.qemu.swtpm.enable = true;", (ROOT / "nix/modules/developer.nix").read_text())
+        self.assertIn('Quickshell.execDetached(["nexus-windows-vm"])', (self.out / "settings/DeveloperPage.qml").read_text())
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

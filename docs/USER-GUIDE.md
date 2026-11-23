@@ -66,7 +66,11 @@ Windows float like on Windows or macOS; you can switch to tiled windows in Setti
 
 NexusOS does not run Windows programs by itself, but most have a version or an equivalent here. Open a `.exe` or `.msi` you downloaded and NexusOS says what it is and offers the app to use instead (Spotify's installer offers Spotify; Photoshop offers GIMP). For anything else, Bottles runs many Windows programs with Wine.
 
-For games, get Steam (most Windows games work through its Proton), and Heroic for Epic and GOG games, from Apps or Welcome. Xbox, PlayStation and Switch controllers work by cable and Bluetooth.
+For games, get Steam (most Windows games work through its Proton), and Heroic for Epic and GOG games, from Apps or Welcome. Xbox, PlayStation and Switch controllers work by cable and Bluetooth. A few online games refuse Linux because of their anti-cheat (Valorant, Fortnite, Call of Duty and others): ask Nexus "will Valorant work?", and opening such a game's installer says so before anything is installed.
+
+**Windows in a window**: for programs that need Windows (Office's desktop apps, Adobe, work tools), turn on virtual machines in Settings, Developer, then open **Windows (in a window)** from Apps. It asks for Windows' installation file (an ISO, from Microsoft's website) and you need a Windows licence; Windows then runs in a window beside your apps. Games with anti-cheat refuse virtual machines: for those, Windows beside NexusOS is the answer.
+
+**Windows beside NexusOS**: the computer always starts NexusOS, with no menu to choose from. Where Windows is installed too, **Windows** is in your apps (and in Settings, Power): it restarts into Windows once, and the next start is NexusOS again.
 
 ## Files from your old computer
 
@@ -98,7 +102,7 @@ Turn Bluetooth on and pair devices in Settings, Bluetooth. Passwords you save in
 
 Settings, Display has brightness, night light and the scale (bigger text and windows). With **more than one screen**, each one can go left, right, above or below the main one, show the same picture, or be off, with its own resolution and scale. A change goes back by itself after 15 seconds unless you press Keep, so a screen that shows nothing never leaves you stuck. [Open Display](settings:display/screens)
 
-Settings, Power sets when the screen turns off, when the computer sleeps (on battery and plugged in), and what closing the lid does. The screen locks when the computer sleeps. [Open Power](settings:power/sleep)
+Settings, Power sets when the screen turns off, when the computer sleeps (on battery and plugged in), and what closing the lid does. The screen locks when the computer sleeps. On laptops whose firmware allows it, **Battery care** stops charging at 80%, which keeps the battery healthy for longer if it is mostly plugged in. [Open Power](settings:power/sleep)
 
 ## Seeing, hearing and using it more easily
 
@@ -114,7 +118,7 @@ Settings, Accounts changes your password. If the disk is encrypted, the disk's p
 
 ## Language, formats and time zone
 
-Settings, Language and region sets your language, how dates, numbers and money are written, and your time zone; they take effect when you log in again. **Keyboard layouts** can be added there to type in more than one language: Alt+Shift switches between them. [Open Language and region](settings:language/language)
+Settings, Language and region sets your language, how dates, numbers and money are written, and your time zone; they take effect when you log in again. **Keyboard layouts** can be added there to type in more than one language: Alt+Shift switches between them. **Chinese, Japanese and Korean** typing (Pinyin, Mozc and Hangul) is on by itself when your language is one of them, and can be turned on for anyone; Ctrl+Space switches. [Open Language and region](settings:language/language)
 
 ## Backups
 
@@ -126,7 +130,7 @@ To get files back, choose a backup and what to bring back (Documents, Picturesâ€
 
 ## Updates
 
-NexusOS updates itself safely. Guardian looks for updates every week; each one is **built and tested first**, then offered for you to approve with your password. It is used from the next restart. If that start goes wrong, the computer goes back to the version before by itself; you can also choose an earlier version in the start-up menu.
+NexusOS updates itself safely. Guardian looks for updates every week; each one is **built and tested first**, then offered for you to approve with your password. It is used from the next restart. If that start goes wrong, the computer goes back to the version before by itself; you can also choose an earlier version in the start-up menu: hold **Space** as the computer starts to see it.
 
 Settings, Updates shows NexusOS's updates and lets you check now. The **channel** is Stable (tested releases) or Testing (new versions first, to help find problems). [Open Updates](settings:updates/system)
 
@@ -155,7 +159,7 @@ Everything Nexus does stays on this computer unless you choose otherwise. Settin
 - **Fix it**: Settings, Health checks the computer (disk, updates, network, sound, battery) and each problem has a Fix it button. You can also tell Nexus what is wrong. [Open Health](settings:health/)
 - **An app stopped**: turn on **Crash notices** in Settings, Feedback to be told when an app crashes.
 - **Tell the NexusOS project**: Settings, Feedback writes a report of the problem or idea. You see all of it first; sending opens it on GitHub, where you can still change it. Nothing is sent by itself. [Open Feedback](settings:feedback/report)
-- **The computer does not start properly after an update**: restart and choose an earlier version in the start-up menu.
+- **The computer does not start properly after an update**: restart, hold **Space** as it starts, and choose an earlier version in the start-up menu.
 
 ## Where to learn more
 

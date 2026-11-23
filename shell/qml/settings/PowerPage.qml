@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Services.UPower
+import Quickshell.Io
 import "../lib/describe.mjs" as D
 import "../lib/power.mjs" as P
 
@@ -45,6 +46,38 @@ Column {
                 .concat(PowerProfiles.hasPerformanceProfile ? [{ value: PowerProfile.Performance, label: "Performance" }] : [])
             onChose: v => PowerProfiles.profile = v
         }
+    }
+    // Restart into Windows, where it is installed beside NexusOS (systemd-boot's
+    // one-time entry; allowed for the person at the screen without a password).
+    property string windowsEntry: ""
+    property bool confirmWindows: false
+    Process { running: true; command: ["systemctl", "reboot", "--boot-loader-entry=help"]
+              stdout: StdioCollector { onStreamFinished: page.windowsEntry = P.windowsEntry(text) } }
+    SettingRow {
+        visible: page.windowsEntry !== ""
+        theme: page.theme; label: "Restart into Windows"; highlighted: page.host.highlight === "windows"
+        detail: page.confirmWindows ? "Save your work first. The computer starts Windows this once, and NexusOS again the time after."
+                                    : "For games and programs that need Windows. The next restart after that comes back to NexusOS."
+        Row {
+            spacing: 8
+            Button { visible: page.confirmWindows; theme: page.theme; label: "Cancel"; onClicked: page.confirmWindows = false }
+            Button { theme: page.theme; primary: page.confirmWindows; label: page.confirmWindows ? "Restart now" : "Restart into Windows…"
+                     onClicked: { if (!page.confirmWindows) { page.confirmWindows = true; return }
+                                  Quickshell.execDetached(["systemctl", "reboot", "--boot-loader-entry=" + page.windowsEntry]) } }
+        }
+    }
+
+    // Battery care: only where the firmware lets Linux stop charging early.
+    property var chargeLimit: null
+    Process { running: true; command: ["sh", "-c", "cat /sys/class/power_supply/BAT*/charge_control_end_threshold 2>/dev/null"]
+              stdout: StdioCollector { onStreamFinished: page.chargeLimit = P.chargeLimit(text) } }
+    SettingRow {
+        visible: page.chargeLimit !== null
+        theme: page.theme; label: "Battery care"; highlighted: page.host.highlight === "batterycare"
+        detail: (page.chargeLimit !== null && page.chargeLimit < 100 ? "On: charging stops at " + page.chargeLimit + "%. " : "Off: the battery charges to 100%. ") +
+                "Stopping at 80% keeps the battery healthy for longer when the laptop is plugged in most of the time. A system change: Guardian builds and checks it first."
+        Button { theme: page.theme; label: page.chargeLimit !== null && page.chargeLimit < 100 ? "Charge to 100%…" : "Stop at 80%…"
+                 onClicked: page.host.proposeSystem(P.chargeLimitPlan(!(page.chargeLimit !== null && page.chargeLimit < 100))) }
     }
     SettingRow {
         theme: page.theme; label: "Screen off"; highlighted: page.host.highlight === "screenoff"

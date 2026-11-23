@@ -25,3 +25,18 @@ test("logind's PrepareForSleep is read from gdbus monitor; anything else is igno
   assert.equal(P.sleepSignal("Monitoring signals on object /org/freedesktop/login1 owned by org.freedesktop.login1"), null);
   assert.equal(P.sleepSignal(undefined), null);
 });
+
+test("battery care is a Guardian change, shown only where the firmware has a limit", () => {
+  assert.deepEqual(P.chargeLimitPlan(true).changes, [{ option: "nexusos.power.chargeLimit.enable", enabled: true }]);
+  assert.equal(P.chargeLimitPlan(false).changes[0].enabled, false);
+  assert.equal(P.chargeLimit("80\n"), 80);
+  assert.equal(P.chargeLimit(""), null);
+  assert.equal(P.chargeLimit("cat: No such file"), null);
+});
+
+test("Windows beside NexusOS is found in the boot menu's entries", () => {
+  assert.equal(P.windowsEntry("nixos-generation-12.conf\nauto-windows\nauto-reboot-to-firmware-setup\n"), "auto-windows");
+  assert.equal(P.windowsEntry("nixos-generation-12.conf\n"), "");
+  assert.equal(P.windowsEntry("windows-11.conf\n"), "windows-11.conf");
+  assert.equal(P.windowsEntry("auto-windows; rm -rf ~\n"), "");
+});

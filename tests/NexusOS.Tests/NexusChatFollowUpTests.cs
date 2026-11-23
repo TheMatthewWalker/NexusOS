@@ -130,7 +130,7 @@ public sealed class NexusChatFollowUpTests : IDisposable
     {
         // A question touching every group is offered every action: none is unreachable.
         var everything = ActionSelection.NamesFor(
-            "install an app, a web app, remove, try, health, settings, fix it, find files, every day, today, updates, a picture, describe the screen, code, workspace, move in, system, large model")
+            "install an app, a web app, a game, dual-boot, remove, try, health, settings, fix it, find files, every day, today, updates, a picture, describe the screen, code, workspace, move in, system, large model")
             .Concat(ActionSelection.FollowOn.Values.SelectMany(x => x)).Distinct();   // apply_fix comes after diagnose_problem
         Assert.Equal(NexusActions.All.Select(a => a.Name).Order(), everything.Order());
         // A plain question gets only "this computer": every action has keywords.

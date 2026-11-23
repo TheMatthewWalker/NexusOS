@@ -19,6 +19,11 @@ let
     runtimeInputs = with pkgs; [ coreutils git direnv ];
     text = builtins.readFile ../../scripts/desktop/nexus-dev.sh;
   };
+  windowsVm = pkgs.writeShellApplication {
+    name = "nexus-windows-vm";
+    runtimeInputs = with pkgs; [ libvirt virt-manager virt-viewer zenity libnotify gawk coreutils ];
+    text = builtins.readFile ../../scripts/desktop/nexus-windows-vm.sh;
+  };
 in
 {
   options.nexusos.developer = {
@@ -61,7 +66,17 @@ in
     }
     (lib.mkIf cfg.virtualMachines.enable {
       virtualisation.libvirtd.enable = true;
+      # The TPM Windows 11 asks for, emulated (swtpm).
+      virtualisation.libvirtd.qemu.swtpm.enable = true;
       programs.virt-manager.enable = true;
+      # Windows in a window, set up by a guide (nexus-windows-vm), in the apps.
+      environment.systemPackages = [ windowsVm pkgs.virt-viewer
+        (pkgs.makeDesktopItem {
+          name = "nexus-windows-vm"; desktopName = "Windows (in a window)"; exec = "nexus-windows-vm";
+          icon = "computer"; categories = [ "System" ];
+          comment = "Programs that need Windows, in a window beside your apps";
+          keywords = [ "windows" "virtual machine" "vm" "office" "adobe" ];
+        }) ];
       users.users.${config.nexusos.user}.extraGroups = [ "libvirtd" "kvm" ];
     })
   ]);

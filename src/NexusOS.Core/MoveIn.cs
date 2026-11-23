@@ -622,7 +622,9 @@ public static class MoveInEndpoints
             var program = MoveInApps.ProgramFromFileName(request.FileName ?? "");
             if (program.Length is 0 or > 120) return Results.Ok(new { program = "", match = (MoveInApp?)null });
             var match = MoveInApps.Match([program]).FirstOrDefault();
-            return Results.Ok(new { program, match });
+            // A game: say plainly whether it runs here (GameCheck.cs).
+            var game = GameCheck.Find(program) is null ? null : GameCheck.Check(program);
+            return Results.Ok(new { program, match, game });
         });
         app.MapDelete("/movein", (MoveInService movein) => { movein.Forget(); return Results.Ok(new { opened = false }); });
         app.MapPost("/movein/bookmarks", async (MoveInBookmarksRequest request, MoveInService movein, CancellationToken ct) =>

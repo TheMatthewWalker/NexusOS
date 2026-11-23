@@ -12,7 +12,7 @@ test("region.env holds only valid locales and zones", () => {
   assert.equal(R.validZone("America/Argentina/Buenos_Aires"), true);
   assert.equal(R.validZone("UTC"), true);
   assert.equal(R.validZone("Europe/../x"), false);
-  assert.deepEqual(R.parseEnv(env), { language: "fr_FR.UTF-8", formats: "de_DE.UTF-8", timeZone: "Europe/Paris" });
+  assert.deepEqual(R.parseEnv(env), { language: "fr_FR.UTF-8", formats: "de_DE.UTF-8", timeZone: "Europe/Paris", input: "" });
 });
 
 test("keyboard layouts for Hyprland, added and removed", () => {
@@ -44,4 +44,15 @@ test("translations: the language is picked and missing texts stay English", () =
   assert.equal(I.t({ Network: "" }, "Network"), "Network");
   assert.equal(I.t({}, "Sound"), "Sound");
   assert.equal(I.t({ "{0} pages": "{0} Seiten" }, "{0} pages", [3]), "3 Seiten");
+});
+
+test("Chinese, Japanese and Korean typing follows the language unless chosen", () => {
+  assert.equal(R.envFile({ language: "ja_JP.UTF-8", input: "none" }).includes("NEXUS_INPUT=none"), true);
+  assert.equal(R.envFile({ language: "en_GB.UTF-8", input: "$(id)" }).includes("NEXUS_INPUT"), false);
+  assert.equal(R.parseEnv("LANG=ko_KR.UTF-8\nNEXUS_INPUT=fcitx5\n").input, "fcitx5");
+  assert.equal(R.parseEnv("NEXUS_INPUT=evil\n").input, "");
+  assert.ok(R.inputMethodOn({ language: "zh_CN.UTF-8", input: "" }));
+  assert.ok(!R.inputMethodOn({ language: "ja_JP.UTF-8", input: "none" }));
+  assert.ok(R.inputMethodOn({ language: "en_GB.UTF-8", input: "fcitx5" }));
+  assert.ok(!R.inputMethodOn({ language: "en_GB.UTF-8", input: "" }));
 });

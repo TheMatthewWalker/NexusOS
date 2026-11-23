@@ -36,6 +36,10 @@ public static class ActionSelection
         G("install", @"install\w*|software|packages?|flathub|flatpak|apt|download|get me|tools?|spotify|discord|steam|gimp|obs|vlc|" +
                      @"libreoffice|office|games?",
             "install_app", "apt_install", "install_system_software", "get_app_details"),
+        G("games", @"games?|gaming|proton|anti-?cheat|multiplayer|valorant|fortnite|roblox|apex|warzone|call of duty|" +
+                   @"league of legends|pubg|tarkov|destiny|rainbow six|siege|battlefield|gta|counter-?strike|overwatch",
+            "check_game"),
+        G("dualboot", @"windows|dual-?boot|boot into|restart into|switch to windows", "restart_into_windows"),
         G("web", @"web ?apps?|websites?|sites?|pwas?|outlook|teams|gmail|whatsapp|microsoft 365|office 365|google docs|web page",
             "add_web_app"),
         G("remove", @"uninstall\w*|remove|delete|get rid of|undo|put back|reinstall", "remove_app", "list_installed_apps", "undo_app_change", "get_today_summary"),

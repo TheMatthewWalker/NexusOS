@@ -34,6 +34,10 @@ Column {
     Process { id: copier }
     function copy(text) { copier.command = ["wl-copy", "--", text]; copier.running = true; message = "Copied." }
 
+    // Virtual machines are on when Guardian has added them (the guide is then installed).
+    property bool vmsOn: false
+    Process { running: true; command: ["sh", "-c", "command -v nexus-windows-vm"]; onExited: (code) => page.vmsOn = code === 0 }
+
     PageHeader { theme: page.theme; title: "Developer"; summary: "Tools for writing software: keys, projects, containers, boards and virtual machines." }
     Text { visible: page.message !== ""; text: page.message; color: page.theme.inkSecondary; font.pixelSize: 13; width: page.width; wrapMode: Text.Wrap }
 
@@ -78,8 +82,11 @@ Column {
     }
     SettingRow {
         theme: page.theme; label: "Virtual machines"; highlighted: page.host.highlight === "vms"
-        detail: "Run Windows or another system in a window (KVM, QEMU, virt-manager). Turning this on is a system change: Guardian builds and checks it first."
-        Button { theme: page.theme; label: "Turn on…"; onClicked: page.host.proposeSystem(D.VM_PLAN) }
-        Button { theme: page.theme; label: "Open"; onClicked: Quickshell.execDetached(["virt-manager"]) }
+        detail: page.vmsOn
+            ? "On. Windows in a window runs programs that need Windows (Office, Adobe, work tools) beside your apps; games with anti-cheat refuse virtual machines, so use Restart into Windows for those."
+            : "Run Windows or another system in a window (KVM, QEMU, virt-manager). Turning this on is a system change: Guardian builds and checks it first."
+        Button { visible: !page.vmsOn; theme: page.theme; label: "Turn on…"; onClicked: page.host.proposeSystem(D.VM_PLAN) }
+        Button { visible: page.vmsOn; theme: page.theme; label: "Windows in a window…"; onClicked: Quickshell.execDetached(["nexus-windows-vm"]) }
+        Button { visible: page.vmsOn; theme: page.theme; label: "Open"; onClicked: Quickshell.execDetached(["virt-manager"]) }
     }
 }

@@ -31,7 +31,7 @@ the owner agrees it is ready.**
 | Touchscreen, screen rotation on convertibles, on-screen keyboard | P3 | ⬜ | iio-sensor-proxy, squeekboard/wvkbd |
 | Graphics tablets and pens (Wacom) | P3 | ⬜ | libwacom, Settings |
 | Thunderbolt devices and docks authorised (bolt) | P2 | ✅ | bolt (0.4) |
-| Battery charge limit (80%) for laptop battery health | P2 | ⬜ | Where firmware supports it |
+| Battery charge limit (80%) for laptop battery health | P2 | ✅ | Settings, Power, through Guardian, where the firmware allows (0.5) |
 | Hibernate (suspend to disk) | P3 | ⬜ | Needs swap sized to RAM, resume from an encrypted disk |
 | Power profiles (performance / balanced / saver) | P1 | ✅ | Settings, Power |
 | Sleep, screen off, lid | P1 | ✅ | |
@@ -134,7 +134,9 @@ the owner agrees it is ready.**
 | Game mode (performance, notifications quiet) | P2 | ✅ | Shell game mode |
 | GameMode / gamescope / MangoHud | P3 | 🟡 | GameMode (0.4) |
 | VRR / FreeSync / G-Sync, HDR | P3 | ⬜ | Hyprland supports VRR; HDR is early |
-| Anti-cheat games (some never work: tell people which) | P2 | ⬜ | A clear page on what works (ProtonDB) |
+| Anti-cheat games (some never work: tell people which) | P2 | ✅ | Nexus's check_game and the Windows program window say so before installing (0.5) |
+| Windows beside NexusOS without a boot menu | P2 | ✅ | Always starts NexusOS; Windows is an app that restarts into it once (0.5) |
+| Guided Windows VM set-up (Office desktop, Adobe, work tools) | P2 | ✅ | Windows (in a window): ISO, TPM, UEFI, as the person, no password (0.5); not for anti-cheat games |
 | Discord with screen sharing | P2 | 🟡 | Portal |
 
 ## 8. Running Windows software
@@ -142,7 +144,7 @@ the owner agrees it is ready.**
 | Item | P | Status | Notes |
 |---|---|---|---|
 | Open a .exe or .msi: run it with Wine (Bottles), or explain the alternative | P1 | ✅ | Says what it is, offers the app here, Bottles for the rest (0.4) |
-| Windows in a virtual machine (for apps that need it) | P2 | 🟡 | Virtual machines can be turned on (0.3); a guided Windows set-up to add |
+| Windows in a virtual machine (for apps that need it) | P2 | ✅ | Guided set-up (0.5) |
 | Program equivalents ("what do I use instead of X") | P1 | ✅ | Move in and Windows installers share one list (0.4) |
 | Dual boot with Windows, with the clocks agreeing | P1 | ✅ | |
 
@@ -225,7 +227,7 @@ the owner agrees it is ready.**
 |---|---|---|---|
 | Language, formats, time zone, keyboard layouts | P1 | ✅ | |
 | Whole shell translated (not only Settings' navigation) | P2 | 🟡 | Framework and three languages started |
-| Chinese, Japanese, Korean input (fcitx5) | P2 | ⬜ | |
+| Chinese, Japanese, Korean input (fcitx5) | P2 | ✅ | On for those languages, or chosen in Settings, Language (0.5) |
 | Right-to-left languages (Arabic, Hebrew) in the shell | P3 | ⬜ | |
 | Nexus answers in the person's language | P2 | 🟡 | Follows the language you write in |
 

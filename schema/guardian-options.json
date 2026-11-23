@@ -41,6 +41,11 @@
       "type": "bool",
       "risk": "review",
       "summary": "Virtual machines: KVM with libvirt, QEMU and virt-manager"
+    },
+    "nexusos.power.chargeLimit.enable": {
+      "type": "bool",
+      "risk": "review",
+      "summary": "Battery care: stop charging at 80%"
     }
   },
   "packages": {

@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Hyprland
 import Quickshell.Services.Pipewire
 import "settings"
@@ -122,6 +123,13 @@ Column {
         }
     }
 
+    // Restart into Windows (Nexus's restart_into_windows): only if the boot menu has it.
+    Process {
+        id: windowsBoot
+        command: ["sh", "-c", "e=$(systemctl reboot --boot-loader-entry=help | grep -xE 'auto-windows|windows[A-Za-z0-9._-]*' | head -1); " +
+                              "[ -n \"$e\" ] && exec systemctl reboot --boot-loader-entry=\"$e\"; " +
+                              "notify-send 'Restart into Windows' 'Windows was not found in the start-up menu.'"]
+    }
     // Instructions from Core for things only the desktop can do.
     function perform(p) {
         switch (p.op) {
@@ -167,6 +175,7 @@ Column {
         case "workspace.restore":
             return overview.restore(p.name) ? { ok: true, message: "Bringing it back…" } : { ok: false, message: overview.message || "No workspace by that name." };
         case "app.try": appsWin.open("try"); appsWin.tryApp(p.package); cards.opened(); return { ok: true, message: "Starting it in a sandbox…" };
+        case "power.windows": windowsBoot.running = true; return { ok: true, message: "Restarting into Windows…" };
         case "movein.open": moveInWin.open(); cards.opened(); return { ok: true, message: "Opened." };
         case "movein.copy": moveInWin.open(); cards.opened();
             return moveInWin.copy() ? { ok: true, message: "Copying in Move in…" } : { ok: false, message: "Move in could not start copying: " + (moveInWin.status || "nothing is ticked.") };

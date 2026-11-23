@@ -114,7 +114,7 @@ Settings, Accounts changes your password. If the disk is encrypted, the disk's p
 
 ## Language, formats and time zone
 
-Settings, Language and region sets your language, how dates, numbers and money are written, and your time zone; they take effect when you log in again. **Keyboard layouts** can be added there to type in more than one language: Alt+Shift switches between them. [Open Language and region](settings:language/language)
+Settings, Language and region sets your language, how dates, numbers and money are written, and your time zone; they take effect when you log in again. **Keyboard layouts** can be added there to type in more than one language: Alt+Shift switches between them. **Chinese, Japanese and Korean** typing (Pinyin, Mozc and Hangul) is on by itself when your language is one of them, and can be turned on for anyone; Ctrl+Space switches. [Open Language and region](settings:language/language)
 
 ## Backups
 

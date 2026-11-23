@@ -4,6 +4,11 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.services.nexus-desktop;
+  # Input methods for Chinese (Pinyin and more), Japanese (Mozc) and Korean
+  # (Hangul), with GTK and Qt support; started only when needed (the session below).
+  inputMethod = pkgs.qt6Packages.fcitx5-with-addons.override {
+    addons = with pkgs; [ fcitx5-mozc fcitx5-hangul qt6Packages.fcitx5-chinese-addons fcitx5-gtk ];
+  };
   # start-hyprland runs Hyprland under its watchdog, as Hyprland asks; started
   # directly, Hyprland shows a warning on every login.
   # The person's language, formats and time zone (Settings, Language and
@@ -11,12 +16,27 @@ let
   # names, and only values made of locale and time-zone characters.
   session = pkgs.writeShellScript "nexus-session" ''
     region="''${XDG_CONFIG_HOME:-$HOME/.config}/nexusos/region.env"
+    input=""
     if [ -r "$region" ]; then
       while IFS='=' read -r key value; do
-        case "$key" in LANG|LANGUAGE|LC_TIME|LC_NUMERIC|LC_MONETARY|LC_PAPER|LC_MEASUREMENT|TZ) ;; *) continue ;; esac
         case "$value" in ""|*[!A-Za-z0-9_.@:/+-]*) continue ;; esac
-        export "$key=$value"
+        case "$key" in
+          LANG|LANGUAGE|LC_TIME|LC_NUMERIC|LC_MONETARY|LC_PAPER|LC_MEASUREMENT|TZ) export "$key=$value" ;;
+          NEXUS_INPUT) input="$value" ;;
+        esac
       done < "$region"
+    fi
+    # Typing Chinese, Japanese and Korean (fcitx5): on for people whose
+    # language is one of them unless they turned it off (NEXUS_INPUT=none),
+    # and for anyone who turned it on (NEXUS_INPUT=fcitx5). GTK apps use
+    # Wayland's own text input; Qt, SDL and X11 apps are told where it is.
+    case "$input" in
+      fcitx5) im=1 ;;
+      none) im="" ;;
+      *) case "''${LANG:-}" in zh_*|ja_*|ko_*) im=1 ;; *) im="" ;; esac ;;
+    esac
+    if [ -n "$im" ]; then
+      export NEXUS_INPUT_METHOD=1 QT_IM_MODULE=fcitx XMODIFIERS=@im=fcitx SDL_IM_MODULE=fcitx
     fi
     # Docker clients talk to the person's own Podman (nix/modules/developer.nix).
     if [ -z "''${DOCKER_HOST:-}" ] && [ -n "''${XDG_RUNTIME_DIR:-}" ]; then
@@ -110,6 +130,7 @@ let
     # The shell runs as a user service, nexus-shell.service, so it comes back
     # after a crash. It logs to the journal: journalctl --user -t nexus-shell
     exec-once = ${shellSession}
+    exec-once = ${pkgs.bash}/bin/sh -c '[ "''${NEXUS_INPUT_METHOD:-}" = 1 ] && exec ${inputMethod}/bin/fcitx5 -d --replace'
     exec-shutdown = ${pkgs.systemd}/bin/systemctl --user --no-block stop nexus-session.target
 
     input {

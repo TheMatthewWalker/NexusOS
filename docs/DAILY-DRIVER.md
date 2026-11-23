@@ -225,7 +225,7 @@ the owner agrees it is ready.**
 |---|---|---|---|
 | Language, formats, time zone, keyboard layouts | P1 | ✅ | |
 | Whole shell translated (not only Settings' navigation) | P2 | 🟡 | Framework and three languages started |
-| Chinese, Japanese, Korean input (fcitx5) | P2 | ⬜ | |
+| Chinese, Japanese, Korean input (fcitx5) | P2 | ✅ | On for those languages, or chosen in Settings, Language (0.5) |
 | Right-to-left languages (Arabic, Hebrew) in the shell | P3 | ⬜ | |
 | Nexus answers in the person's language | P2 | 🟡 | Follows the language you write in |
 

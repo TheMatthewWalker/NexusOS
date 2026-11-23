@@ -113,6 +113,16 @@ Column {
     }
 
     SettingRow {
+        theme: page.theme; label: "Chinese, Japanese and Korean typing"; highlighted: page.host.highlight === "inputmethod"
+        detail: (R.inputMethodOn(Object.assign({ language: page.running.language }, page.choice))
+                    ? "On from the next login: Ctrl+Space switches between your keyboard and Pinyin, Mozc (Japanese) or Hangul."
+                    : "Off. Turn it on to type Chinese, Japanese or Korean.") +
+                " Automatic turns it on when your language is one of them."
+        Choice { theme: page.theme; name: "Chinese, Japanese and Korean typing"; current: page.choice.input || ""
+                 options: [{ value: "", label: "Automatic" }, { value: "fcitx5", label: "On" }, { value: "none", label: "Off" }]
+                 onChose: v => page.choose("input", v) }
+    }
+    SettingRow {
         theme: page.theme; label: "Keyboard layouts"; highlighted: page.host.highlight === "keyboards"
         detail: [page.layoutName(page.host.desktop.baseLayout)].concat(page.layoutExtras.map(page.layoutName)).join(", ") +
             (page.layoutExtras.length ? ". Alt+Shift switches between them." : ". Add another to type in more than one language.")

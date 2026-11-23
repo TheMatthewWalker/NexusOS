@@ -1083,6 +1083,14 @@ class ShellBuild(unittest.TestCase):
                      "gesture = 3, up, dispatcher, global, nexus:overview"):
             self.assertIn(line, desktop)
 
+    def test_chinese_japanese_and_korean_typing_starts_only_when_wanted(self):
+        desktop = (ROOT / "nix/modules/desktop.nix").read_text()
+        self.assertIn("NEXUS_INPUT) input=\"$value\" ;;", desktop)
+        self.assertIn("zh_*|ja_*|ko_*) im=1", desktop)
+        self.assertIn('[ "\'\'${NEXUS_INPUT_METHOD:-}" = 1 ] && exec ${inputMethod}/bin/fcitx5 -d --replace', desktop)
+        page = (self.out / "settings/RegionPage.qml").read_text()
+        self.assertIn('onChose: v => page.choose("input", v)', page)
+
     def test_feedback_is_opt_in_and_shown_before_it_is_sent(self):
         page = (self.out / "settings/FeedbackPage.qml").read_text()
         self.assertIn('Quickshell.execDetached(["xdg-open", F.issueUrl(page.built.title, page.built.body)])', page)

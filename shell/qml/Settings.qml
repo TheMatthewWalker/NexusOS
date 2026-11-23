@@ -186,6 +186,7 @@ NexusWindow {
         ["language", "formats", "Formats", "formats date time number currency money paper size a4 letter units region locale"],
         ["language", "timezone", "Time zone", "time zone timezone clock travel hour wrong time"],
         ["language", "keyboards", "Keyboard layouts", "keyboard layout input language switch alt shift qwerty azerty qwertz dvorak"],
+        ["language", "inputmethod", "Chinese, Japanese and Korean typing", "chinese japanese korean pinyin mozc hangul input method ime fcitx cjk typing"],
         ["defaults", "defaults", "Default apps", "default apps browser email mail open with pdf music video photos pictures text editor file manager"],
         ["defaults", "startup", "Startup apps", "startup apps login autostart start with computer boot launch at login"],
         ["storage", "storage", "Storage", "storage disk space full free clean up delete large files"],

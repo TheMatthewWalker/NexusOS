@@ -75,7 +75,7 @@ the owner agrees it is ready.**
 | USB drives open by themselves; NTFS and exFAT | P1 | ✅ | NTFS and exFAT support (0.2); check on hardware |
 | BitLocker drives (read Windows encrypted drives) | P2 | ⬜ | cryptsetup bitlk |
 | Network shares: Windows (SMB) and NAS; browse and connect | P1 | ✅ | Settings, Network: type \\\\server\\share or browse (0.3) |
-| Share a folder with other computers | P3 | ⬜ | Samba, off by default |
+| Share a folder with other computers | P3 | ✅ | Settings, Network, read-only, Guardian turns it on (0.7); changing files later |
 | Cloud drives: OneDrive, Google Drive, Dropbox, Nextcloud | P1 | ✅ | Settings, Accounts: a folder in the home folder and Files, rclone with a local cache (0.4) |
 | Phone integration: files, notifications, texts (KDE Connect) | P2 | ✅ | KDE Connect (0.3) |
 | Phone file transfer over USB (MTP), iPhone photos | P2 | 🔍 | libmtp present; ifuse for iPhone |

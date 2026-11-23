@@ -267,6 +267,42 @@ Column {
         Button { anchors.bottom: parent.bottom; theme: page.theme; label: "Browse the network"
                  onClicked: Quickshell.execDetached(["gio", "open", "network:///"]) }
     }
+    // Sharing this computer's own folders (nexus-share): read-only to others.
+    property bool sharingOn: false
+    property var myShares: []
+    property string shareNote: ""
+    Process { id: sharingState; running: true; command: ["systemctl", "is-active", "--quiet", "samba-smbd.service"]
+              onExited: (code) => { page.sharingOn = code === 0; if (page.sharingOn) shareLister.running = true } }
+    Process { id: shareLister; command: ["nexus-share", "list"]
+              stdout: StdioCollector { onStreamFinished: { try { const v = JSON.parse(text); page.myShares = Array.isArray(v) ? v : [] } catch (e) {} } } }
+    Process {
+        id: shareRunner
+        stdout: StdioCollector { id: shareOut }
+        onExited: { try { const v = JSON.parse(shareOut.text); page.shareNote = v.error || v.message || "" } catch (e) {} shareLister.running = true }
+    }
+    Process {
+        id: sharePicker
+        command: ["zenity", "--file-selection", "--directory", "--title=Choose a folder to share"]
+        stdout: StdioCollector { onStreamFinished: { const p = text.trim(); if (p) { shareRunner.command = ["nexus-share", "add", p]; shareRunner.running = true } } }
+    }
+    SettingRow {
+        theme: page.theme; label: "Share folders from this computer"; highlighted: page.host.highlight === "sharing"
+        detail: page.shareNote || (page.sharingOn
+            ? (page.myShares.length ? "Others on this network can open and copy these, not change them." : "Share a folder so other computers on this network can open it (read-only).")
+            : "Off. Turning it on lets other computers on this network open folders you choose (read-only); it is a system change, checked by Guardian.")
+        Button { visible: !page.sharingOn; theme: page.theme; label: "Turn on…"; onClicked: page.host.proposeSystem(Net.SHARING_PLAN) }
+        Button { visible: page.sharingOn; theme: page.theme; label: "Share a folder…"; enabled: !sharePicker.running && !shareRunner.running
+                 onClicked: sharePicker.running = true }
+    }
+    Repeater {
+        model: page.myShares
+        delegate: SettingRow {
+            required property var modelData
+            theme: page.theme; label: modelData.name; detail: modelData.path
+            Button { theme: page.theme; label: "Stop sharing"; enabled: !shareRunner.running
+                     onClicked: { shareRunner.command = ["nexus-share", "remove", modelData.name]; shareRunner.running = true } }
+        }
+    }
     SettingRow {
         theme: page.theme; label: "Your phone"; highlighted: page.host.highlight === "phone"
         detail: "KDE Connect links an Android phone (or an iPhone, with fewer features) on the same Wi-Fi: files both ways, notifications, texts and the clipboard. Install KDE Connect on the phone, then pair here."

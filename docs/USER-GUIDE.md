@@ -89,7 +89,7 @@ For games, get Steam (most Windows games work through its Proton), and Heroic fo
 
 ## Wi-Fi, Bluetooth and printers
 
-Choose a Wi-Fi network from the top bar or Settings, Network. **Mobile hotspot** there shares this computer's internet with a phone or another computer over Wi-Fi, and shows the name and password to connect with. Bluetooth devices pair in Settings, Bluetooth.
+Choose a Wi-Fi network from the top bar or Settings, Network. **Share folders from this computer** (also in Settings, Network) lets other computers on your network, Windows ones included, open folders you choose and copy from them, but not change them. Turning sharing on is a system change Guardian checks first. **Mobile hotspot** there shares this computer's internet with a phone or another computer over Wi-Fi, and shows the name and password to connect with. Bluetooth devices pair in Settings, Bluetooth.
 
 Printers and scanners on your network, or plugged in with USB, **appear by themselves** within a minute of switching them on. Settings, Printers shows them, sets the default and prints a test page; **Scan a document** opens the scanner app. [Open Printers](settings:printers/printers)
 

@@ -178,7 +178,7 @@ the owner agrees it is ready.**
 | App permissions (Flatpak: files, camera, location) | P2 | ✅ | Settings, Privacy: internet, files, devices, camera, background (0.4); location later |
 | Passkeys and security keys (FIDO2, YubiKey) | P2 | 🟡 | libfido2's udev rules (0.4); check with a real key |
 | Password manager | P2 | 🟡 | Browsers; Bitwarden/KeePassXC on Flathub |
-| Malware scanning of downloads (optional) | P3 | ⬜ | ClamAV on demand |
+| Malware scanning of downloads (optional) | P3 | ✅ | Settings, Privacy through Guardian: ClamAV on demand for Downloads or a folder, definitions by freshclam; nothing deleted (0.12) |
 
 ## 11. Software and updates
 

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../lib/storage.mjs" as S
+import "../lib/privacy.mjs" as Priv
 
 // Settings, Privacy and AI: today at a glance (feature 12, Privacy
 // dashboard: what Nexus read, what left the computer, which apps used the
@@ -317,4 +318,38 @@ Column {
     }
     Button { visible: page.permApp !== ""; theme: page.theme; label: "Back to what the app asked for"
              onClicked: page.setPerm(["reset", page.permApp]) }
+
+    // Virus scanning on demand (ClamAV, after it is turned on through Guardian).
+    property bool scanOn: false
+    property string scanNote: ""
+    Process { running: true; command: ["sh", "-c", "command -v nexus-scan"]; onExited: (code) => page.scanOn = code === 0 }
+    Process {
+        id: scanner
+        stdout: StdioCollector { onStreamFinished: page.scanNote = text.trim() }
+    }
+    Process {
+        id: scanPicker
+        command: ["zenity", "--file-selection", "--directory", "--title=Choose a folder to scan"]
+        stdout: StdioCollector { onStreamFinished: { const f = text.trim(); if (f.startsWith("/")) page.scan(f) } }
+    }
+    function scan(folder) {
+        if (scanner.running) return;
+        scanNote = "Scanning…";
+        scanner.command = ["nexus-scan"].concat(folder ? [folder] : []);
+        scanner.running = true;
+    }
+    SettingRow {
+        theme: page.theme; label: "Scan for viruses"; highlighted: page.host.highlight === "virusscan"
+        detail: page.scanNote || (page.scanOn
+            ? "Checks Downloads, or a folder you choose, with ClamAV. Nothing is deleted without you; nothing scans in the background."
+            : "Viruses for Linux are rare, but files you pass on to Windows computers can carry them. Turning this on adds ClamAV and keeps its definitions up to date.")
+        Row {
+            spacing: 8
+            Button { visible: !page.scanOn; theme: page.theme; label: "Turn on…"; onClicked: page.host.proposeSystem(Priv.SCAN_PLAN) }
+            Button { visible: page.scanOn; theme: page.theme; label: "Scan a folder…"; enabled: !scanner.running && !scanPicker.running
+                     onClicked: scanPicker.running = true }
+            Button { visible: page.scanOn; theme: page.theme; primary: true; label: scanner.running ? "Scanning…" : "Scan Downloads"
+                     enabled: !scanner.running; onClicked: page.scan("") }
+        }
+    }
 }

@@ -175,6 +175,8 @@ Settings, Developer has your SSH keys (create one and copy it for GitHub, GitLab
 
 Everything Nexus does stays on this computer unless you choose otherwise. Settings, Privacy and AI shows what Nexus remembers, how long, and which model answers; a cloud model is used only if you add one. The **Timeline** lists every change Nexus or you made, and most can be undone from there. [Open Privacy and AI](settings:privacy/notes)
 
+**Scan for viruses** in Settings, Privacy adds ClamAV (through Guardian) and then checks Downloads, or a folder you choose, when you ask. It never deletes anything: it tells you which files it found, and you remove them in Files. [Open Scan for viruses](settings:privacy/virusscan)
+
 ## When something goes wrong
 
 - **Fix it**: Settings, Health checks the computer (disk, updates, network, sound, battery) and each problem has a Fix it button. You can also tell Nexus what is wrong. [Open Health](settings:health/)

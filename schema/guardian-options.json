@@ -56,6 +56,11 @@
       "type": "bool",
       "risk": "review",
       "summary": "Fingerprint for the lock screen and approvals"
+    },
+    "nexusos.malwareScan.enable": {
+      "type": "bool",
+      "risk": "review",
+      "summary": "Scan files for viruses on demand (ClamAV)"
     }
   },
   "packages": {

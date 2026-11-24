@@ -170,6 +170,7 @@ NexusWindow {
         ["accounts", "fingerprint", "Fingerprint", "fingerprint reader windows hello unlock biometric touch"],
         ["desktop", "weather", "Weather in the calendar", "weather forecast temperature rain calendar clock city place"],
         ["desktop", "donotdisturb", "Do not disturb", "notifications notify do not disturb quiet bell alerts popups"],
+        ["privacy", "virusscan", "Scan for viruses", "virus scan antivirus malware clamav defender security infected"],
         ["privacy", "model", "AI model", "model ai ollama qwen llm assistant nexus"],
         ["privacy", "largemodel", "Large model", "large model bigger smarter mixture of experts moe gpt-oss llama memory"],
         ["privacy", "verylargemodel", "Very large model", "very large huge model colibri disk experts deepseek qwen glm download"],

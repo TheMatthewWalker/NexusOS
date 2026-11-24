@@ -28,7 +28,7 @@ the owner agrees it is ready.**
 | Keyboard backlight control | P3 | ✅ | The keyboard light keys, with the on-screen bar (0.10) |
 | Webcam works in apps and browsers (portals, PipeWire camera) | P1 | 🔍 | Test in Firefox and a video-call site |
 | Fingerprint login and unlock (fprintd) | P2 | ✅ | Settings, Accounts through Guardian: lock screen and approvals; login keeps the password (0.8) |
-| Touchscreen, screen rotation on convertibles, on-screen keyboard | P3 | ⬜ | iio-sensor-proxy, squeekboard/wvkbd |
+| Touchscreen, screen rotation on convertibles, on-screen keyboard | P3 | ✅ | Screen, touch and pen turn with the computer (iio-sensor-proxy), with a lock in Settings, Display; on-screen keyboard (wvkbd) in Accessibility (0.11) |
 | Graphics tablets and pens (Wacom) | P3 | ⬜ | libwacom, Settings |
 | Thunderbolt devices and docks authorised (bolt) | P2 | ✅ | bolt (0.4) |
 | Battery charge limit (80%) for laptop battery health | P2 | ✅ | Settings, Power, through Guardian, where the firmware allows (0.5) |

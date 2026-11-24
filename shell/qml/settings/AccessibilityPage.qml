@@ -136,4 +136,13 @@ Column {
                  label: page.captionsInstalled ? "Open" : "Install"
                  onClicked: page.captionsInstalled ? Quickshell.execDetached(["flatpak", "run", page.captionsApp]) : (captionsInstall.running = true) }
     }
+
+    // An on-screen keyboard (wvkbd) for touchscreens, or for typing with a pointer.
+    Process { id: keyboard; command: ["wvkbd-mobintl", "-L", "280"] }
+    SettingRow {
+        theme: page.theme; label: "On-screen keyboard"; highlighted: page.host.highlight === "osk"
+        detail: keyboard.running ? "Showing along the bottom of the screen. Turn it off here when you are done."
+                                 : "A keyboard on the screen, for a touchscreen or for typing with the mouse."
+        Switch { theme: page.theme; name: "On-screen keyboard"; checked: keyboard.running; onToggled: keyboard.running = !keyboard.running }
+    }
 }

@@ -133,6 +133,8 @@ let
     # The shell runs as a user service, nexus-shell.service, so it comes back
     # after a crash. It logs to the journal: journalctl --user -t nexus-shell
     exec-once = ${shellSession}
+    # Convertibles: the built-in screen turns with the computer (quits at once without an accelerometer).
+    exec-once = ${pkgs.bash}/bin/sh -c '[ -x /run/current-system/sw/bin/nexus-autorotate ] && exec /run/current-system/sw/bin/nexus-autorotate'
     exec-once = ${pkgs.bash}/bin/sh -c '[ "''${NEXUS_INPUT_METHOD:-}" = 1 ] && exec ${inputMethod}/bin/fcitx5 -d --replace'
     exec-shutdown = ${pkgs.systemd}/bin/systemctl --user --no-block stop nexus-session.target
 

@@ -45,6 +45,11 @@ let
     runtimeInputs = with pkgs; [ grim slurp wl-clipboard libnotify coreutils gnused ] ++ [ tesseract ];
     text = builtins.readFile ../../scripts/desktop/nexus-ocr.sh;
   };
+  autorotate = pkgs.writeShellApplication {
+    name = "nexus-autorotate";
+    runtimeInputs = [ pkgs.iio-sensor-proxy pkgs.jq config.programs.hyprland.package ];
+    text = builtins.readFile ../../scripts/desktop/nexus-autorotate.sh;
+  };
   resetSettings = pkgs.writeShellApplication {
     name = "nexus-reset-settings";
     runtimeInputs = with pkgs; [ coreutils findutils systemd ];
@@ -101,7 +106,7 @@ in
                                    pkgs.cliphist pkgs.wtype pkgs.wl-clipboard
                                    pkgs.networkmanagerapplet pkgs.zenity pkgs.wireguard-tools
                                    pkgs.p7zip pkgs.unar pkgs.adw-gtk3 pkgs.adwaita-qt pkgs.adwaita-qt6 pkgs.dconf
-                                   record startup permissions windows ocr resetSettings pkgs.libva-utils pkgs.git-credential-manager ];
+                                   record startup permissions windows ocr resetSettings autorotate pkgs.wvkbd pkgs.libva-utils pkgs.git-credential-manager ];
 
     # The computer starts NexusOS straight away: no start-up menu (holding
     # Space while it starts shows it, for an earlier NexusOS version). Windows,
@@ -144,6 +149,10 @@ in
 
     # Archives: File Roller opens 7z with p7zip and RAR with unar (free, no unrar licence).
     #
+    # Convertibles and tablets: the accelerometer for turning the screen
+    # (nexus-autorotate, started by Hyprland), and the ambient light sensor.
+    hardware.sensor.iio.enable = lib.mkDefault true;
+
     # One look for every app: GTK 3 (adw-gtk3), GTK 4 and libadwaita, and Qt
     # (QGnomePlatform) all follow org.gnome.desktop.interface color-scheme,
     # dark to start with like the desktop itself. Settings, Desktop switches

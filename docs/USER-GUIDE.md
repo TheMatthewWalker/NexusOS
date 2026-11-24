@@ -115,6 +115,8 @@ Settings, Power sets when the screen turns off, when the computer sleeps (on bat
 
 **Variable refresh rate** in Settings, Display uses FreeSync or G-Sync on screens that have it, so games run without tearing or stutter. It is on for full-screen games and videos to start with; choose Off if a screen flickers. [Open Variable refresh rate](settings:display/vrr)
 
+On a convertible laptop or tablet, the screen, touch and pen turn with the computer. **Rotate the screen** in Settings, Display locks it. An **on-screen keyboard** is in Settings, Accessibility. [Open Rotate the screen](settings:display/rotation)
+
 ## Seeing, hearing and using it more easily
 
 Settings, Accessibility has bigger text, high contrast, a bigger pointer, less motion, the **screen reader** (Super+Alt+S), and Describe this, which tells you what is on the screen. The **magnifier** enlarges the screen around the pointer: Super+Plus and Super+Minus, as on Windows. A **colour filter** shows the screen in grey or inverted, or makes colours easier to tell apart if you are colour blind. You can also ask Nexus: "zoom in", "turn on the colour blind filter". [Open Accessibility](settings:accessibility/magnifier)

@@ -236,6 +236,9 @@ let
     bindl = , XF86AudioMicMute, global, nexus:micmute
     bindel = , XF86MonBrightnessUp, global, nexus:brightup
     bindel = , XF86MonBrightnessDown, global, nexus:brightdown
+    bindel = , XF86KbdBrightnessUp, global, nexus:kbdup
+    bindel = , XF86KbdBrightnessDown, global, nexus:kbddown
+    bindl = , XF86KbdLightOnOff, global, nexus:kbdcycle
     # Caps Lock on or off is shown too: on release, without taking the key.
     bindrn = , Caps_Lock, global, nexus:capslock
     # Media keys play, pause and skip in whichever app is playing.

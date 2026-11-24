@@ -1,4 +1,4 @@
-// The volume, microphone and brightness keys (OnScreen.qml). Tested with Node
+// The volume, microphone, brightness and keyboard light keys (OnScreen.qml). Tested with Node
 // (tests/shell/onscreen.test.mjs).
 
 export const STEP = 0.05;
@@ -21,7 +21,26 @@ export function parseBrightness(text) {
   return isNaN(pct) ? null : { device: f[0], value: pct / 100 };
 }
 
+// The keyboard's backlight (`brightnessctl -m -l -c leds`): the first LED
+// called *kbd_backlight*, as { device, level, max }, or null for none.
+export function parseKeyboardLight(text) {
+  for (const line of String(text || "").split("\n")) {
+    const f = line.trim().split(",");
+    if (f.length < 5 || !/kbd_backlight/.test(f[0])) continue;
+    const level = parseInt(f[2]), max = parseInt(f[4]);
+    if (!isNaN(level) && max > 0) return { device: f[0], level, max };
+  }
+  return null;
+}
+// Keyboard lights have a few levels (often off, low, high): up and down
+// stop at the ends; the light key itself ("cycle") goes round, as on Windows laptops.
+export function keyboardStep(light, how) {
+  if (how === "cycle") return light.level >= light.max ? 0 : light.level + 1;
+  return Math.min(light.max, Math.max(0, light.level + (how === "up" ? 1 : -1)));
+}
+
 export function label(kind, value, muted) {
+  if (kind === "keyboard") return value > 0 ? "Keyboard light " + Math.round(value * 100) + "%" : "Keyboard light off";
   if (kind === "volume") return muted ? "Muted" : Math.round(value * 100) + "%";
   if (kind === "microphone") return muted ? "Microphone off" : "Microphone on";
   if (kind === "capslock") return value ? "Caps Lock on" : "Caps Lock off";
@@ -31,12 +50,12 @@ export function label(kind, value, muted) {
 export function icon(kind, value, muted) {
   if (kind === "brightness") return "display";
   if (kind === "microphone") return "mic";
-  if (kind === "capslock") return "language";
+  if (kind === "capslock" || kind === "keyboard") return "language";
   return "sound";
 }
 
 // Kinds shown as a bar of how much (not microphone or Caps Lock, which are on or off).
-export function hasBar(kind) { return kind === "volume" || kind === "brightness" }
+export function hasBar(kind) { return kind === "volume" || kind === "brightness" || kind === "keyboard" }
 
 // `hyprctl devices -j`: Caps Lock is on if the main keyboard (or, with none
 // marked main, any keyboard) says so.

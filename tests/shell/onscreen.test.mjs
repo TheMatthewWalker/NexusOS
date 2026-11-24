@@ -27,3 +27,18 @@ test("caps lock is read from the main keyboard", () => {
   assert.equal(O.label("capslock", 1, false), "Caps Lock on");
   assert.ok(!O.hasBar("capslock") && O.hasBar("volume"));
 });
+
+test("the keyboard light steps through its few levels", () => {
+  const list = "intel_backlight,backlight,4800,50%,9600\ninput3::capslock,leds,0,0%,1\ntpacpi::kbd_backlight,leds,1,50%,2\n";
+  const k = O.parseKeyboardLight(list);
+  assert.deepEqual(k, { device: "tpacpi::kbd_backlight", level: 1, max: 2 });
+  assert.equal(O.parseKeyboardLight("input3::capslock,leds,0,0%,1"), null);
+  assert.equal(O.keyboardStep(k, "up"), 2);
+  assert.equal(O.keyboardStep({ ...k, level: 2 }, "up"), 2);
+  assert.equal(O.keyboardStep({ ...k, level: 0 }, "down"), 0);
+  assert.equal(O.keyboardStep({ ...k, level: 2 }, "cycle"), 0);
+  assert.equal(O.keyboardStep(k, "cycle"), 2);
+  assert.equal(O.label("keyboard", 0, false), "Keyboard light off");
+  assert.equal(O.label("keyboard", 0.5, false), "Keyboard light 50%");
+  assert.ok(O.hasBar("keyboard"));
+});

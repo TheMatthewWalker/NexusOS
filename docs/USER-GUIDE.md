@@ -99,6 +99,8 @@ Printers and scanners on your network, or plugged in with USB, **appear by thems
 
 If your workplace or school network needs a **proxy**, set it in Settings, Network: a set-up script address (PAC) or a name and port, as your IT department gives them. Firefox and most apps follow it. [Open Proxy](settings:network/proxy)
 
+Some Broadcom Wi-Fi chips (in older MacBooks and some laptops) have no driver in Linux. Settings, Network then says so under **Wi-Fi driver**. The safest fix is a small USB Wi-Fi adapter or a supported M.2 card; Broadcom's own driver can be added through Guardian, but it is unmaintained and has known security flaws, so Guardian asks you to confirm. [Open Wi-Fi driver](settings:network/wifidriver)
+
 ## Mouse and touchpad
 
 Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed buttons and scrolling direction, and for touchpads tap to click and natural scrolling. Swipe three fingers sideways to move between workspaces, or up to see all windows. [Open Mouse and touchpad](settings:mouse/taptoclick)
@@ -136,6 +138,8 @@ App notifications appear at the top right and stay in the **notification centre*
 Settings, Accounts changes your password. If the disk is encrypted, the disk's password changes with it, so you only ever have one. You can add accounts for other people (an administrator's password is asked) and remove them, keeping or removing their files. [Open Accounts](settings:accounts/password)
 
 For a child's account (a standard one, not an administrator), **Screen time…** beside it sets the hours it can be used, such as 07:00 to 20:00, and how many minutes a day, as Windows' Family Safety does. Outside those hours, or once the day's minutes are used, the child cannot log in; if they are already using the computer they get 5 minutes' warning and are then signed out, so they should save their work. Time counts while they are signed in, locked or not. Only an administrator can change it. [Open accounts for other people](settings:accounts/accounts)
+
+For someone just borrowing the computer, turn on the **Guest account** in Settings, Accounts (through Guardian). The login screen then offers "Use as Guest", with no password. A guest cannot see your files or change the system, and everything they do (files, browsing, sign-ins) is wiped when they log out. [Open Guest account](settings:accounts/guest)
 
 ## Language, formats and time zone
 

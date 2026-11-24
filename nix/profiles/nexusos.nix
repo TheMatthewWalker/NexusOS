@@ -6,7 +6,7 @@ let
   cfg = config.nexusos;
 in
 {
-  imports = [ ../modules/hardware.nix ../modules/accounts.nix ../modules/printing.nix ../modules/backups.nix ../modules/firmware.nix ../modules/storage.nix ../modules/secure-boot.nix ../modules/everyday.nix ../modules/battery.nix ../modules/sharing.nix ../modules/fingerprint.nix ../modules/malware-scan.nix ../modules/hibernate.nix ../modules/developer.nix ../modules/online.nix ../modules/gaming-windows.nix ../modules/keyboard.nix ../modules/language.nix ../modules/boot-splash.nix ../modules/desktop.nix ../modules/nvidia.nix ../modules/apps.nix ../modules/images.nix ../modules/large-model.nix ../modules/colibri.nix ../modules/vision-voice.nix ../modules/guardian.nix ../modules/updates.nix ];
+  imports = [ ../modules/hardware.nix ../modules/accounts.nix ../modules/printing.nix ../modules/backups.nix ../modules/firmware.nix ../modules/storage.nix ../modules/secure-boot.nix ../modules/everyday.nix ../modules/battery.nix ../modules/sharing.nix ../modules/fingerprint.nix ../modules/malware-scan.nix ../modules/hibernate.nix ../modules/guest.nix ../modules/unfree.nix ../modules/broadcom-wifi.nix ../modules/developer.nix ../modules/online.nix ../modules/gaming-windows.nix ../modules/keyboard.nix ../modules/language.nix ../modules/boot-splash.nix ../modules/desktop.nix ../modules/nvidia.nix ../modules/apps.nix ../modules/images.nix ../modules/large-model.nix ../modules/colibri.nix ../modules/vision-voice.nix ../modules/guardian.nix ../modules/updates.nix ];
 
   options.nexusos = {
     user = lib.mkOption {

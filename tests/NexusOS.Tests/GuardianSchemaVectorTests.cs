@@ -48,5 +48,5 @@ public sealed class GuardianSchemaVectorTests
 
     [Fact]
     public void SchemaLoadsAllOptions() =>
-        Assert.Equal(11, GuardianSchema.Options.Count);
+        Assert.Equal(13, GuardianSchema.Options.Count);
 }

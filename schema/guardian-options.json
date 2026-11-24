@@ -66,6 +66,18 @@
       "type": "bool",
       "risk": "review",
       "summary": "Hibernate: save everything to the disk and turn off"
+    },
+    "nexusos.guest.enable": {
+      "type": "bool",
+      "risk": "review",
+      "summary": "A guest account with no password, wiped at each log out"
+    },
+    "nexusos.hardware.broadcomWifi.enable": {
+      "type": "bool",
+      "risk": "elevated",
+      "elevatedWhen": true,
+      "summary": "Broadcom's own Wi-Fi driver, for chips Linux has no driver for",
+      "riskNote": "Broadcom's driver is closed and no longer maintained, and has known flaws that someone nearby could use to take over the computer over Wi-Fi (CVE-2019-9501, CVE-2019-9502). Use it only until you can add a supported USB or M.2 Wi-Fi card, and keep it off where you do not trust the networks around you."
     }
   },
   "packages": {

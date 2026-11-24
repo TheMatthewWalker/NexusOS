@@ -35,6 +35,8 @@ jobs:
         run: nix build .#checks.x86_64-linux.hyprland-desktop --no-update-lock-file --print-build-logs --out-link desktop-vm
       - name: Wi-Fi list, password and forget, on a simulated radio (VM)
         run: nix build .#checks.x86_64-linux.wifi-picker --no-update-lock-file --print-build-logs --out-link wifi-vm
+      - name: Hibernate into the swap file and resume (VM)
+        run: nix build .#checks.x86_64-linux.hibernate --no-update-lock-file --print-build-logs --no-link
       - name: Upload desktop screenshots
         if: always()
         uses: actions/upload-artifact@v4

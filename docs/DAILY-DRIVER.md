@@ -161,7 +161,7 @@ the owner agrees it is ready.**
 | Date, time, time zone | P1 | ✅ | |
 | Users and passwords | P1 | ✅ | |
 | Parental controls, screen time, child accounts | P2 | ✅ | Screen time (hours, minutes a day) at login and each minute; app and web limits still ⬜ (0.9) |
-| Guest session | P3 | ⬜ | |
+| Guest session | P3 | ✅ | Settings, Accounts through Guardian: "Use as Guest" on the login screen, no password, wiped at log out and at each start (0.13) |
 | Reset / reinstall without losing files | P2 | 🟡 | Start fresh resets settings, keeps files, can be undone (0.7); earlier versions for the system |
 | Remote help (let a friend see the screen and help) | P2 | 🟡 | RustDesk from Flathub, in the guide (0.7); remote control on Wayland is limited |
 
@@ -188,7 +188,7 @@ the owner agrees it is ready.**
 | System updates with rollback, channels | P1 | ✅ | |
 | AppImage files run by double-click | P2 | ✅ | (0.2) |
 | .deb packages (Ubuntu/Debian software) | P2 | ✅ | `apt` in a container |
-| Drivers for unusual hardware (Broadcom Wi-Fi, etc.) found and offered | P2 | ⬜ | Hardware scan offers them through Guardian |
+| Drivers for unusual hardware (Broadcom Wi-Fi, etc.) found and offered | P2 | 🟡 | Broadcom Wi-Fi with no driver: Settings, Network says so, advises a supported card, and offers Broadcom's driver through Guardian as elevated (0.13); other hardware still ⬜ |
 
 ## 12. Developer tools
 

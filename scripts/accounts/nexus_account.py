@@ -36,7 +36,7 @@ import sys
 import tempfile
 
 LOGIN = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
-RESERVED = {"root", "nixos", "nobody", "nexus-guardian", "greeter"}
+RESERVED = {"root", "nixos", "nobody", "nexus-guardian", "greeter", "guest"}   # guest: nix/modules/guest.nix
 MIN_PASSWORD = 10
 ROOT_MAPPER = "nexusos-root"
 GROUPS = ["networkmanager", "video", "audio", "scanner", "lp"]

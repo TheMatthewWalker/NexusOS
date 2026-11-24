@@ -143,6 +143,22 @@ Column {
         color: page.wifi.error ? page.theme.error : page.theme.inkSecondary; font.pixelSize: 13
     }
 
+    // A Broadcom Wi-Fi chip Linux has no driver for: say so, and what to do.
+    property var broadcom: null
+    Process {
+        running: true
+        command: ["lspci", "-nnk"]
+        stdout: StdioCollector { onStreamFinished: page.broadcom = Net.broadcomWifi(text) }
+    }
+    SettingRow {
+        visible: !!page.broadcom && (page.broadcom.inUse === "" || page.broadcom.inUse === "wl")
+        theme: page.theme; label: "Wi-Fi driver"; highlighted: page.host.highlight === "wifidriver"
+        detail: !page.broadcom ? "" : page.broadcom.inUse === "wl"
+            ? "This computer's " + page.broadcom.name + " Wi-Fi uses Broadcom's own driver, which is unmaintained and has known security flaws. A supported USB or M.2 Wi-Fi card is the safer fix."
+            : "This computer's Wi-Fi chip (" + page.broadcom.name + ") has no driver in Linux, so Wi-Fi cannot work yet. The safest fix is a small USB Wi-Fi adapter or a supported M.2 card (Intel ones work best). Broadcom's own driver can make this chip work, but it is unmaintained and has known security flaws."
+        Button { visible: !!page.broadcom && page.broadcom.inUse === ""; theme: page.theme; label: "Use Broadcom's driver…"
+                 onClicked: page.host.proposeSystem(Net.BROADCOM_PLAN) }
+    }
     SettingRow {
         theme: page.theme; label: "Wired"; highlighted: page.host.highlight === "wired"
         detail: page.wifi.wired ? "Connected with a cable." : "No cable connected."

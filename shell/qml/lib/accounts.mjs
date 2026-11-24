@@ -33,7 +33,7 @@ export function title(account, me) {
 }
 
 // The page offers Remove for others' accounts only; the helper also keeps the first account.
-export function removable(account, me) { return account.login !== me }
+export function removable(account, me) { return account.login !== me && account.login !== "guest" }
 
 export function parse(text) {
   try { return JSON.parse(String(text || "").trim().split("\n").pop() || "{}") } catch (e) { return {} }
@@ -96,4 +96,10 @@ export function limitsProblem(from, to, minutes) {
   if (from !== "" && from >= to) return "The end time comes after the start time.";
   if (!/^\d{0,4}$/.test(String(minutes)) || Number(minutes) > 1440) return "The daily limit is a number of minutes, up to 1440.";
   return "";
+}
+
+// The guest account (nix/modules/guest.nix): a Guardian change, on or off.
+export function guestPlan(on) {
+  return { description: on ? "Add a guest account, wiped at each log out" : "Remove the guest account",
+           changes: [{ option: "nexusos.guest.enable", enabled: !!on }] };
 }

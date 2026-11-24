@@ -51,12 +51,10 @@ in
       message = "nexusos.nvidia: the legacy_580 driver is for GPUs older than Turing, which need open = false.";
     }];
 
-    # Only NVIDIA's own unfree packages are allowed, not unfree software in general.
-    nixpkgs.config.allowUnfreePredicate = pkg:
-      let name = lib.getName pkg; in
-      builtins.elem name [ "nvidia-x11" "nvidia-kernel-modules" "nvidia-settings" "nvidia-persistenced" ]
-      || (cfg.ollamaBackend == "cuda" && (name == "ollama"
-            || lib.any (prefix: lib.hasPrefix prefix name) [ "cuda" "libcu" "libnv" "cudnn" ]));
+    # Only NVIDIA's own unfree packages are allowed, not unfree software in general (nix/modules/unfree.nix).
+    nexusos.unfree.names = [ "nvidia-x11" "nvidia-kernel-modules" "nvidia-settings" "nvidia-persistenced" ]
+      ++ lib.optional (cfg.ollamaBackend == "cuda") "ollama";
+    nexusos.unfree.prefixes = lib.optionals (cfg.ollamaBackend == "cuda") [ "cuda" "libcu" "libnv" "cudnn" ];
 
     # Loads the driver; the name is historical and applies to Wayland too.
     services.xserver.videoDrivers = [ "nvidia" ];

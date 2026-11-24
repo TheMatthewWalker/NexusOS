@@ -55,3 +55,14 @@ test("proxy settings are checked and written as dconf values", () => {
   assert.deepEqual(N.proxyNow("'auto'\n'http://wpad/proxy.pac'\n\n\n"), { mode: "auto", text: "http://wpad/proxy.pac" });
   assert.deepEqual(N.proxyNow(""), { mode: "none", text: "" });
 });
+
+test("a Broadcom Wi-Fi chip with no driver is found, and one that has one is told apart", () => {
+  const none = "00:02.0 VGA compatible controller [0300]: Intel Corporation HD Graphics [8086:0166] (rev 09)\n\tKernel driver in use: i915\n" +
+               "03:00.0 Network controller [0280]: Broadcom Inc. and subsidiaries BCM4360 802.11ac Wireless Network Adapter [14e4:43a0] (rev 03)\n" +
+               "\tSubsystem: Apple Inc. Device [106b:0117]\n\tKernel modules: bcma\n";
+  assert.deepEqual(N.broadcomWifi(none), { name: "BCM4360", inUse: "" });
+  assert.deepEqual(N.broadcomWifi(none.replace("Kernel modules: bcma", "Kernel driver in use: wl")), { name: "BCM4360", inUse: "wl" });
+  assert.equal(N.broadcomWifi("03:00.0 Network controller [0280]: Intel Corporation Wi-Fi 6 AX200 [8086:2723]\n\tKernel driver in use: iwlwifi\n"), null);
+  assert.equal(N.broadcomWifi("02:00.0 Ethernet controller [0200]: Broadcom Inc. NetXtreme BCM5762 [14e4:1687]\n"), null);
+  assert.deepEqual(N.BROADCOM_PLAN.changes, [{ option: "nexusos.hardware.broadcomWifi.enable", enabled: true }]);
+});

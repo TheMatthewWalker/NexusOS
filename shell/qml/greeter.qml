@@ -22,6 +22,7 @@ ShellRoot {
     readonly property string fullName: user === Quickshell.env("NEXUS_GREETER_USER") ? (Quickshell.env("NEXUS_GREETER_NAME") || "") : ""
     readonly property var session: (Quickshell.env("NEXUS_GREETER_SESSION") || "Hyprland").split(" ")
     property bool askUser: user === ""
+    readonly property bool guestOn: Quickshell.env("NEXUS_GREETER_GUEST") === "1"
     property string message: ""
     property bool failed: false
     property bool busy: false
@@ -149,6 +150,13 @@ ShellRoot {
             const wasChanging = root.changing;
             root.busy = false; root.failed = true; root.pending = ""; root.parkedPrompt = "";
             root.clearHeld();
+            if (root.user === "guest") {
+                // The guest login did not work (screen time, or the account is off): back to the usual person.
+                root.user = Quickshell.env("NEXUS_GREETER_USER");
+                root.askUser = root.user === "";
+                root.message = "Guest could not log in: " + (text || "the computer refused it") + ".";
+                return;
+            }
             if (/ACCT_EXPIRED/.test(text)) {
                 root.resetChange();
                 root.message = "This account has expired. Ask whoever looks after this computer to renew it.";
@@ -288,7 +296,7 @@ ShellRoot {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: !root.askUser
-                text: root.fullName || root.user
+                text: root.user === "guest" ? "Guest" : (root.fullName || root.user)
                 color: root.theme.ink; font.pixelSize: 22; font.weight: 550
             }
             // Someone else: type a user name first.
@@ -415,6 +423,16 @@ ShellRoot {
                         (root.askUser ? userField : password).forceActiveFocus();
                     }
                 }
+            }
+            // Guest (nix/modules/guest.nix): no password, and wiped at log out.
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: root.guestOn && !root.expired && root.user !== "guest"
+                text: "Use as Guest"
+                color: root.theme.focus; font.pixelSize: 13
+                TapHandler { enabled: !root.busy; onTapped: { root.askUser = false; root.user = "guest"; root.login("") } }
+                Accessible.role: Accessible.Button
+                Accessible.name: "Use as Guest, with no password. Everything is wiped at log out."
             }
         }
 

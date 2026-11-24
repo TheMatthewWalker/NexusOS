@@ -34,6 +34,7 @@ in
     "${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix"
     ../modules/desktop.nix
     ../modules/nvidia.nix
+    ../modules/unfree.nix
   ];
 
   system.nixos.distroName = "NexusOS";

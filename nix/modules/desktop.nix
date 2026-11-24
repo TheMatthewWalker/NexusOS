@@ -177,6 +177,8 @@ let
       disable_hyprland_logo = true
       disable_splash_rendering = true
       background_color = rgb(04050c)
+      # Variable refresh rate in full-screen games and videos (Settings, Display changes it).
+      vrr = 2
     }
 
     # Super+Space opens Nexus; Super+L locks; Super+Return opens a terminal.
@@ -236,6 +238,9 @@ let
     bindl = , XF86AudioMicMute, global, nexus:micmute
     bindel = , XF86MonBrightnessUp, global, nexus:brightup
     bindel = , XF86MonBrightnessDown, global, nexus:brightdown
+    bindel = , XF86KbdBrightnessUp, global, nexus:kbdup
+    bindel = , XF86KbdBrightnessDown, global, nexus:kbddown
+    bindl = , XF86KbdLightOnOff, global, nexus:kbdcycle
     # Caps Lock on or off is shown too: on release, without taking the key.
     bindrn = , Caps_Lock, global, nexus:capslock
     # Media keys play, pause and skip in whichever app is playing.
@@ -565,10 +570,17 @@ in
 
     # The system panel reads real state from these; each can be turned off,
     # and the panel then says the service is unavailable.
+    # Music apps (Ardour, Bitwig, REAPER, Carla) talk to PipeWire as JACK and
+    # ALSA apps as ALSA; rtkit gives audio threads real-time priority, so
+    # recording and live playing do not crackle.
     services.pipewire = {
       enable = lib.mkDefault true;
       pulse.enable = lib.mkDefault true;
+      alsa.enable = lib.mkDefault true;
+      alsa.support32Bit = lib.mkDefault true;
+      jack.enable = lib.mkDefault true;
     };
+    security.rtkit.enable = lib.mkDefault true;
     networking.networkmanager.enable = lib.mkDefault true;
     services.upower.enable = lib.mkDefault true;
     # Bring my stuff over: old drives are opened read-only with udisksctl, and copied with rsync.

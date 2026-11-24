@@ -25,7 +25,7 @@ the owner agrees it is ready.**
 | Touchpad gestures (swipe between workspaces, overview) | P2 | ✅ | Three fingers sideways between workspaces (0.2), up for the overview (0.4) |
 | Mouse: speed, acceleration, left-handed, scroll direction | P1 | ✅ | Settings, Mouse and touchpad (0.2) |
 | On-screen indicators for volume, brightness, caps lock, media keys | P1 | ✅ | Volume, mute, microphone, brightness and media keys (0.2); Caps Lock (0.4) |
-| Keyboard backlight control | P3 | ⬜ | brightnessctl, kbd_backlight |
+| Keyboard backlight control | P3 | ✅ | The keyboard light keys, with the on-screen bar (0.10) |
 | Webcam works in apps and browsers (portals, PipeWire camera) | P1 | 🔍 | Test in Firefox and a video-call site |
 | Fingerprint login and unlock (fprintd) | P2 | ✅ | Settings, Accounts through Guardian: lock screen and approvals; login keeps the password (0.8) |
 | Touchscreen, screen rotation on convertibles, on-screen keyboard | P3 | ⬜ | iio-sensor-proxy, squeekboard/wvkbd |
@@ -58,7 +58,7 @@ the owner agrees it is ready.**
 | Emoji and symbol picker (Super+. on Windows) | P2 | ✅ | Super+. (0.3) |
 | Windows-like shortcuts: Super+D show desktop, Super+E files, Ctrl+Shift+Esc task manager, Super+arrows snap | P1 | ✅ | (0.2, 0.3) |
 | Keyboard shortcuts page (see and change them) | P2 | 🟡 | All listed in Settings, Help; changing them to add |
-| Light and dark mode, followed by GTK, Qt and Flatpak apps | P1 | 🟡 | GTK 3/4, libadwaita and Qt dark by default, GTK light or dark in Settings (0.4); Qt stays dark; check Flatpak GTK 3 apps |
+| Light and dark mode, followed by GTK, Qt and Flatpak apps | P1 | 🟡 | GTK 3/4, libadwaita and Qt dark by default, GTK light or dark in Settings (0.4), Qt follows it through QGnomePlatform (0.10); check Flatpak GTK 3 apps |
 | Fonts: good defaults, Microsoft-compatible metrics (Carlito, Caladea, Liberation), emoji, CJK | P1 | ✅ | (0.2) |
 | Icon theme, cursor theme, sound theme consistent | P2 | 🟡 | |
 | Wallpapers and a picker | P3 | 🟡 | |
@@ -97,7 +97,7 @@ the owner agrees it is ready.**
 | VPN: WireGuard, OpenVPN, corporate (Cisco AnyConnect, GlobalProtect, Fortinet) | P1 | ✅ | Settings, Network: from a file, or the connection editor (0.3) |
 | Work and school Wi-Fi (802.1X, eduroam) in Settings | P1 | ✅ | The connection editor from Settings (0.3) |
 | Wi-Fi hotspot | P3 | ✅ | Settings, Network (0.6) |
-| Proxy settings | P3 | ⬜ | |
+| Proxy settings | P3 | ✅ | Settings, Network: off, set-up script (PAC) or manual, as GNOME proxy settings for Firefox and GTK apps (0.10) |
 | Install a website as an app (PWA) | P2 | ✅ | Apps, Web apps, or ask Nexus (0.4) |
 
 ## 5. Office, school and productivity
@@ -120,7 +120,7 @@ the owner agrees it is ready.**
 | Photo library (import from camera/phone, albums) | P2 | ✅ | Shotwell in the Creative bundle (0.9) |
 | Image editing (GIMP, Krita), vector (Inkscape) | P2 | 🟡 | Flathub; Creative bundle |
 | Video editing (Kdenlive, DaVinci Resolve) | P2 | 🟡 | Flathub |
-| Audio recording and editing; music production (low-latency audio) | P3 | ⬜ | PipeWire JACK, realtime |
+| Audio recording and editing; music production (low-latency audio) | P3 | ✅ | PipeWire as JACK and ALSA, rtkit real-time priority (0.10); Audacity in the Creative bundle |
 | Streaming and recording (OBS) | P2 | 🟡 | Flathub; needs screen-capture portal |
 | Spotify and other media apps | P2 | 🟡 | Flathub |
 
@@ -133,7 +133,7 @@ the owner agrees it is ready.**
 | Game controllers (Xbox, PlayStation, Switch), wireless dongles | P1 | 🟡 | Steam's controller rules and Xbox over Bluetooth (0.4); the Xbox wireless dongle (xone) needs unfree firmware |
 | Game mode (performance, notifications quiet) | P2 | ✅ | Shell game mode |
 | GameMode / gamescope / MangoHud | P3 | 🟡 | GameMode (0.4) |
-| VRR / FreeSync / G-Sync, HDR | P3 | ⬜ | Hyprland supports VRR; HDR is early |
+| VRR / FreeSync / G-Sync, HDR | P3 | 🟡 | Variable refresh rate in Settings, Display: off, full-screen games (default) or always (0.10); HDR is early |
 | Anti-cheat games (some never work: tell people which) | P2 | ✅ | Nexus's check_game and the Windows program window say so before installing (0.5) |
 | Windows beside NexusOS without a boot menu | P2 | ✅ | Always starts NexusOS; Windows is an app that restarts into it once (0.5) |
 | Guided Windows VM set-up (Office desktop, Adobe, work tools) | P2 | ✅ | Windows (in a window): ISO, TPM, UEFI, as the person, no password (0.5); not for anti-cheat games |

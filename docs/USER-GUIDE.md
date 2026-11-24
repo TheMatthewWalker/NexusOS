@@ -95,6 +95,8 @@ Choose a Wi-Fi network from the top bar or Settings, Network. The **firewall** i
 
 Printers and scanners on your network, or plugged in with USB, **appear by themselves** within a minute of switching them on. Settings, Printers shows them, sets the default and prints a test page; **Scan a document** opens the scanner app. [Open Printers](settings:printers/printers)
 
+If your workplace or school network needs a **proxy**, set it in Settings, Network: a set-up script address (PAC) or a name and port, as your IT department gives them. Firefox and most apps follow it. [Open Proxy](settings:network/proxy)
+
 ## Mouse and touchpad
 
 Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed buttons and scrolling direction, and for touchpads tap to click and natural scrolling. Swipe three fingers sideways to move between workspaces, or up to see all windows. [Open Mouse and touchpad](settings:mouse/taptoclick)
@@ -110,6 +112,8 @@ If your disk is encrypted and Secure Boot is on, **Unlock the disk by itself** i
 Settings, Sound has the volume, the output device and the microphone, and **each app's own volume** while it plays, as Windows' volume mixer. Settings, Display has brightness, night light and the scale (bigger text and windows). With **more than one screen**, each one can go left, right, above or below the main one, show the same picture, or be off, with its own resolution and scale. A change goes back by itself after 15 seconds unless you press Keep, so a screen that shows nothing never leaves you stuck. [Open Display](settings:display/screens)
 
 Settings, Power sets when the screen turns off, when the computer sleeps (on battery and plugged in), and what closing the lid does. The screen locks when the computer sleeps. On laptops whose firmware allows it, **Battery care** stops charging at 80%, which keeps the battery healthy for longer if it is mostly plugged in. [Open Power](settings:power/sleep)
+
+**Variable refresh rate** in Settings, Display uses FreeSync or G-Sync on screens that have it, so games run without tearing or stutter. It is on for full-screen games and videos to start with; choose Off if a screen flickers. [Open Variable refresh rate](settings:display/vrr)
 
 ## Seeing, hearing and using it more easily
 

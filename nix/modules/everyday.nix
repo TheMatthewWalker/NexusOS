@@ -96,7 +96,7 @@ in
     programs.git.enable = lib.mkDefault true;
     virtualisation.podman.dockerCompat = lib.mkDefault true;
 
-    environment.systemPackages = [ pkgs.libsecret keyringPassword screenshot snap pkgs.playerctl
+    environment.systemPackages = [ pkgs.qgnomeplatform pkgs.qgnomeplatform-qt6 pkgs.adwaita-qt pkgs.adwaita-qt6 pkgs.libsecret keyringPassword screenshot snap pkgs.playerctl
                                    pkgs.cifs-utils pkgs.exfatprogs pkgs.ntfs3g pkgs.docker-compose
                                    pkgs.cliphist pkgs.wtype pkgs.wl-clipboard
                                    pkgs.networkmanagerapplet pkgs.zenity pkgs.wireguard-tools
@@ -154,7 +154,16 @@ in
         gtk-theme = "adw-gtk3-dark";
       };
     }];
-    qt = { enable = lib.mkDefault true; platformTheme = lib.mkDefault "gnome"; style = lib.mkDefault "adwaita-dark"; };
+    # No style is forced (QT_STYLE_OVERRIDE): QGnomePlatform picks Adwaita or
+    # Adwaita-Dark from the GTK theme's name, so Qt apps follow Settings too
+    # (from their next start).
+    # (NixOS's qt module insists on a forced style with the gnome platform
+    # theme, so its few lines are here instead, without QT_STYLE_OVERRIDE.)
+    environment.variables.QT_QPA_PLATFORMTHEME = lib.mkDefault "gnome";
+    environment.profileRelativeSessionVariables = {
+      QT_PLUGIN_PATH = map (qt: "/${qt.qtbase.qtPluginPrefix}") [ pkgs.qt5 pkgs.qt6 ];
+      QML2_IMPORT_PATH = map (qt: "/${qt.qtbase.qtQmlPrefix}") [ pkgs.qt5 pkgs.qt6 ];
+    };
 
     # Networks: VPNs from a file or set up in the connection editor (Settings,
     # Network): OpenVPN, OpenConnect (Cisco AnyConnect, Palo Alto GlobalProtect,

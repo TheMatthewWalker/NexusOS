@@ -37,3 +37,21 @@ test("the firewall's openings are named in words", () => {
   assert.deepEqual(f.other, ["TCP 8080"]);
   assert.equal(N.firewall("nope"), null);
 });
+
+test("proxy settings are checked and written as dconf values", () => {
+  assert.deepEqual(N.proxyAddress("proxy.example.com:8080"), { host: "proxy.example.com", port: 8080 });
+  assert.deepEqual(N.proxyAddress("http://10.0.0.1:3128/"), { host: "10.0.0.1", port: 3128 });
+  for (const bad of ["proxy", "proxy:0", "proxy:70000", "a b:80", "x';rm -rf ~:80", ""]) assert.equal(N.proxyAddress(bad), null, bad);
+  assert.equal(N.pacUrl("http://wpad/proxy.pac"), "http://wpad/proxy.pac");
+  assert.equal(N.pacUrl("file:///etc/passwd"), null);
+  assert.equal(N.pacUrl("http://x/'y"), null);
+  assert.deepEqual(N.proxyWrites("none", ""), [["/org/gnome/system/proxy/mode", "'none'"]]);
+  const m = N.proxyWrites("manual", "proxy.example.com:8080");
+  assert.deepEqual(m.slice(0, 2), [["/org/gnome/system/proxy/http/host", "'proxy.example.com'"], ["/org/gnome/system/proxy/http/port", "8080"]]);
+  assert.deepEqual(m[m.length - 1], ["/org/gnome/system/proxy/mode", "'manual'"]);
+  assert.equal(N.proxyWrites("manual", "nope"), null);
+  assert.deepEqual(N.proxyWrites("auto", "http://wpad/proxy.pac")[1], ["/org/gnome/system/proxy/mode", "'auto'"]);
+  assert.deepEqual(N.proxyNow("'manual'\n''\n'proxy.example.com'\n8080\n"), { mode: "manual", text: "proxy.example.com:8080" });
+  assert.deepEqual(N.proxyNow("'auto'\n'http://wpad/proxy.pac'\n\n\n"), { mode: "auto", text: "http://wpad/proxy.pac" });
+  assert.deepEqual(N.proxyNow(""), { mode: "none", text: "" });
+});

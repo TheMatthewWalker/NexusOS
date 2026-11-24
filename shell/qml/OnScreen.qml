@@ -57,6 +57,28 @@ Scope {
     GlobalShortcut { appid: "nexus"; name: "brightup"; onPressed: osd.brightness(true) }
     GlobalShortcut { appid: "nexus"; name: "brightdown"; onPressed: osd.brightness(false) }
 
+    // The keyboard's backlight, on laptops that have one (brightnessctl, the leds class).
+    property string keyboardHow: "up"
+    Process {
+        id: readKeyboard
+        command: [osd.brightnessctl, "-m", "-l", "-c", "leds"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const k = O.parseKeyboardLight(text);
+                if (!k) return;
+                const level = O.keyboardStep(k, osd.keyboardHow);
+                setKeyboard.command = [osd.brightnessctl, "-d", k.device, "set", String(level)];
+                setKeyboard.running = true;
+                osd.show("keyboard", level / k.max, false);
+            }
+        }
+    }
+    Process { id: setKeyboard }
+    function keyboardLight(how) { keyboardHow = how; if (!readKeyboard.running) readKeyboard.running = true }
+    GlobalShortcut { appid: "nexus"; name: "kbdup"; onPressed: osd.keyboardLight("up") }
+    GlobalShortcut { appid: "nexus"; name: "kbddown"; onPressed: osd.keyboardLight("down") }
+    GlobalShortcut { appid: "nexus"; name: "kbdcycle"; onPressed: osd.keyboardLight("cycle") }
+
     // Caps Lock: bound on release without taking the key (desktop.nix), so
     // the state read here is the new one.
     readonly property string hyprctl: Quickshell.env("NEXUS_HYPRCTL") || "hyprctl"

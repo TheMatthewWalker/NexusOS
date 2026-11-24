@@ -14,7 +14,7 @@ import "lib/access.mjs" as Access
 //   blur, animations   Hyprland decoration and animations
 //   scale       the screen scale (1, 1.25, 1.5, 1.75 or 2)
 //   nightLight, warmth   hyprsunset's colour temperature, in kelvin
-//   appTheme    "dark" or "light": GTK and libadwaita apps (dconf color-scheme)
+//   appTheme    "dark" or "light": GTK, libadwaita and Qt apps (dconf color-scheme and gtk-theme)
 //   zoom, colourFilter   the magnifier (cursor:zoom_factor) and a colour
 //               filter (decoration:screen_shader, filters/*.frag)
 // The NixOS options (services.nexus-desktop.*) give the starting values.
@@ -50,6 +50,7 @@ Item {
     property alias zoom: store.zoom
     property alias appTheme: store.appTheme
     property alias colourFilter: store.colourFilter
+    property alias vrr: store.vrr
     // Super+Plus / Super+Minus: the next magnifier level.
     function zoomBy(direction) { set("zoom", Access.zoomStep(store.zoom, direction)) }
     property var monitors: []            // the screens connected now (hyprctl monitors all -j), for Settings, Display
@@ -84,6 +85,7 @@ Item {
         case "appTheme": return "Apps " + (value === "light" ? "light" : "dark");
         case "zoom": return value > 1 ? "Magnifier " + Math.round(value * 100) + "%" : "Magnifier off";
         case "colourFilter": return "Colour filter: " + Access.filterLabel(value);
+        case "vrr": return "Variable refresh rate: " + ({ off: "off", fullscreen: "in full-screen games and videos", always: "always" })[value];
         case "leftHanded": return "Left-handed mouse " + (value ? "on" : "off");
         case "lidAction": return "Closing the lid: " + ({ sleep: "sleep", lock: "lock the screen", nothing: "do nothing" })[value];
         default: return key;
@@ -143,6 +145,8 @@ Item {
             property string appTheme: "dark"       // "dark" or "light"
             property real zoom: 1                  // the magnifier: 1 (off), 1.5, 2, 3 or 4
             property string colourFilter: "none"   // lib/access.mjs filters
+            // Variable refresh rate (FreeSync, G-Sync compatible): misc:vrr off 0, always 1, full screen 2.
+            property string vrr: "fullscreen"
         }
     }
 
@@ -176,6 +180,7 @@ Item {
                "keyword input:left_handed " + store.leftHanded,
                "keyword input:natural_scroll " + store.mouseNaturalScroll,
                "keyword cursor:zoom_factor " + Math.min(4, Math.max(1, store.zoom)),
+               "keyword misc:vrr " + (store.vrr === "off" ? 0 : store.vrr === "always" ? 1 : 2),
                "keyword decoration:screen_shader " + Access.shader(store.colourFilter, Quickshell.shellDir));
         const kb = R.keyboard(baseLayout, store.keyboardLayouts);
         if (kb) k.push("keyword input:kb_layout " + kb.layout, "keyword input:kb_options " + kb.options);

@@ -120,7 +120,7 @@ the owner agrees it is ready.**
 | Photo library (import from camera/phone, albums) | P2 | ✅ | Shotwell in the Creative bundle (0.9) |
 | Image editing (GIMP, Krita), vector (Inkscape) | P2 | 🟡 | Flathub; Creative bundle |
 | Video editing (Kdenlive, DaVinci Resolve) | P2 | 🟡 | Flathub |
-| Audio recording and editing; music production (low-latency audio) | P3 | ⬜ | PipeWire JACK, realtime |
+| Audio recording and editing; music production (low-latency audio) | P3 | ✅ | PipeWire as JACK and ALSA, rtkit real-time priority (0.10); Audacity in the Creative bundle |
 | Streaming and recording (OBS) | P2 | 🟡 | Flathub; needs screen-capture portal |
 | Spotify and other media apps | P2 | 🟡 | Flathub |
 

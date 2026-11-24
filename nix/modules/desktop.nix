@@ -570,10 +570,17 @@ in
 
     # The system panel reads real state from these; each can be turned off,
     # and the panel then says the service is unavailable.
+    # Music apps (Ardour, Bitwig, REAPER, Carla) talk to PipeWire as JACK and
+    # ALSA apps as ALSA; rtkit gives audio threads real-time priority, so
+    # recording and live playing do not crackle.
     services.pipewire = {
       enable = lib.mkDefault true;
       pulse.enable = lib.mkDefault true;
+      alsa.enable = lib.mkDefault true;
+      alsa.support32Bit = lib.mkDefault true;
+      jack.enable = lib.mkDefault true;
     };
+    security.rtkit.enable = lib.mkDefault true;
     networking.networkmanager.enable = lib.mkDefault true;
     services.upower.enable = lib.mkDefault true;
     # Bring my stuff over: old drives are opened read-only with udisksctl, and copied with rsync.

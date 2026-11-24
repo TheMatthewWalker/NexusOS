@@ -14,7 +14,7 @@ import "lib/access.mjs" as Access
 //   blur, animations   Hyprland decoration and animations
 //   scale       the screen scale (1, 1.25, 1.5, 1.75 or 2)
 //   nightLight, warmth   hyprsunset's colour temperature, in kelvin
-//   appTheme    "dark" or "light": GTK and libadwaita apps (dconf color-scheme)
+//   appTheme    "dark" or "light": GTK, libadwaita and Qt apps (dconf color-scheme and gtk-theme)
 //   zoom, colourFilter   the magnifier (cursor:zoom_factor) and a colour
 //               filter (decoration:screen_shader, filters/*.frag)
 // The NixOS options (services.nexus-desktop.*) give the starting values.

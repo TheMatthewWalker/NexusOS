@@ -58,7 +58,7 @@ the owner agrees it is ready.**
 | Emoji and symbol picker (Super+. on Windows) | P2 | ✅ | Super+. (0.3) |
 | Windows-like shortcuts: Super+D show desktop, Super+E files, Ctrl+Shift+Esc task manager, Super+arrows snap | P1 | ✅ | (0.2, 0.3) |
 | Keyboard shortcuts page (see and change them) | P2 | 🟡 | All listed in Settings, Help; changing them to add |
-| Light and dark mode, followed by GTK, Qt and Flatpak apps | P1 | 🟡 | GTK 3/4, libadwaita and Qt dark by default, GTK light or dark in Settings (0.4); Qt stays dark; check Flatpak GTK 3 apps |
+| Light and dark mode, followed by GTK, Qt and Flatpak apps | P1 | 🟡 | GTK 3/4, libadwaita and Qt dark by default, GTK light or dark in Settings (0.4), Qt follows it through QGnomePlatform (0.10); check Flatpak GTK 3 apps |
 | Fonts: good defaults, Microsoft-compatible metrics (Carlito, Caladea, Liberation), emoji, CJK | P1 | ✅ | (0.2) |
 | Icon theme, cursor theme, sound theme consistent | P2 | 🟡 | |
 | Wallpapers and a picker | P3 | 🟡 | |

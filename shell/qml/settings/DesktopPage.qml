@@ -22,7 +22,7 @@ Column {
     }
     SettingRow {
         theme: page.theme; label: "Apps light or dark"; highlighted: page.host.highlight === "apptheme"
-        detail: "The look of other apps' windows, such as Files and Text Editor. Qt apps such as VLC stay dark."
+        detail: "The look of other apps' windows, such as Files, Text Editor and VLC. Apps already open change when they next start."
         Choice { theme: page.theme; name: "Apps"; current: page.desktop.appTheme
                  options: [{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }]
                  onChose: v => page.desktop.set("appTheme", v) }

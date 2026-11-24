@@ -167,6 +167,7 @@ NexusWindow {
         ["accounts", "accounts", "Accounts for other people", "accounts users people family add remove administrator user"],
         ["accounts", "accounts", "Screen time for children", "parental controls screen time child children kids family safety limit hours bedtime"],
         ["accounts", "clouddrives", "Cloud drives", "cloud onedrive one drive google drive dropbox nextcloud sync online files"],
+        ["accounts", "guest", "Guest account", "guest account visitor borrow no password temporary wiped login"],
         ["accounts", "tpm", "Unlock the disk by itself", "tpm bitlocker disk unlock start-up startup encryption password automatic"],
         ["accounts", "fingerprint", "Fingerprint", "fingerprint reader windows hello unlock biometric touch"],
         ["desktop", "weather", "Weather in the calendar", "weather forecast temperature rain calendar clock city place"],

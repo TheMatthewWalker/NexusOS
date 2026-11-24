@@ -193,6 +193,15 @@ Column {
             }
         }
     }
+    // The guest account (Guardian): on or off.
+    readonly property bool guestOn: page.accounts.some(a => a.login === "guest")
+    SettingRow {
+        theme: page.theme; label: "Guest account"; highlighted: page.host.highlight === "guest"
+        detail: page.guestOn
+            ? "On: \u201cUse as Guest\u201d on the login screen, with no password. Everything a guest does is wiped when they log out."
+            : "Lets someone borrow the computer from the login screen without a password, and without seeing your files. Everything they do is wiped when they log out."
+        Button { theme: page.theme; label: page.guestOn ? "Turn off…" : "Turn on…"; onClicked: page.host.proposeSystem(A.guestPlan(!page.guestOn)) }
+    }
     // Screen time for a child's account: hours it may be used, and minutes a day.
     property string limitsFor: ""
     function editLimits(person) {

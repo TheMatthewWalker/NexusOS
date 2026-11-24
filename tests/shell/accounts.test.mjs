@@ -56,3 +56,9 @@ test("screen time reads plainly and the form is checked", () => {
   assert.match(A.limitsProblem("", "", "lots"), /minutes/);
   assert.match(A.limitsProblem("", "", "2000"), /1440/);
 });
+
+test("the guest account is a Guardian change and never removed by hand", () => {
+  assert.equal(A.removable({ login: "guest" }, "ada"), false);
+  assert.deepEqual(A.guestPlan(true).changes, [{ option: "nexusos.guest.enable", enabled: true }]);
+  assert.deepEqual(A.guestPlan(false).changes, [{ option: "nexusos.guest.enable", enabled: false }]);
+});

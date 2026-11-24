@@ -66,6 +66,11 @@
       "type": "bool",
       "risk": "review",
       "summary": "Hibernate: save everything to the disk and turn off"
+    },
+    "nexusos.guest.enable": {
+      "type": "bool",
+      "risk": "review",
+      "summary": "A guest account with no password, wiped at each log out"
     }
   },
   "packages": {

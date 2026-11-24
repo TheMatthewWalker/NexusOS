@@ -190,6 +190,10 @@
           inherit pkgs;
           desktopModule = self.nixosModules.desktop;
         };
+        hibernate = import ./nix/tests/hibernate.nix {
+          inherit pkgs;
+          hibernateModule = ./nix/modules/hibernate.nix;
+        };
         login-screen = import ./nix/tests/login-screen.nix {
           inherit pkgs;
           desktopModule = self.nixosModules.desktop;

@@ -313,6 +313,42 @@ Column {
             : "On: other computers cannot reach this one, except for " +
               (page.firewall.open.concat(page.firewall.other).join(", ") || "nothing") + ". Turning on sharing or remote login opens what they need."
     }
+    // Proxy: for networks that need one (some workplaces and schools).
+    property string proxyMode: "none"
+    property string proxyNote: ""
+    Process {
+        id: proxyRead; running: true
+        command: ["sh", "-c", "for k in mode autoconfig-url http/host http/port; do dconf read /org/gnome/system/proxy/$k; echo; done"]
+        stdout: StdioCollector { onStreamFinished: { const p = Net.proxyNow(text.replace(/\n\n/g, "\n")); page.proxyMode = p.mode; proxyText.text = p.text } }
+    }
+    Process { id: proxyWrite; onExited: (code) => { page.proxyNote = code === 0 ? "Saved. Apps already open use it when they next connect or start." : "The proxy could not be saved." } }
+    function saveProxy(mode) {
+        const w = Net.proxyWrites(mode, proxyText.text);
+        if (!w) { proxyNote = mode === "auto" ? "Give the setup script's address, like http://proxy.example.com/proxy.pac." : "Give the proxy as name:port, like proxy.example.com:8080."; return }
+        proxyMode = mode;
+        // Each key and value goes as its own argument: nothing typed is run as a command.
+        proxyWrite.command = ["sh", "-c", "while [ $# -gt 1 ]; do dconf write \"$1\" \"$2\" || exit 1; shift 2; done", "sh"].concat(w.reduce((all, kv) => all.concat(kv), []));
+        proxyWrite.running = true;
+    }
+    SettingRow {
+        theme: page.theme; label: "Proxy"; highlighted: page.host.highlight === "proxy"
+        detail: page.proxyNote || (page.proxyMode === "none" ? "No proxy: apps connect directly. Some workplaces and schools need one."
+              : "Firefox and most apps go through " + (page.proxyMode === "auto" ? "the proxy set-up script." : "the proxy.") +
+                " Terminal tools use it once their own settings say so.")
+        Choice { theme: page.theme; name: "Proxy"; current: page.proxyMode
+                 options: [{ value: "none", label: "Off" }, { value: "auto", label: "Set-up script" }, { value: "manual", label: "Manual" }]
+                 onChose: v => { page.proxyNote = ""; if (v === "none") page.saveProxy("none"); else page.proxyMode = v } }
+    }
+    Row {
+        visible: page.proxyMode !== "none"
+        spacing: 8; leftPadding: 4
+        TextField { id: proxyText; theme: page.theme; width: 360
+                    label: page.proxyMode === "auto" ? "Set-up script address (PAC)" : "Proxy (name:port)"
+                    placeholder: page.proxyMode === "auto" ? "http://proxy.example.com/proxy.pac" : "proxy.example.com:8080"
+                    onAccepted: page.saveProxy(page.proxyMode) }
+        Button { anchors.bottom: parent.bottom; theme: page.theme; primary: true; label: "Save"; enabled: !proxyWrite.running
+                 onClicked: page.saveProxy(page.proxyMode) }
+    }
     SettingRow {
         theme: page.theme; label: "Your phone"; highlighted: page.host.highlight === "phone"
         detail: "KDE Connect links an Android phone (or an iPhone, with fewer features) on the same Wi-Fi: files both ways, notifications, texts and the clipboard. Install KDE Connect on the phone, then pair here."

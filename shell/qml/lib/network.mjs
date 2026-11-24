@@ -62,3 +62,43 @@ export function firewall(text) {
   const other = [...tcp].map(p => "TCP " + p).concat([...udp].map(p => "UDP " + p));
   return { on: !!f.enable, open, other };
 }
+
+// Proxy (Settings, Network): GNOME's proxy settings, which Firefox and GTK
+// apps follow. "host:port" (or http://host:port) -> { host, port }, or null.
+export function proxyAddress(text) {
+  const m = /^(?:https?:\/\/)?([A-Za-z0-9.-]{1,253}|\[[0-9A-Fa-f:]+\]):(\d{1,5})\/?$/.exec(String(text || "").trim());
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 65535) return null;
+  return { host: m[1], port: Number(m[2]) };
+}
+// A PAC address: http(s) only.
+export function pacUrl(text) {
+  const t = String(text || "").trim();
+  return /^https?:\/\/[^\s'"\\]+$/.test(t) && t.length <= 2000 ? t : null;
+}
+// GVariant text for dconf write: a string in single quotes.
+function gstr(v) { return "'" + String(v).replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'" }
+// The dconf writes for a proxy choice: [key, value] pairs, or null when the address is not valid.
+export function proxyWrites(mode, text) {
+  const base = "/org/gnome/system/proxy/";
+  if (mode === "none") return [[base + "mode", gstr("none")]];
+  if (mode === "auto") {
+    const url = pacUrl(text);
+    return url ? [[base + "autoconfig-url", gstr(url)], [base + "mode", gstr("auto")]] : null;
+  }
+  if (mode === "manual") {
+    const a = proxyAddress(text);
+    if (!a) return null;
+    const w = [];
+    for (const kind of ["http", "https"]) w.push([base + kind + "/host", gstr(a.host)], [base + kind + "/port", String(a.port)]);
+    w.push([base + "ignore-hosts", "['localhost', '127.0.0.0/8', '::1']"], [base + "mode", gstr("manual")]);
+    return w;
+  }
+  return null;
+}
+// `dconf read` of mode, autoconfig-url, http/host and http/port (one per line) -> { mode, text }.
+export function proxyNow(text) {
+  const [mode, url, host, port] = String(text || "").split("\n").map(l => l.trim().replace(/^'|'$/g, ""));
+  if (mode === "auto") return { mode, text: url || "" };
+  if (mode === "manual") return { mode, text: host ? host + ":" + (port || "") : "" };
+  return { mode: "none", text: "" };
+}

@@ -95,6 +95,8 @@ Choose a Wi-Fi network from the top bar or Settings, Network. The **firewall** i
 
 Printers and scanners on your network, or plugged in with USB, **appear by themselves** within a minute of switching them on. Settings, Printers shows them, sets the default and prints a test page; **Scan a document** opens the scanner app. [Open Printers](settings:printers/printers)
 
+If your workplace or school network needs a **proxy**, set it in Settings, Network: a set-up script address (PAC) or a name and port, as your IT department gives them. Firefox and most apps follow it. [Open Proxy](settings:network/proxy)
+
 ## Mouse and touchpad
 
 Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed buttons and scrolling direction, and for touchpads tap to click and natural scrolling. Swipe three fingers sideways to move between workspaces, or up to see all windows. [Open Mouse and touchpad](settings:mouse/taptoclick)

@@ -97,7 +97,7 @@ the owner agrees it is ready.**
 | VPN: WireGuard, OpenVPN, corporate (Cisco AnyConnect, GlobalProtect, Fortinet) | P1 | ✅ | Settings, Network: from a file, or the connection editor (0.3) |
 | Work and school Wi-Fi (802.1X, eduroam) in Settings | P1 | ✅ | The connection editor from Settings (0.3) |
 | Wi-Fi hotspot | P3 | ✅ | Settings, Network (0.6) |
-| Proxy settings | P3 | ⬜ | |
+| Proxy settings | P3 | ✅ | Settings, Network: off, set-up script (PAC) or manual, as GNOME proxy settings for Firefox and GTK apps (0.10) |
 | Install a website as an app (PWA) | P2 | ✅ | Apps, Web apps, or ask Nexus (0.4) |
 
 ## 5. Office, school and productivity

@@ -147,6 +147,7 @@ NexusWindow {
         ["mouse", "naturalscroll", "Natural scrolling", "touchpad trackpad scroll direction natural reverse"],
         ["mouse", "scrollspeed", "Scrolling speed", "touchpad scroll speed"],
         ["mouse", "gestures", "Gestures", "touchpad gestures swipe three fingers workspaces"],
+        ["power", "hibernate", "Hibernate", "hibernate hibernation suspend to disk save turn off battery resume"],
         ["power", "battery", "Battery", "battery charge charging time left"],
         ["power", "batterycare", "Battery care", "battery health care charge limit 80 percent charging threshold"],
         ["power", "windows", "Restart into Windows", "windows dual boot restart into windows boot menu games anti-cheat"],

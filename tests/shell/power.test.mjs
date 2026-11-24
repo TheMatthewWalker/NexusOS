@@ -40,3 +40,10 @@ test("Windows beside NexusOS is found in the boot menu's entries", () => {
   assert.equal(P.windowsEntry("windows-11.conf\n"), "windows-11.conf");
   assert.equal(P.windowsEntry("auto-windows; rm -rf ~\n"), "");
 });
+
+test("hibernate is a Guardian change, and logind's answer reads plainly", () => {
+  assert.deepEqual(P.HIBERNATE_PLAN.changes, [{ option: "nexusos.hibernate.enable", enabled: true }]);
+  assert.equal(P.canHibernate('s "yes"\n'), "yes");
+  assert.equal(P.canHibernate('s "na"'), "na");
+  assert.equal(P.canHibernate(""), "");
+});

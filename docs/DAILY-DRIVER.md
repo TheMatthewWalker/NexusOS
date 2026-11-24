@@ -32,7 +32,7 @@ the owner agrees it is ready.**
 | Graphics tablets and pens (Wacom) | P3 | ✅ | libinput and libwacom drive them; Settings, Mouse picks the screen the pen covers; they turn with convertibles (0.11) |
 | Thunderbolt devices and docks authorised (bolt) | P2 | ✅ | bolt (0.4) |
 | Battery charge limit (80%) for laptop battery health | P2 | ✅ | Settings, Power, through Guardian, where the firmware allows (0.5) |
-| Hibernate (suspend to disk) | P3 | ⬜ | Needs swap sized to RAM, resume from an encrypted disk |
+| Hibernate (suspend to disk) | P3 | ✅ | Settings, Power through Guardian: a swap file the size of the memory on the encrypted disk; systemd finds it on resume (HibernateLocation) (0.12) |
 | Power profiles (performance / balanced / saver) | P1 | ✅ | Settings, Power |
 | Sleep, screen off, lid | P1 | ✅ | |
 | Multi-monitor, docks, projectors | P1 | ✅ | Settings, Display (with revert) |

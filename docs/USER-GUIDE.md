@@ -119,6 +119,8 @@ Settings, Power sets when the screen turns off, when the computer sleeps (on bat
 
 On a convertible laptop or tablet, the screen, touch and pen turn with the computer. **Rotate the screen** in Settings, Display locks it. An **on-screen keyboard** is in Settings, Accessibility. [Open Rotate the screen](settings:display/rotation)
 
+**Hibernate** (Settings, Power, through Guardian) saves everything to the disk and turns the computer off, so nothing is lost if the battery runs out; the next start asks for the disk's password as usual and carries on where you were. It needs as much free disk space as the computer has memory. [Open Hibernate](settings:power/hibernate)
+
 ## Seeing, hearing and using it more easily
 
 Settings, Accessibility has bigger text, high contrast, a bigger pointer, less motion, the **screen reader** (Super+Alt+S), and Describe this, which tells you what is on the screen. The **magnifier** enlarges the screen around the pointer: Super+Plus and Super+Minus, as on Windows. A **colour filter** shows the screen in grey or inverted, or makes colours easier to tell apart if you are colour blind. You can also ask Nexus: "zoom in", "turn on the colour blind filter". [Open Accessibility](settings:accessibility/magnifier)

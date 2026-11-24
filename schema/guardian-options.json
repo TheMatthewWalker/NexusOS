@@ -61,6 +61,11 @@
       "type": "bool",
       "risk": "review",
       "summary": "Scan files for viruses on demand (ClamAV)"
+    },
+    "nexusos.hibernate.enable": {
+      "type": "bool",
+      "risk": "review",
+      "summary": "Hibernate: save everything to the disk and turn off"
     }
   },
   "packages": {

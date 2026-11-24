@@ -1059,8 +1059,11 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("bindrn = , Caps_Lock, global, nexus:capslock", desktop)
         self.assertIn('name: "capslock"', (self.out / "OnScreen.qml").read_text())
         everyday = (ROOT / "nix/modules/everyday.nix").read_text()
-        for line in ("pkgs.p7zip pkgs.unar", 'color-scheme = "prefer-dark";', 'platformTheme = lib.mkDefault "gnome"'):
+        for line in ("pkgs.p7zip pkgs.unar", 'color-scheme = "prefer-dark";', 'QT_QPA_PLATFORMTHEME = lib.mkDefault "gnome"', "pkgs.qgnomeplatform-qt6"):
             self.assertIn(line, everyday)
+        # Qt follows light or dark: no style is ever forced.
+        self.assertNotIn("QT_STYLE_OVERRIDE =", everyday)
+        self.assertNotIn("adwaita-dark", everyday)
         self.assertIn('"dconf write /org/gnome/desktop/interface/color-scheme', (self.out / "DesktopSettings.qml").read_text())
         dev = (ROOT / "nix/modules/developer.nix").read_text()
         self.assertIn("environment.localBinInPath = lib.mkDefault true;", dev)

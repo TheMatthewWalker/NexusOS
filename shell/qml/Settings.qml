@@ -138,6 +138,7 @@ NexusWindow {
         ["display", "brightness", "Brightness", "brightness dim bright screen backlight"],
         ["display", "nightlight", "Night light", "night light warm blue light evening eyes colour temperature"],
         ["display", "scale", "Scale", "scale zoom size bigger text resolution dpi"],
+        ["mouse", "tablet", "Pen tablet", "pen tablet wacom huion xp-pen drawing stylus graphics tablet screen"],
         ["mouse", "pointerspeed", "Pointer speed", "mouse pointer cursor speed sensitivity fast slow"],
         ["mouse", "acceleration", "Pointer acceleration", "mouse acceleration precision gaming"],
         ["mouse", "lefthanded", "Left-handed", "left handed mouse swap buttons"],

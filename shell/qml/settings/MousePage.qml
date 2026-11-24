@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 // Settings, Mouse and touchpad: kept in desktop.json (DesktopSettings.qml) and
 // applied to Hyprland at once; each change can be undone in the Timeline.
@@ -59,5 +60,22 @@ Column {
     SettingRow {
         theme: page.theme; label: "Gestures"; highlighted: page.host.highlight === "gestures"
         detail: "Swipe three fingers left or right to move between workspaces. Two fingers scroll; pinch zooms in apps that support it."
+    }
+
+    // Pen tablets (Wacom, Huion, XP-Pen): libinput drives them; here, which screen the pen covers.
+    property bool hasTablet: false
+    Process {
+        running: true
+        command: [Quickshell.env("NEXUS_HYPRCTL") || "hyprctl", "devices", "-j"]
+        stdout: StdioCollector { onStreamFinished: { try { page.hasTablet = (JSON.parse(text).tablets || []).length > 0 } catch (e) {} } }
+    }
+    SettingRow {
+        visible: page.hasTablet || page.desktop.tabletScreen !== ""
+        theme: page.theme; label: "Pen tablet"; highlighted: page.host.highlight === "tablet"
+        detail: "Which screen the tablet's drawing area covers. One screen keeps the pen's proportions right on a desk with two."
+        Choice { theme: page.theme; name: "Pen tablet screen"; current: page.desktop.tabletScreen
+                 options: [{ value: "", label: "All screens" }].concat(page.desktop.monitors.filter(m => !m.disabled)
+                          .map(m => ({ value: m.name, label: m.builtIn ? "Built-in" : m.label })))
+                 onChose: v => page.desktop.set("tabletScreen", v) }
     }
 }

@@ -29,7 +29,7 @@ the owner agrees it is ready.**
 | Webcam works in apps and browsers (portals, PipeWire camera) | P1 | 🔍 | Test in Firefox and a video-call site |
 | Fingerprint login and unlock (fprintd) | P2 | ✅ | Settings, Accounts through Guardian: lock screen and approvals; login keeps the password (0.8) |
 | Touchscreen, screen rotation on convertibles, on-screen keyboard | P3 | ✅ | Screen, touch and pen turn with the computer (iio-sensor-proxy), with a lock in Settings, Display; on-screen keyboard (wvkbd) in Accessibility (0.11) |
-| Graphics tablets and pens (Wacom) | P3 | ⬜ | libwacom, Settings |
+| Graphics tablets and pens (Wacom) | P3 | ✅ | libinput and libwacom drive them; Settings, Mouse picks the screen the pen covers; they turn with convertibles (0.11) |
 | Thunderbolt devices and docks authorised (bolt) | P2 | ✅ | bolt (0.4) |
 | Battery charge limit (80%) for laptop battery health | P2 | ✅ | Settings, Power, through Guardian, where the firmware allows (0.5) |
 | Hibernate (suspend to disk) | P3 | ⬜ | Needs swap sized to RAM, resume from an encrypted disk |

@@ -167,6 +167,8 @@ Secure Boot makes the computer start only software signed with trusted keys. Nex
 
 Settings, Developer has your SSH keys (create one and copy it for GitHub, GitLab or a server; the keyring keeps it unlocked while you are logged in). In a project folder, `nexus-dev init python` (or node, rust, go, java, dotnet, c) sets the project up: its tools are there whenever you are in the folder. `docker` and `docker compose` work, on Podman, without anything running as root. `pip install --user`, `pipx install` and `npm install -g` install into your home folder, as on other systems. `git` over HTTPS signs in to GitHub, GitLab or Azure DevOps in the browser once, as on Windows, and keeps the sign-in in your keyring. Security keys (YubiKey and other FIDO2 keys) work in browsers. Arduino, ESP32 and other boards can be programmed straight away, and virtual machines can be turned on there too. [Open Developer](settings:developer/ssh)
 
+`nexus-dev init cloud` sets a folder up with kubectl, Helm, k9s, the AWS, Azure and Google Cloud command lines and OpenTofu. `nexus-dev db postgres` (or `mysql`, `redis`) starts a database for development that only this computer can reach, prints how to connect (the password is `dev`) and keeps its data between starts; `nexus-dev db postgres stop` stops it.
+
 ## Privacy
 
 **App permissions**, in Settings, Privacy and AI, show what each app from Flathub may reach (the internet, your files, the camera and devices, running in the background) and let you turn each off, for you only. [Open App permissions](settings:privacy/permissions)

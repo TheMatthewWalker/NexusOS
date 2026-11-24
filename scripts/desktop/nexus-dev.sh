@@ -2,9 +2,39 @@
 # way: a flake.nix with a development shell and an .envrc, so the tools are
 # there whenever you are in the folder (direnv) and nowhere else, at the
 # versions this NexusOS was built with (no download when they are already here).
-#   python node rust go java dotnet c
+#   python node rust go java dotnet c cloud
+# nexus-dev db postgres|mysql|redis [stop]: a database for development, in a
+# container (Podman) that only this computer can reach (127.0.0.1), with its
+# data kept in a named volume between starts. The password is "dev".
 set -eu
-usage() { echo "nexus-dev init python|node|rust|go|java|dotnet|c [folder]" >&2; exit 2; }
+usage() { echo "nexus-dev init python|node|rust|go|java|dotnet|c|cloud [folder]" >&2
+          echo "nexus-dev db postgres|mysql|redis [stop]" >&2; exit 2; }
+
+if [ "${1:-}" = db ]; then
+  kind="${2:-}"
+  case "$kind" in
+    postgres) image=docker.io/library/postgres:17; port=5432; data=/var/lib/postgresql/data; env="POSTGRES_PASSWORD=dev"
+              url="postgresql://postgres:dev@127.0.0.1:5432/postgres" ;;
+    mysql)    image=docker.io/library/mysql:8.4; port=3306; data=/var/lib/mysql; env="MYSQL_ROOT_PASSWORD=dev"
+              url="mysql://root:dev@127.0.0.1:3306" ;;
+    redis)    image=docker.io/library/redis:7; port=6379; data=/data; env=""
+              url="redis://127.0.0.1:6379" ;;
+    *) usage ;;
+  esac
+  name="nexus-$kind"
+  if [ "${3:-}" = stop ]; then podman stop "$name" >/dev/null && echo "$kind stopped; its data stays (volume $name)."; exit 0; fi
+  [ -z "${3:-}" ] || usage
+  if podman container exists "$name"; then
+    podman start "$name" >/dev/null
+  else
+    set -- run -d --name "$name" -p "127.0.0.1:$port:$port" -v "$name:$data"
+    [ -z "$env" ] || set -- "$@" -e "$env"
+    podman "$@" "$image" >/dev/null
+  fi
+  echo "$kind is running for this computer only: $url"
+  echo "Stop it with: nexus-dev db $kind stop"
+  exit 0
+fi
 [ "${1:-}" = init ] || usage
 lang="${2:-}"; dir="${3:-.}"
 case "$lang" in
@@ -15,6 +45,7 @@ case "$lang" in
   java)   pkgs="jdk21 maven gradle jdt-language-server"; hook='' ;;
   dotnet) pkgs="dotnet-sdk_8 omnisharp-roslyn"; hook='export DOTNET_CLI_TELEMETRY_OPTOUT=1' ;;
   c)      pkgs="gcc gnumake cmake ninja gdb pkg-config clang-tools"; hook='' ;;
+  cloud)  pkgs="kubectl kubernetes-helm k9s awscli2 azure-cli google-cloud-sdk opentofu"; hook='' ;;
   *) usage ;;
 esac
 mkdir -p "$dir"

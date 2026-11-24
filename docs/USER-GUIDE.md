@@ -65,6 +65,8 @@ Windows float like on Windows or macOS; you can switch to tiled windows in Setti
 
 **Startup apps**, on the same page, are the apps that open when you log in: apps such as Steam and Discord add themselves when you ask them to start with the computer, and you can turn each off or add your own. [Open Startup apps](settings:defaults/startup)
 
+Click the date and time in the top bar for a month calendar, with week numbers; the arrows (or the Left and Right keys) go a month either way, and Esc closes it.
+
 ## Windows programs and games
 
 NexusOS does not run Windows programs by itself, but most have a version or an equivalent here. Open a `.exe` or `.msi` you downloaded and NexusOS says what it is and offers the app to use instead (Spotify's installer offers Spotify; Photoshop offers GIMP). For anything else, Bottles runs many Windows programs with Wine.

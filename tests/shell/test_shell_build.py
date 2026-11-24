@@ -963,6 +963,11 @@ class ShellBuild(unittest.TestCase):
         settings = (self.out / "DesktopSettings.qml").read_text()
         self.assertIn('"keyword input:touchpad:tap-to-click " + store.tapToClick', settings)
         self.run_node_test("onscreen.test.mjs")
+        # The clock opens a month calendar, as on Windows.
+        bar = (self.out / "TopBar.qml").read_text()
+        self.assertIn("TapHandler { onTapped: bar.toggleCalendar() }", bar)
+        self.assertIn('WlrLayershell.namespace: "nexus-calendar"', bar)
+        self.run_node_test("calendar.test.mjs")
 
     def test_task_manager_tray_media_privacy_clipboard_and_emoji(self):
         tasks = (self.out / "Tasks.qml").read_text()

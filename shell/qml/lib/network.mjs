@@ -102,3 +102,22 @@ export function proxyNow(text) {
   if (mode === "manual") return { mode, text: host ? host + ":" + (port || "") : "" };
   return { mode: "none", text: "" };
 }
+
+// Broadcom Wi-Fi with no driver (`lspci -nnk`): a network controller [0280]
+// from Broadcom [14e4:...] with no "Kernel driver in use" -> { name, inUse }.
+// inUse is the driver's name once one drives it ("wl" after turning it on).
+export function broadcomWifi(text) {
+  const blocks = String(text || "").split(/\n(?=\S)/);
+  for (const b of blocks) {
+    const head = b.split("\n")[0];
+    if (!/\[0280\]/.test(head) || !/\[14e4:[0-9a-f]{4}\]/i.test(head)) continue;
+    const name = (/\b(BCM\w+)/.exec(head) || [])[1] || "Broadcom Wi-Fi";
+    const drv = /Kernel driver in use:\s*(\S+)/.exec(b);
+    return { name, inUse: drv ? drv[1] : "" };
+  }
+  return null;
+}
+export const BROADCOM_PLAN = {
+  description: "Install Broadcom's own Wi-Fi driver (closed, unmaintained)",
+  changes: [{ option: "nexusos.hardware.broadcomWifi.enable", enabled: true }]
+};

@@ -188,7 +188,7 @@ the owner agrees it is ready.**
 | System updates with rollback, channels | P1 | ✅ | |
 | AppImage files run by double-click | P2 | ✅ | (0.2) |
 | .deb packages (Ubuntu/Debian software) | P2 | ✅ | `apt` in a container |
-| Drivers for unusual hardware (Broadcom Wi-Fi, etc.) found and offered | P2 | ⬜ | Hardware scan offers them through Guardian |
+| Drivers for unusual hardware (Broadcom Wi-Fi, etc.) found and offered | P2 | 🟡 | Broadcom Wi-Fi with no driver: Settings, Network says so, advises a supported card, and offers Broadcom's driver through Guardian as elevated (0.13); other hardware still ⬜ |
 
 ## 12. Developer tools
 

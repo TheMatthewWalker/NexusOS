@@ -99,6 +99,8 @@ Printers and scanners on your network, or plugged in with USB, **appear by thems
 
 If your workplace or school network needs a **proxy**, set it in Settings, Network: a set-up script address (PAC) or a name and port, as your IT department gives them. Firefox and most apps follow it. [Open Proxy](settings:network/proxy)
 
+Some Broadcom Wi-Fi chips (in older MacBooks and some laptops) have no driver in Linux. Settings, Network then says so under **Wi-Fi driver**. The safest fix is a small USB Wi-Fi adapter or a supported M.2 card; Broadcom's own driver can be added through Guardian, but it is unmaintained and has known security flaws, so Guardian asks you to confirm. [Open Wi-Fi driver](settings:network/wifidriver)
+
 ## Mouse and touchpad
 
 Settings, Mouse and touchpad sets the pointer speed, acceleration, left-handed buttons and scrolling direction, and for touchpads tap to click and natural scrolling. Swipe three fingers sideways to move between workspaces, or up to see all windows. [Open Mouse and touchpad](settings:mouse/taptoclick)

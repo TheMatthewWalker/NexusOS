@@ -968,6 +968,9 @@ class ShellBuild(unittest.TestCase):
         self.assertIn("TapHandler { onTapped: bar.toggleCalendar() }", bar)
         self.assertIn('WlrLayershell.namespace: "nexus-calendar"', bar)
         self.run_node_test("calendar.test.mjs")
+        # Weather only once a place is chosen; curl never runs without one.
+        self.assertIn("if (!url) { weather = null; return }", bar)
+        self.run_node_test("weather.test.mjs")
 
     def test_task_manager_tray_media_privacy_clipboard_and_emoji(self):
         tasks = (self.out / "Tasks.qml").read_text()

@@ -65,7 +65,7 @@ Windows float like on Windows or macOS; you can switch to tiled windows in Setti
 
 **Startup apps**, on the same page, are the apps that open when you log in: apps such as Steam and Discord add themselves when you ask them to start with the computer, and you can turn each off or add your own. [Open Startup apps](settings:defaults/startup)
 
-Click the date and time in the top bar for a month calendar, with week numbers; the arrows (or the Left and Right keys) go a month either way, and Esc closes it.
+Click the date and time in the top bar for a month calendar, with week numbers; the arrows (or the Left and Right keys) go a month either way, and Esc closes it. To see the weather there too, choose a town in Settings, Desktop, Weather in the calendar: it comes from Open-Meteo, which is told only the place's rough position. [Open Weather in the calendar](settings:desktop/weather)
 
 ## Windows programs and games
 
@@ -118,6 +118,8 @@ Settings, Power sets when the screen turns off, when the computer sleeps (on bat
 **Variable refresh rate** in Settings, Display uses FreeSync or G-Sync on screens that have it, so games run without tearing or stutter. It is on for full-screen games and videos to start with; choose Off if a screen flickers. [Open Variable refresh rate](settings:display/vrr)
 
 On a convertible laptop or tablet, the screen, touch and pen turn with the computer. **Rotate the screen** in Settings, Display locks it. An **on-screen keyboard** is in Settings, Accessibility. [Open Rotate the screen](settings:display/rotation)
+
+**Hibernate** (Settings, Power, through Guardian) saves everything to the disk and turns the computer off, so nothing is lost if the battery runs out; the next start asks for the disk's password as usual and carries on where you were. It needs as much free disk space as the computer has memory. [Open Hibernate](settings:power/hibernate)
 
 ## Seeing, hearing and using it more easily
 
@@ -174,6 +176,8 @@ Settings, Developer has your SSH keys (create one and copy it for GitHub, GitLab
 **App permissions**, in Settings, Privacy and AI, show what each app from Flathub may reach (the internet, your files, the camera and devices, running in the background) and let you turn each off, for you only. [Open App permissions](settings:privacy/permissions)
 
 Everything Nexus does stays on this computer unless you choose otherwise. Settings, Privacy and AI shows what Nexus remembers, how long, and which model answers; a cloud model is used only if you add one. The **Timeline** lists every change Nexus or you made, and most can be undone from there. [Open Privacy and AI](settings:privacy/notes)
+
+**Scan for viruses** in Settings, Privacy adds ClamAV (through Guardian) and then checks Downloads, or a folder you choose, when you ask. It never deletes anything: it tells you which files it found, and you remove them in Files. [Open Scan for viruses](settings:privacy/virusscan)
 
 ## When something goes wrong
 

@@ -39,6 +39,17 @@ export function chargeLimitPlan(on) {
   return { description: on ? "Stop charging the battery at 80% (battery care)" : "Charge the battery to 100% again",
            changes: [{ option: "nexusos.power.chargeLimit.enable", enabled: !!on }] };
 }
+// Hibernate: a system change through Guardian (nix/modules/hibernate.nix).
+export const HIBERNATE_PLAN = {
+  description: "Turn on hibernate (save everything to the disk and turn off)",
+  changes: [{ option: "nexusos.hibernate.enable", enabled: true }]
+};
+// `busctl call ... CanHibernate`: 's "yes"' -> "yes"; anything else ("no", "na", "challenge") as given, or "".
+export function canHibernate(text) {
+  const m = /"([a-z-]+)"/.exec(String(text || ""));
+  return m ? m[1] : "";
+}
+
 // `cat /sys/class/power_supply/BAT*/charge_control_end_threshold`: the limit now, or null where the firmware has none.
 export function chargeLimit(text) {
   const n = parseInt(String(text || "").trim().split("\n")[0]);

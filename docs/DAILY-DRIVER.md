@@ -32,7 +32,7 @@ the owner agrees it is ready.**
 | Graphics tablets and pens (Wacom) | P3 | ✅ | libinput and libwacom drive them; Settings, Mouse picks the screen the pen covers; they turn with convertibles (0.11) |
 | Thunderbolt devices and docks authorised (bolt) | P2 | ✅ | bolt (0.4) |
 | Battery charge limit (80%) for laptop battery health | P2 | ✅ | Settings, Power, through Guardian, where the firmware allows (0.5) |
-| Hibernate (suspend to disk) | P3 | ⬜ | Needs swap sized to RAM, resume from an encrypted disk |
+| Hibernate (suspend to disk) | P3 | ✅ | Settings, Power through Guardian: a swap file the size of the memory on the encrypted disk; systemd finds it on resume (HibernateLocation) (0.12) |
 | Power profiles (performance / balanced / saver) | P1 | ✅ | Settings, Power |
 | Sleep, screen off, lid | P1 | ✅ | |
 | Multi-monitor, docks, projectors | P1 | ✅ | Settings, Display (with revert) |
@@ -65,7 +65,7 @@ the owner agrees it is ready.**
 | Notifications and Do not disturb | P1 | ✅ | |
 | Lock screen, login screen | P1 | ✅ | |
 | Night light | P2 | ✅ | |
-| Desktop widgets (weather, calendar in the top bar) | P3 | 🟡 | The clock opens a month calendar with week numbers (0.11); weather still ⬜ |
+| Desktop widgets (weather, calendar in the top bar) | P3 | ✅ | The clock opens a month calendar with week numbers (0.11), and the weather for a chosen place, from Open-Meteo, off by default (0.12) |
 
 ## 3. Files
 
@@ -178,7 +178,7 @@ the owner agrees it is ready.**
 | App permissions (Flatpak: files, camera, location) | P2 | ✅ | Settings, Privacy: internet, files, devices, camera, background (0.4); location later |
 | Passkeys and security keys (FIDO2, YubiKey) | P2 | 🟡 | libfido2's udev rules (0.4); check with a real key |
 | Password manager | P2 | 🟡 | Browsers; Bitwarden/KeePassXC on Flathub |
-| Malware scanning of downloads (optional) | P3 | ⬜ | ClamAV on demand |
+| Malware scanning of downloads (optional) | P3 | ✅ | Settings, Privacy through Guardian: ClamAV on demand for Downloads or a folder, definitions by freshclam; nothing deleted (0.12) |
 
 ## 11. Software and updates
 

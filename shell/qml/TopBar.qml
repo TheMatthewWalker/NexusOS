@@ -10,6 +10,7 @@ import Quickshell.Services.Mpris
 import Quickshell.Networking
 import "lib/privacy.mjs" as Priv
 import "lib/calendar.mjs" as Cal
+import "lib/weather.mjs" as Weather
 
 // The top bar (design: "Desktop B · Floating glass with top bar"): the Nexus
 // orb, workspaces, the date and time, and Wi-Fi, sound and battery. Each
@@ -263,13 +264,30 @@ PanelWindow {
     property int calYear: clock.date.getFullYear()
     property int calMonth: clock.date.getMonth()
     function toggleCalendar() {
-        if (!calendarOpen) { calYear = clock.date.getFullYear(); calMonth = clock.date.getMonth() }
+        if (!calendarOpen) { calYear = clock.date.getFullYear(); calMonth = clock.date.getMonth(); refreshWeather() }
         calendarOpen = !calendarOpen;
+    }
+    // Weather, only with a place chosen in Settings, Desktop; asked for at most every 30 minutes.
+    readonly property var weatherPlace: { try { return JSON.parse(bar.settings.desktop.weatherPlace || "null") } catch (e) { return null } }
+    property var weather: null
+    property real weatherAt: 0
+    property string weatherFor: ""
+    function refreshWeather() {
+        const url = Weather.forecastUrl(weatherPlace, Qt.locale().measurementSystem === Locale.ImperialUSSystem);
+        if (!url) { weather = null; return }
+        if (weatherFetch.running || (weatherFor === url && Date.now() - weatherAt < 30 * 60000)) return;
+        weatherFetch.command = [Quickshell.env("NEXUS_CURL") || "curl", "-fsS", "--max-time", "10", url];
+        weatherFor = url;
+        weatherFetch.running = true;
+    }
+    Process {
+        id: weatherFetch
+        stdout: StdioCollector { onStreamFinished: { const w = Weather.parseForecast(text); if (w) { bar.weather = w; bar.weatherAt = Date.now() } } }
     }
     IpcHandler {
         target: "calendar"
         function toggle(): void { bar.toggleCalendar() }
-        function state(): string { return JSON.stringify({ open: bar.calendarOpen, year: bar.calYear, month: bar.calMonth }) }
+        function state(): string { return JSON.stringify({ open: bar.calendarOpen, year: bar.calYear, month: bar.calMonth, weather: bar.weather }) }
         function move(by: int): void { bar.moveMonth(by) }
     }
     function moveMonth(by) { const m = Cal.shift(calYear, calMonth, by); calYear = m.year; calMonth = m.month }
@@ -278,7 +296,7 @@ PanelWindow {
         visible: bar.calendarOpen && !bar.live
         anchors.top: true
         margins.top: 56
-        implicitWidth: 320; implicitHeight: 330
+        implicitWidth: 320; implicitHeight: 330 + (bar.weatherPlace && bar.weather ? 74 : 0)
         color: "transparent"
         exclusiveZone: 0
         WlrLayershell.namespace: "nexus-calendar"
@@ -360,6 +378,31 @@ PanelWindow {
                             Accessible.role: Accessible.StaticText
                             Accessible.name: parent.isWeek ? "Week " + modelData.week
                                 : Qt.formatDate(new Date(modelData.year, modelData.month, modelData.day), "dddd d MMMM") + (today ? ", today" : "")
+                        }
+                    }
+                }
+                // Weather (Settings, Desktop turns it on): now, then the next three days.
+                Column {
+                    visible: !!(bar.weatherPlace && bar.weather)
+                    width: parent.width
+                    spacing: 6
+                    Rectangle { width: parent.width; height: 1; color: bar.theme.glassBorder }
+                    Text {
+                        width: parent.width; elide: Text.ElideRight; textFormat: Text.PlainText
+                        text: !bar.weather ? "" : bar.weatherPlace.name.split(",")[0] + " · " + bar.weather.now.temp + "° " + bar.weather.now.words
+                        color: bar.theme.ink; font.pixelSize: 13; font.weight: 500
+                    }
+                    Row {
+                        spacing: 14
+                        Repeater {
+                            model: bar.weather ? bar.weather.days.slice(1, 4) : []
+                            delegate: Text {
+                                required property var modelData
+                                textFormat: Text.PlainText
+                                text: Qt.locale().dayName(new Date(modelData.date + "T12:00").getDay(), Locale.ShortFormat) + " " +
+                                      modelData.high + "°/" + modelData.low + "° " + modelData.words
+                                color: bar.theme.inkSecondary; font.pixelSize: 11
+                            }
                         }
                     }
                 }

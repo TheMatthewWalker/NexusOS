@@ -115,6 +115,23 @@ Column {
         Choice { theme: page.theme; name: "When the lid closes"; current: page.desktop.lidAction
                  options: P.LID.map(a => ({ value: a, label: P.lidLabel(a) })); onChose: v => page.desktop.set("lidAction", v) }
     }
+    // Hibernate (off until turned on through Guardian; then logind says whether it can).
+    property bool hibernateOn: false
+    property string hibernateState: ""
+    Process { running: true; command: ["systemctl", "cat", "nexus-hibernate-swap.service"]; onExited: (code) => page.hibernateOn = code === 0 }
+    Process {
+        running: true
+        command: ["busctl", "call", "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "CanHibernate"]
+        stdout: StdioCollector { onStreamFinished: page.hibernateState = P.canHibernate(text) }
+    }
+    SettingRow {
+        theme: page.theme; label: "Hibernate"; highlighted: page.host.highlight === "hibernate"
+        detail: !page.hibernateOn
+              ? "Saves everything to the disk and turns off, so nothing is lost even if the battery runs out; the next start carries on where you were. It needs as much free disk space as the computer has memory."
+              : page.hibernateState === "yes" ? "On: Hibernate is beside Sleep below. Starting again asks for the disk's password, as at any start."
+              : "On, but not available yet: the swap file is made at the next start, when there is room for it (as much as the memory, and 5 GB to spare)."
+        Button { visible: !page.hibernateOn; theme: page.theme; label: "Turn on…"; onClicked: page.host.proposeSystem(P.HIBERNATE_PLAN) }
+    }
     SettingRow {
         theme: page.theme; label: "Session"; highlighted: page.host.highlight === "session"
         detail: page.confirm === "reboot" ? "Restart now? Unsaved work in open apps is lost."
@@ -125,6 +142,8 @@ Column {
             Button { theme: page.theme; visible: page.confirm === ""; label: "Lock"; onClicked: page.host.lock() }
             Button { theme: page.theme; visible: page.confirm === ""; label: "Log out"; onClicked: page.host.hypr(["dispatch", "exit"]) }
             Button { theme: page.theme; visible: page.confirm === ""; label: "Sleep"; onClicked: Quickshell.execDetached(["systemctl", "suspend"]) }
+            Button { theme: page.theme; visible: page.confirm === "" && page.hibernateState === "yes"; label: "Hibernate"
+                     onClicked: Quickshell.execDetached(["systemctl", "hibernate"]) }
             Button { theme: page.theme; visible: page.confirm === ""; label: "Restart"; onClicked: page.confirm = "reboot" }
             Button { theme: page.theme; visible: page.confirm === ""; danger: true; label: "Shut down"; onClicked: page.confirm = "poweroff" }
             Button { theme: page.theme; visible: page.confirm !== ""; label: "Cancel"; onClicked: page.confirm = "" }

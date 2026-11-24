@@ -44,3 +44,9 @@ export function nowPlaying(p) {
   const t = String(p.trackTitle || "").trim(), a = String(p.trackArtist || "").trim();
   return t ? (a ? t + " · " + a : t) : String(p.identity || "");
 }
+
+// Virus scanning on demand (nix/modules/malware-scan.nix): a Guardian change to turn on.
+export const SCAN_PLAN = {
+  description: "Scan files for viruses on demand (ClamAV)",
+  changes: [{ option: "nexusos.malwareScan.enable", enabled: true }]
+};

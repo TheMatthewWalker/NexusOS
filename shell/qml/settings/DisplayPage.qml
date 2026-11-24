@@ -67,6 +67,14 @@ Column {
                  onMoved: v => page.applyBrightness(v) }
     }
     SettingRow {
+        theme: page.theme; label: "Variable refresh rate"; highlighted: page.host.highlight === "vrr"
+        detail: "FreeSync or G-Sync on screens that have it: the screen keeps pace with the game, without tearing or stutter. " +
+                "If a screen flickers, choose Off."
+        Choice { theme: page.theme; name: "Variable refresh rate"; current: page.desktop.vrr
+                 options: [{ value: "off", label: "Off" }, { value: "fullscreen", label: "Full-screen games" }, { value: "always", label: "Always" }]
+                 onChose: v => page.desktop.set("vrr", v) }
+    }
+    SettingRow {
         theme: page.theme; label: "Night light"; highlighted: page.host.highlight === "nightlight"
         detail: page.desktop.nightLight ? "On · warmer colours are easier on the eyes in the evening" : "Off"
         Switch { theme: page.theme; name: "Night light"; checked: page.desktop.nightLight

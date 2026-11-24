@@ -111,6 +111,8 @@ Settings, Sound has the volume, the output device and the microphone, and **each
 
 Settings, Power sets when the screen turns off, when the computer sleeps (on battery and plugged in), and what closing the lid does. The screen locks when the computer sleeps. On laptops whose firmware allows it, **Battery care** stops charging at 80%, which keeps the battery healthy for longer if it is mostly plugged in. [Open Power](settings:power/sleep)
 
+**Variable refresh rate** in Settings, Display uses FreeSync or G-Sync on screens that have it, so games run without tearing or stutter. It is on for full-screen games and videos to start with; choose Off if a screen flickers. [Open Variable refresh rate](settings:display/vrr)
+
 ## Seeing, hearing and using it more easily
 
 Settings, Accessibility has bigger text, high contrast, a bigger pointer, less motion, the **screen reader** (Super+Alt+S), and Describe this, which tells you what is on the screen. The **magnifier** enlarges the screen around the pointer: Super+Plus and Super+Minus, as on Windows. A **colour filter** shows the screen in grey or inverted, or makes colours easier to tell apart if you are colour blind. You can also ask Nexus: "zoom in", "turn on the colour blind filter". [Open Accessibility](settings:accessibility/magnifier)

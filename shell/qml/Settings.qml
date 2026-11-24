@@ -132,6 +132,7 @@ NexusWindow {
         ["sound", "output", "Output device", "headphones speakers output hdmi device"],
         ["sound", "microphone", "Microphone", "microphone mic input record"],
         ["display", "screens", "Screens", "screens monitors multiple second external monitor arrange position extend mirror duplicate projector resolution refresh rate"],
+        ["display", "vrr", "Variable refresh rate", "variable refresh rate vrr freesync g-sync gsync adaptive sync tearing stutter games"],
         ["display", "brightness", "Brightness", "brightness dim bright screen backlight"],
         ["display", "nightlight", "Night light", "night light warm blue light evening eyes colour temperature"],
         ["display", "scale", "Scale", "scale zoom size bigger text resolution dpi"],

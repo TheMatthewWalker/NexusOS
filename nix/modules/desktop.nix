@@ -177,6 +177,8 @@ let
       disable_hyprland_logo = true
       disable_splash_rendering = true
       background_color = rgb(04050c)
+      # Variable refresh rate in full-screen games and videos (Settings, Display changes it).
+      vrr = 2
     }
 
     # Super+Space opens Nexus; Super+L locks; Super+Return opens a terminal.

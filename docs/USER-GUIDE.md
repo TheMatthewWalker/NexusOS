@@ -65,6 +65,8 @@ Windows float like on Windows or macOS; you can switch to tiled windows in Setti
 
 **Startup apps**, on the same page, are the apps that open when you log in: apps such as Steam and Discord add themselves when you ask them to start with the computer, and you can turn each off or add your own. [Open Startup apps](settings:defaults/startup)
 
+Click the date and time in the top bar for a month calendar, with week numbers; the arrows (or the Left and Right keys) go a month either way, and Esc closes it.
+
 ## Windows programs and games
 
 NexusOS does not run Windows programs by itself, but most have a version or an equivalent here. Open a `.exe` or `.msi` you downloaded and NexusOS says what it is and offers the app to use instead (Spotify's installer offers Spotify; Photoshop offers GIMP). For anything else, Bottles runs many Windows programs with Wine.
@@ -115,6 +117,8 @@ Settings, Power sets when the screen turns off, when the computer sleeps (on bat
 
 **Variable refresh rate** in Settings, Display uses FreeSync or G-Sync on screens that have it, so games run without tearing or stutter. It is on for full-screen games and videos to start with; choose Off if a screen flickers. [Open Variable refresh rate](settings:display/vrr)
 
+On a convertible laptop or tablet, the screen, touch and pen turn with the computer. **Rotate the screen** in Settings, Display locks it. An **on-screen keyboard** is in Settings, Accessibility. [Open Rotate the screen](settings:display/rotation)
+
 ## Seeing, hearing and using it more easily
 
 Settings, Accessibility has bigger text, high contrast, a bigger pointer, less motion, the **screen reader** (Super+Alt+S), and Describe this, which tells you what is on the screen. The **magnifier** enlarges the screen around the pointer: Super+Plus and Super+Minus, as on Windows. A **colour filter** shows the screen in grey or inverted, or makes colours easier to tell apart if you are colour blind. You can also ask Nexus: "zoom in", "turn on the colour blind filter". [Open Accessibility](settings:accessibility/magnifier)
@@ -162,6 +166,8 @@ Secure Boot makes the computer start only software signed with trusted keys. Nex
 ## For developers
 
 Settings, Developer has your SSH keys (create one and copy it for GitHub, GitLab or a server; the keyring keeps it unlocked while you are logged in). In a project folder, `nexus-dev init python` (or node, rust, go, java, dotnet, c) sets the project up: its tools are there whenever you are in the folder. `docker` and `docker compose` work, on Podman, without anything running as root. `pip install --user`, `pipx install` and `npm install -g` install into your home folder, as on other systems. `git` over HTTPS signs in to GitHub, GitLab or Azure DevOps in the browser once, as on Windows, and keeps the sign-in in your keyring. Security keys (YubiKey and other FIDO2 keys) work in browsers. Arduino, ESP32 and other boards can be programmed straight away, and virtual machines can be turned on there too. [Open Developer](settings:developer/ssh)
+
+`nexus-dev init cloud` sets a folder up with kubectl, Helm, k9s, the AWS, Azure and Google Cloud command lines and OpenTofu. `nexus-dev db postgres` (or `mysql`, `redis`) starts a database for development that only this computer can reach, prints how to connect (the password is `dev`) and keeps its data between starts; `nexus-dev db postgres stop` stops it.
 
 ## Privacy
 

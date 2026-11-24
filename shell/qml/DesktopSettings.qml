@@ -51,6 +51,7 @@ Item {
     property alias appTheme: store.appTheme
     property alias colourFilter: store.colourFilter
     property alias vrr: store.vrr
+    property alias tabletScreen: store.tabletScreen
     // Super+Plus / Super+Minus: the next magnifier level.
     function zoomBy(direction) { set("zoom", Access.zoomStep(store.zoom, direction)) }
     property var monitors: []            // the screens connected now (hyprctl monitors all -j), for Settings, Display
@@ -85,6 +86,7 @@ Item {
         case "appTheme": return "Apps " + (value === "light" ? "light" : "dark");
         case "zoom": return value > 1 ? "Magnifier " + Math.round(value * 100) + "%" : "Magnifier off";
         case "colourFilter": return "Colour filter: " + Access.filterLabel(value);
+        case "tabletScreen": return "Pen tablet: " + (value ? value : "all screens");
         case "vrr": return "Variable refresh rate: " + ({ off: "off", fullscreen: "in full-screen games and videos", always: "always" })[value];
         case "leftHanded": return "Left-handed mouse " + (value ? "on" : "off");
         case "lidAction": return "Closing the lid: " + ({ sleep: "sleep", lock: "lock the screen", nothing: "do nothing" })[value];
@@ -147,6 +149,8 @@ Item {
             property string colourFilter: "none"   // lib/access.mjs filters
             // Variable refresh rate (FreeSync, G-Sync compatible): misc:vrr off 0, always 1, full screen 2.
             property string vrr: "fullscreen"
+            // A pen tablet's whole area maps to this screen (a Hyprland monitor name), or "" for all of them.
+            property string tabletScreen: ""
         }
     }
 
@@ -180,6 +184,7 @@ Item {
                "keyword input:left_handed " + store.leftHanded,
                "keyword input:natural_scroll " + store.mouseNaturalScroll,
                "keyword cursor:zoom_factor " + Math.min(4, Math.max(1, store.zoom)),
+               "keyword input:tablet:output " + (/^[A-Za-z0-9-]+$/.test(store.tabletScreen) ? store.tabletScreen : "[[EMPTY]]"),
                "keyword misc:vrr " + (store.vrr === "off" ? 0 : store.vrr === "always" ? 1 : 2),
                "keyword decoration:screen_shader " + Access.shader(store.colourFilter, Quickshell.shellDir));
         const kb = R.keyboard(baseLayout, store.keyboardLayouts);

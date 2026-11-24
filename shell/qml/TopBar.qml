@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import Quickshell.Services.Pipewire
@@ -8,6 +9,7 @@ import Quickshell.Services.SystemTray
 import Quickshell.Services.Mpris
 import Quickshell.Networking
 import "lib/privacy.mjs" as Priv
+import "lib/calendar.mjs" as Cal
 
 // The top bar (design: "Desktop B · Floating glass with top bar"): the Nexus
 // orb, workspaces, the date and time, and Wi-Fi, sound and battery. Each
@@ -112,7 +114,10 @@ PanelWindow {
             anchors.centerIn: parent
             text: Qt.formatDateTime(clock.date, "ddd d MMM · HH:mm")
             color: bar.theme.ink; font.pixelSize: 13; font.weight: 500
-            TapHandler { onTapped: bar.settings.open("about", "") }
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: bar.toggleCalendar() }
+            Accessible.role: Accessible.Button
+            Accessible.name: Qt.formatDateTime(clock.date, "dddd d MMMM yyyy, HH:mm") + ". Opens the calendar."
         }
 
         Row {
@@ -249,6 +254,116 @@ PanelWindow {
                 Accessible.name: !parent.n ? "" : parent.n.count === 0 ? "Notifications: none" : "Notifications: " + parent.n.count
             }
             Status { icon: "settings"; page: ""; name: "Settings" }
+        }
+    }
+
+    // The month calendar under the clock, as on Windows: today marked, months
+    // either side, week numbers. Esc or the clock closes it.
+    property bool calendarOpen: false
+    property int calYear: clock.date.getFullYear()
+    property int calMonth: clock.date.getMonth()
+    function toggleCalendar() {
+        if (!calendarOpen) { calYear = clock.date.getFullYear(); calMonth = clock.date.getMonth() }
+        calendarOpen = !calendarOpen;
+    }
+    IpcHandler {
+        target: "calendar"
+        function toggle(): void { bar.toggleCalendar() }
+        function state(): string { return JSON.stringify({ open: bar.calendarOpen, year: bar.calYear, month: bar.calMonth }) }
+        function move(by: int): void { bar.moveMonth(by) }
+    }
+    function moveMonth(by) { const m = Cal.shift(calYear, calMonth, by); calYear = m.year; calMonth = m.month }
+    readonly property int firstDay: Qt.locale().firstDayOfWeek % 7
+    PanelWindow {
+        visible: bar.calendarOpen && !bar.live
+        anchors.top: true
+        margins.top: 56
+        implicitWidth: 320; implicitHeight: 330
+        color: "transparent"
+        exclusiveZone: 0
+        WlrLayershell.namespace: "nexus-calendar"
+        WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+        Rectangle {
+            anchors.fill: parent
+            radius: 18
+            color: bar.theme.glass
+            border.color: bar.theme.glassBorder
+            focus: true
+            Keys.onEscapePressed: bar.calendarOpen = false
+            Keys.onLeftPressed: bar.moveMonth(-1)
+            Keys.onRightPressed: bar.moveMonth(1)
+            Column {
+                anchors { fill: parent; margins: 16 }
+                spacing: 8
+                Item {
+                    width: parent.width; height: 28
+                    Text { anchors.verticalCenter: parent.verticalCenter
+                           text: Qt.locale().standaloneMonthName(bar.calMonth, Locale.LongFormat) + " " + bar.calYear
+                           color: bar.theme.ink; font.pixelSize: 16; font.weight: 600 }
+                    Row {
+                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                        spacing: 4
+                        Repeater {
+                            model: [{ t: "‹", by: -1, name: "Previous month" }, { t: "Today", by: 0, name: "Today" }, { t: "›", by: 1, name: "Next month" }]
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: modelData.by === 0 ? 52 : 28; height: 28; radius: 8
+                                color: navHover.hovered ? bar.theme.chip : "transparent"
+                                Text { anchors.centerIn: parent; text: modelData.t; color: bar.theme.ink; font.pixelSize: modelData.by === 0 ? 12 : 18 }
+                                HoverHandler { id: navHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: { if (modelData.by === 0) { bar.calYear = clock.date.getFullYear(); bar.calMonth = clock.date.getMonth() } else bar.moveMonth(modelData.by) } }
+                                Accessible.role: Accessible.Button
+                                Accessible.name: modelData.name
+                            }
+                        }
+                    }
+                }
+                Grid {
+                    columns: 8
+                    columnSpacing: 2; rowSpacing: 2
+                    readonly property var names: [0, 1, 2, 3, 4, 5, 6].map(d => Qt.locale().dayName(d, Locale.NarrowFormat))
+                    Text { width: 30; height: 22; text: "Wk"; color: bar.theme.inkSecondary; font.pixelSize: 10
+                           horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    Repeater {
+                        model: Cal.weekdayHeaders(parent.names, bar.firstDay)
+                        delegate: Text {
+                            required property var modelData
+                            width: 34; height: 22; text: modelData; color: bar.theme.inkSecondary; font.pixelSize: 11
+                            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+                    Repeater {
+                        // Each week: its number, then its seven days.
+                        model: {
+                            const days = Cal.monthGrid(bar.calYear, bar.calMonth, bar.firstDay), out = [];
+                            for (let w = 0; w < 6; w++) {
+                                out.push({ week: Cal.isoWeek(days[w * 7 + 3].year, days[w * 7 + 3].month, days[w * 7 + 3].day) });
+                                for (let i = 0; i < 7; i++) out.push(days[w * 7 + i]);
+                            }
+                            return out;
+                        }
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool isWeek: modelData.week !== undefined
+                            readonly property bool today: !isWeek && Cal.isSameDay(modelData, clock.date)
+                            width: isWeek ? 30 : 34; height: 32; radius: 16
+                            color: today ? bar.theme.focus : "transparent"
+                            Text {
+                                anchors.centerIn: parent
+                                text: parent.isWeek ? modelData.week : modelData.day
+                                color: parent.today ? "#FFFFFF" : parent.isWeek ? bar.theme.inkSecondary
+                                     : modelData.inMonth ? bar.theme.ink : bar.theme.inkSecondary
+                                opacity: !parent.isWeek && !modelData.inMonth ? 0.5 : 1
+                                font.pixelSize: parent.isWeek ? 10 : 13; font.weight: parent.today ? 600 : 400
+                            }
+                            Accessible.role: Accessible.StaticText
+                            Accessible.name: parent.isWeek ? "Week " + modelData.week
+                                : Qt.formatDate(new Date(modelData.year, modelData.month, modelData.day), "dddd d MMMM") + (today ? ", today" : "")
+                        }
+                    }
+                }
+            }
         }
     }
 }

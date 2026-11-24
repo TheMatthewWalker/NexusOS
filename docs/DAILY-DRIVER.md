@@ -28,8 +28,8 @@ the owner agrees it is ready.**
 | Keyboard backlight control | P3 | ✅ | The keyboard light keys, with the on-screen bar (0.10) |
 | Webcam works in apps and browsers (portals, PipeWire camera) | P1 | 🔍 | Test in Firefox and a video-call site |
 | Fingerprint login and unlock (fprintd) | P2 | ✅ | Settings, Accounts through Guardian: lock screen and approvals; login keeps the password (0.8) |
-| Touchscreen, screen rotation on convertibles, on-screen keyboard | P3 | ⬜ | iio-sensor-proxy, squeekboard/wvkbd |
-| Graphics tablets and pens (Wacom) | P3 | ⬜ | libwacom, Settings |
+| Touchscreen, screen rotation on convertibles, on-screen keyboard | P3 | ✅ | Screen, touch and pen turn with the computer (iio-sensor-proxy), with a lock in Settings, Display; on-screen keyboard (wvkbd) in Accessibility (0.11) |
+| Graphics tablets and pens (Wacom) | P3 | ✅ | libinput and libwacom drive them; Settings, Mouse picks the screen the pen covers; they turn with convertibles (0.11) |
 | Thunderbolt devices and docks authorised (bolt) | P2 | ✅ | bolt (0.4) |
 | Battery charge limit (80%) for laptop battery health | P2 | ✅ | Settings, Power, through Guardian, where the firmware allows (0.5) |
 | Hibernate (suspend to disk) | P3 | ⬜ | Needs swap sized to RAM, resume from an encrypted disk |
@@ -65,7 +65,7 @@ the owner agrees it is ready.**
 | Notifications and Do not disturb | P1 | ✅ | |
 | Lock screen, login screen | P1 | ✅ | |
 | Night light | P2 | ✅ | |
-| Desktop widgets (weather, calendar in the top bar) | P3 | ⬜ | |
+| Desktop widgets (weather, calendar in the top bar) | P3 | 🟡 | The clock opens a month calendar with week numbers (0.11); weather still ⬜ |
 
 ## 3. Files
 
@@ -203,8 +203,8 @@ the owner agrees it is ready.**
 | JetBrains IDEs, Android Studio | P2 | 🟡 | Flathub; adb and fastboot installed (0.3) |
 | Microcontrollers and serial devices (Arduino, ESP32): serial port access | P2 | ✅ | (0.3) |
 | Virtual machines (KVM, QEMU, virt-manager) | P2 | ✅ | Settings, Developer, through Guardian (0.3) |
-| Kubernetes and cloud CLIs (kubectl, aws, az, gcloud) | P3 | ⬜ | Through project shells |
-| Databases for development (PostgreSQL, MySQL, Redis) | P3 | ⬜ | Containers |
+| Kubernetes and cloud CLIs (kubectl, aws, az, gcloud) | P3 | ✅ | `nexus-dev init cloud`: kubectl, Helm, k9s, AWS, Azure and Google Cloud CLIs, OpenTofu (0.11) |
+| Databases for development (PostgreSQL, MySQL, Redis) | P3 | ✅ | `nexus-dev db postgres\|mysql\|redis`: Podman, 127.0.0.1 only, data kept in a volume (0.11) |
 | Local AI coding help | P2 | ✅ | Code (Super+C) |
 | GitHub/GitLab sign-in for git (credential helper) | P2 | ✅ | SSH keys (0.3); Git Credential Manager with the keyring (0.4) |
 | man pages and documentation offline | P3 | 🟡 | |

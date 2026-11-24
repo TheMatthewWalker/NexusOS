@@ -66,6 +66,23 @@ Column {
         Slider { theme: page.theme; name: "Brightness"; visible: page.backlight !== ""; value: page.brightness || 0
                  onMoved: v => page.applyBrightness(v) }
     }
+    // Convertibles: the screen turns with the computer (nexus-autorotate) unless locked.
+    readonly property string rotationLock: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nexusos/rotation-lock"
+    property bool hasAccelerometer: false
+    property bool rotationLocked: false
+    Process { running: true; command: ["sh", "-c", "ls /sys/bus/iio/devices/*/in_accel_x_raw >/dev/null 2>&1"]; onExited: (code) => page.hasAccelerometer = code === 0 }
+    Process { id: lockCheck; running: true; command: ["test", "-e", page.rotationLock]; onExited: (code) => page.rotationLocked = code === 0 }
+    Process { id: lockSet; onExited: lockCheck.running = true }
+    SettingRow {
+        visible: page.hasAccelerometer
+        theme: page.theme; label: "Rotate the screen"; highlighted: page.host.highlight === "rotation"
+        detail: page.rotationLocked ? "Locked: the screen stays as it is when you turn the computer."
+                                    : "The screen, touch and pen turn with the computer, as on a tablet."
+        Switch { theme: page.theme; name: "Rotate the screen"; checked: !page.rotationLocked
+                 onToggled: { lockSet.command = page.rotationLocked ? ["rm", "-f", page.rotationLock]
+                                                                    : ["sh", "-c", "mkdir -p \"$(dirname \"$1\")\" && touch \"$1\"", "sh", page.rotationLock];
+                              lockSet.running = true } }
+    }
     SettingRow {
         theme: page.theme; label: "Variable refresh rate"; highlighted: page.host.highlight === "vrr"
         detail: "FreeSync or G-Sync on screens that have it: the screen keeps pace with the game, without tearing or stutter. " +

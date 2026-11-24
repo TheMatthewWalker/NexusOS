@@ -65,7 +65,7 @@ the owner agrees it is ready.**
 | Notifications and Do not disturb | P1 | ✅ | |
 | Lock screen, login screen | P1 | ✅ | |
 | Night light | P2 | ✅ | |
-| Desktop widgets (weather, calendar in the top bar) | P3 | 🟡 | The clock opens a month calendar with week numbers (0.11); weather still ⬜ |
+| Desktop widgets (weather, calendar in the top bar) | P3 | ✅ | The clock opens a month calendar with week numbers (0.11), and the weather for a chosen place, from Open-Meteo, off by default (0.12) |
 
 ## 3. Files
 

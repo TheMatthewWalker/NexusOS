@@ -1,4 +1,7 @@
 import QtQuick
+import Quickshell
+import Quickshell.Io
+import "../lib/weather.mjs" as Weather
 
 // Settings, Desktop: how windows behave, and the desktop's effects.
 Column {
@@ -45,6 +48,38 @@ Column {
             : "Notifications from apps pop up in the top right, and wait behind the bell in the top bar."
         Switch { theme: page.theme; name: "Do not disturb"; checked: page.desktop.doNotDisturb
                  onToggled: page.desktop.set("doNotDisturb", !page.desktop.doNotDisturb) }
+    }
+    // Weather in the calendar (the clock in the top bar): off until a place is chosen.
+    readonly property var weatherPlace: { try { return JSON.parse(page.desktop.weatherPlace || "null") } catch (e) { return null } }
+    property string weatherNote: ""
+    Process {
+        id: placeFind
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const p = Weather.parseGeocode(text);
+                if (!p) { page.weatherNote = "That place was not found. Try a town or city name."; return }
+                page.weatherNote = "";
+                page.desktop.set("weatherPlace", JSON.stringify(p));
+                placeName.clear();
+            }
+        }
+        onExited: (code) => { if (code !== 0) page.weatherNote = "The weather service could not be reached: is this computer online?" }
+    }
+    SettingRow {
+        theme: page.theme; label: "Weather in the calendar"; highlighted: page.host.highlight === "weather"
+        detail: page.weatherNote || (page.weatherPlace
+            ? "For " + page.weatherPlace.name + ", from Open-Meteo, which is told only the place's rough position."
+            : "Off. Choose a place to see its weather under the calendar, from Open-Meteo (no account; only the place's rough position is sent).")
+        Button { visible: !!page.weatherPlace; theme: page.theme; label: "Turn off"; onClicked: page.desktop.set("weatherPlace", "") }
+    }
+    Row {
+        spacing: 8; leftPadding: 4
+        TextField { id: placeName; theme: page.theme; width: 300; label: page.weatherPlace ? "Another place" : "Town or city"
+                    onAccepted: findButton.clicked() }
+        Button { id: findButton; anchors.bottom: parent.bottom; theme: page.theme; label: "Find"
+                 enabled: placeName.text.trim() !== "" && !placeFind.running
+                 onClicked: { placeFind.command = [Quickshell.env("NEXUS_CURL") || "curl", "-fsS", "--max-time", "10", Weather.geocodeUrl(placeName.text)];
+                              placeFind.running = true } }
     }
     SettingRow {
         theme: page.theme; label: "Keyboard shortcuts"; highlighted: page.host.highlight === "shortcuts"

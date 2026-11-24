@@ -168,6 +168,7 @@ NexusWindow {
         ["accounts", "clouddrives", "Cloud drives", "cloud onedrive one drive google drive dropbox nextcloud sync online files"],
         ["accounts", "tpm", "Unlock the disk by itself", "tpm bitlocker disk unlock start-up startup encryption password automatic"],
         ["accounts", "fingerprint", "Fingerprint", "fingerprint reader windows hello unlock biometric touch"],
+        ["desktop", "weather", "Weather in the calendar", "weather forecast temperature rain calendar clock city place"],
         ["desktop", "donotdisturb", "Do not disturb", "notifications notify do not disturb quiet bell alerts popups"],
         ["privacy", "model", "AI model", "model ai ollama qwen llm assistant nexus"],
         ["privacy", "largemodel", "Large model", "large model bigger smarter mixture of experts moe gpt-oss llama memory"],

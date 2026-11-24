@@ -65,7 +65,7 @@ Windows float like on Windows or macOS; you can switch to tiled windows in Setti
 
 **Startup apps**, on the same page, are the apps that open when you log in: apps such as Steam and Discord add themselves when you ask them to start with the computer, and you can turn each off or add your own. [Open Startup apps](settings:defaults/startup)
 
-Click the date and time in the top bar for a month calendar, with week numbers; the arrows (or the Left and Right keys) go a month either way, and Esc closes it.
+Click the date and time in the top bar for a month calendar, with week numbers; the arrows (or the Left and Right keys) go a month either way, and Esc closes it. To see the weather there too, choose a town in Settings, Desktop, Weather in the calendar: it comes from Open-Meteo, which is told only the place's rough position. [Open Weather in the calendar](settings:desktop/weather)
 
 ## Windows programs and games
 

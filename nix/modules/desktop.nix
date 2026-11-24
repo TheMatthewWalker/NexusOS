@@ -112,6 +112,8 @@ let
     # Push-to-talk records and spoken replies play through PipeWire.
     env = NEXUS_PW_RECORD,${config.services.pipewire.package}/bin/pw-record
     env = NEXUS_PW_PLAY,${config.services.pipewire.package}/bin/pw-play
+    # Weather in the calendar, when turned on (lib/weather.mjs: Open-Meteo).
+    env = NEXUS_CURL,${pkgs.curl}/bin/curl
     # Game mode: the shell unloads the model and runs
     #   hyprctl --batch "keyword decoration:blur:enabled false ; keyword animations:enabled false"
     # while a fullscreen game is open, then restores blur (NEXUS_BLUR) and
